@@ -1,20 +1,20 @@
 // ============================================================
-// MATERIALS MANAGER - APP.JSX COMPLETA
-// MAX STREICHER Edition
+// MATERIALS MANAGER - APP.JSX COMPLETE
+// MAX STREICHER Edition - Full English Version
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // ============================================================
-// CONFIGURAZIONE SUPABASE
+// SUPABASE CONFIGURATION
 // ============================================================
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ============================================================
-// COSTANTI E CONFIGURAZIONE
+// CONSTANTS AND CONFIGURATION
 // ============================================================
 const COLORS = {
   primary: '#E31E24',
@@ -41,7 +41,7 @@ const STATUS_COLORS = {
   Order: COLORS.orange,
   Ordered: COLORS.cyan,
   ToCollect: COLORS.success,
-  TestPackReady: '#059669',
+  Check: COLORS.purple,
   Done: COLORS.gray
 };
 
@@ -50,7 +50,7 @@ const REQUEST_TYPES = ['Piping', 'Mechanical', 'TestPack'];
 const SUB_CATEGORIES = ['Bulk', 'Erection', 'Support'];
 
 // ============================================================
-// STILI GLOBALI
+// GLOBAL STYLES
 // ============================================================
 const styles = {
   container: {
@@ -101,12 +101,32 @@ const styles = {
     color: '#9ca3af',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    borderLeft: '4px solid transparent'
+    borderLeft: '4px solid transparent',
+    position: 'relative'
   },
   navItemActive: {
     backgroundColor: 'rgba(227, 30, 36, 0.2)',
     borderLeftColor: COLORS.primary,
     color: 'white'
+  },
+  badge: {
+    padding: '2px 8px',
+    borderRadius: '4px',
+    color: 'white',
+    fontSize: '11px',
+    fontWeight: '500'
+  },
+  navBadge: {
+    position: 'absolute',
+    right: '12px',
+    backgroundColor: COLORS.primary,
+    color: 'white',
+    fontSize: '11px',
+    fontWeight: 'bold',
+    padding: '2px 6px',
+    borderRadius: '10px',
+    minWidth: '18px',
+    textAlign: 'center'
   },
   main: {
     flex: 1,
@@ -191,13 +211,6 @@ const styles = {
     justifyContent: 'center',
     transition: 'transform 0.2s'
   },
-  badge: {
-    padding: '2px 8px',
-    borderRadius: '4px',
-    color: 'white',
-    fontSize: '11px',
-    fontWeight: '500'
-  },
   input: {
     width: '100%',
     padding: '8px 12px',
@@ -248,12 +261,73 @@ const styles = {
   statsBox: {
     padding: '24px',
     borderRadius: '8px',
-    color: 'white'
+    color: 'white',
+    minHeight: '120px'
+  },
+  gridEqual: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '16px',
+    marginBottom: '24px'
+  },
+  gridThree: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: '16px',
+    marginBottom: '24px'
   }
 };
 
 // ============================================================
-// COMPONENTE LOGIN
+// MODAL COMPONENT
+// ============================================================
+function Modal({ isOpen, onClose, title, children, width = '500px' }) {
+  if (!isOpen) return null;
+  
+  return (
+    <div style={styles.modal} onClick={onClose}>
+      <div 
+        style={{ ...styles.modalContent, maxWidth: width }} 
+        onClick={e => e.stopPropagation()}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 'bold', color: '#1f2937' }}>{title}</h3>
+          <button 
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}
+          >
+            ×
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ACTION BUTTON COMPONENT
+// ============================================================
+function ActionButton({ color, onClick, title, children, disabled = false }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        ...styles.actionBtn,
+        backgroundColor: disabled ? '#d1d5db' : color,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.6 : 1
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ============================================================
+// LOGIN SCREEN
 // ============================================================
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -276,7 +350,7 @@ function LoginScreen({ onLogin }) {
         .single();
 
       if (dbError || !data) {
-        setError('Username o password non validi');
+        setError('Invalid username or password');
         setLoading(false);
         return;
       }
@@ -284,7 +358,7 @@ function LoginScreen({ onLogin }) {
       localStorage.setItem('user', JSON.stringify(data));
       onLogin(data);
     } catch (err) {
-      setError('Errore di connessione');
+      setError('Connection error');
       setLoading(false);
     }
   };
@@ -299,32 +373,34 @@ function LoginScreen({ onLogin }) {
     }}>
       <div style={{
         backgroundColor: 'white',
-        borderRadius: '12px',
         padding: '40px',
-        width: '400px',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.25)'
+        borderRadius: '16px',
+        width: '100%',
+        maxWidth: '400px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
       }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <div style={{
             width: '80px',
             height: '80px',
             backgroundColor: COLORS.primary,
             borderRadius: '16px',
-            margin: '0 auto 16px',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            margin: '0 auto 20px',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            color: 'white'
           }}>
-            <span style={{ color: 'white', fontSize: '28px', fontWeight: 'bold' }}>STR</span>
+            STR
           </div>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: COLORS.secondary }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937', marginBottom: '5px' }}>
             MAX STREICHER
           </h1>
-          <p style={{ color: '#6b7280', marginTop: '4px' }}>Materials Manager</p>
+          <p style={{ color: '#6b7280' }}>Materials Manager</p>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleLogin}>
           <div style={styles.formGroup}>
             <label style={styles.label}>Username</label>
@@ -333,7 +409,7 @@ function LoginScreen({ onLogin }) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               style={styles.input}
-              placeholder="Inserisci username"
+              placeholder="Enter username"
               required
             />
           </div>
@@ -344,7 +420,7 @@ function LoginScreen({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={styles.input}
-              placeholder="Inserisci password"
+              placeholder="Enter password"
               required
             />
           </div>
@@ -354,14 +430,14 @@ function LoginScreen({ onLogin }) {
               backgroundColor: '#FEE2E2',
               color: '#DC2626',
               padding: '12px',
-              borderRadius: '6px',
+              borderRadius: '8px',
               marginBottom: '16px',
               fontSize: '14px'
             }}>
               {error}
             </div>
           )}
-
+          
           <button
             type="submit"
             disabled={loading}
@@ -374,45 +450,31 @@ function LoginScreen({ onLogin }) {
               fontSize: '16px'
             }}
           >
-            {loading ? 'Accesso...' : 'Accedi'}
+            {loading ? 'Loading...' : 'Login'}
           </button>
         </form>
-
-        {/* Demo credentials */}
-        <div style={{
-          marginTop: '24px',
-          padding: '16px',
-          backgroundColor: '#f3f4f6',
-          borderRadius: '8px',
-          fontSize: '12px'
-        }}>
-          <p style={{ fontWeight: '600', marginBottom: '8px' }}>Credenziali Demo:</p>
-          <p>Admin: admin / admin123</p>
-          <p>User: mario.rossi / pass123</p>
-        </div>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// COMPONENTE SIDEBAR
+// SIDEBAR WITH BADGES
 // ============================================================
-function Sidebar({ user, currentPage, setCurrentPage, collapsed, setCollapsed, onLogout }) {
+function Sidebar({ user, currentPage, setCurrentPage, collapsed, setCollapsed, onLogout, counts = {} }) {
   const menuItems = [
     { id: 'dashboard', icon: '📊', label: 'Dashboard', perm: 'perm_dashboard' },
-    { id: 'requests', icon: '📋', label: 'Requests', perm: 'perm_requests' },
+    { id: 'requests', icon: '📋', label: 'New Request', perm: 'perm_requests' },
     { id: 'mir', icon: '📦', label: 'MIR', perm: 'perm_mir' },
     { id: 'materialIn', icon: '📥', label: 'Material IN', perm: 'perm_material_in' },
-    { id: 'siteIn', icon: '🏗️', label: 'Site IN', perm: 'perm_site_in' },
-    { id: 'whSite', icon: '🏭', label: 'WH Site', perm: 'perm_wh_site' },
-    { id: 'whYard', icon: '🏢', label: 'WH Yard', perm: 'perm_wh_yard' },
-    { id: 'engineering', icon: '⚙️', label: 'Engineering', perm: 'perm_engineering' },
-    { id: 'spareParts', icon: '🔧', label: 'Spare Parts', perm: 'perm_spare_parts' },
-    { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders' },
-    { id: 'management', icon: '👔', label: 'Management', perm: 'perm_management' },
-    { id: 'testPack', icon: '📦', label: 'Test Pack', perm: 'perm_test_pack' },
-    { id: 'log', icon: '📜', label: 'LOG', perm: 'perm_log' },
+    { id: 'siteIn', icon: '🚚', label: 'Site IN', perm: 'perm_site_in', countKey: 'siteIn' },
+    { id: 'whSite', icon: '🏗️', label: 'WH Site', perm: 'perm_wh_site', countKey: 'whSite' },
+    { id: 'whYard', icon: '🏢', label: 'WH Yard', perm: 'perm_wh_yard', countKey: 'whYard' },
+    { id: 'engineering', icon: '⚙️', label: 'Engineering', perm: 'perm_engineering', countKey: 'engineering' },
+    { id: 'spareParts', icon: '🔧', label: 'Spare Parts', perm: 'perm_spare_parts', countKey: 'spare' },
+    { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders', countKey: 'orders' },
+    { id: 'management', icon: '👔', label: 'Management', perm: 'perm_management', countKey: 'management' },
+    { id: 'log', icon: '📝', label: 'LOG', perm: 'perm_log' },
     { id: 'database', icon: '💾', label: 'Database', perm: 'perm_database' }
   ];
 
@@ -443,8 +505,7 @@ function Sidebar({ user, currentPage, setCurrentPage, collapsed, setCollapsed, o
             border: 'none',
             color: '#9ca3af',
             cursor: 'pointer',
-            fontSize: '18px',
-            padding: '4px'
+            fontSize: '18px'
           }}
         >
           {collapsed ? '→' : '←'}
@@ -461,10 +522,28 @@ function Sidebar({ user, currentPage, setCurrentPage, collapsed, setCollapsed, o
               ...styles.navItem,
               ...(currentPage === item.id ? styles.navItemActive : {})
             }}
-            title={collapsed ? item.label : ''}
           >
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            {!collapsed && <span style={{ fontSize: '14px' }}>{item.label}</span>}
+            {!collapsed && (
+              <>
+                <span style={{ fontSize: '14px' }}>{item.label}</span>
+                {item.countKey && counts[item.countKey] > 0 && (
+                  <span style={styles.navBadge}>{counts[item.countKey]}</span>
+                )}
+              </>
+            )}
+            {collapsed && item.countKey && counts[item.countKey] > 0 && (
+              <span style={{
+                ...styles.navBadge,
+                position: 'absolute',
+                top: '5px',
+                right: '5px',
+                fontSize: '9px',
+                padding: '1px 4px'
+              }}>
+                {counts[item.countKey]}
+              </span>
+            )}
           </div>
         ))}
       </nav>
@@ -473,12 +552,16 @@ function Sidebar({ user, currentPage, setCurrentPage, collapsed, setCollapsed, o
       <div style={{ padding: '16px', borderTop: '1px solid #374151' }}>
         {!collapsed && (
           <div style={{ color: '#9ca3af', fontSize: '12px', marginBottom: '8px' }}>
-            {user.full_name} ({user.role})
+            👤 {user.full_name}
           </div>
         )}
         <div
           onClick={onLogout}
-          style={{ ...styles.navItem, padding: '8px 16px' }}
+          style={{
+            ...styles.navItem,
+            padding: '8px 12px',
+            borderLeft: 'none'
+          }}
         >
           <span>🚪</span>
           {!collapsed && <span style={{ fontSize: '14px' }}>Logout</span>}
@@ -489,179 +572,139 @@ function Sidebar({ user, currentPage, setCurrentPage, collapsed, setCollapsed, o
 }
 
 // ============================================================
-// COMPONENTE MODAL GENERICO
-// ============================================================
-function Modal({ isOpen, onClose, title, children }) {
-  if (!isOpen) return null;
-
-  return (
-    <div style={styles.modal} onClick={onClose}>
-      <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px'
-        }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600' }}>{title}</h3>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '24px',
-              cursor: 'pointer',
-              color: '#6b7280'
-            }}
-          >
-            ×
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// PAGINA DASHBOARD
+// DASHBOARD PAGE
 // ============================================================
 function DashboardPage({ user }) {
   const [stats, setStats] = useState({
-    yard: 0,
-    site: 0,
-    lost: 0,
-    broken: 0,
-    activeRequests: 0,
-    inEngineering: 0,
-    toOrder: 0
+    yardQty: 0, siteQty: 0, lostQty: 0, brokenQty: 0,
+    activeRequests: 0, pendingEng: 0, toOrder: 0,
+    closed1day: 0, closed7days: 0, closed3weeks: 0, closedOver3weeks: 0,
+    passedEng: 0, passedMng: 0, becameOrders: 0
   });
   const [recentMovements, setRecentMovements] = useState([]);
-  const [kpis, setKpis] = useState({
-    closedIn1Day: 0,
-    closed2to7Days: 0,
-    closedUnder3Weeks: 0,
-    closedOver3Weeks: 0,
-    passedEngineering: 0,
-    passedManagement: 0,
-    becameOrders: 0
-  });
 
   useEffect(() => {
     loadDashboardData();
   }, []);
 
   const loadDashboardData = async () => {
-    // Load inventory stats
-    const { data: inventory } = await supabase
-      .from('project_database')
-      .select('qty_yard, qty_site');
+    try {
+      // Load inventory stats
+      const { data: inventory } = await supabase.from('project_database').select('qty_yard, qty_site');
+      if (inventory) {
+        const yardQty = inventory.reduce((sum, i) => sum + (i.qty_yard || 0), 0);
+        const siteQty = inventory.reduce((sum, i) => sum + (i.qty_site || 0), 0);
+        setStats(prev => ({ ...prev, yardQty, siteQty }));
+      }
 
-    if (inventory) {
-      setStats(prev => ({
-        ...prev,
-        yard: inventory.reduce((sum, item) => sum + (item.qty_yard || 0), 0),
-        site: inventory.reduce((sum, item) => sum + (item.qty_site || 0), 0)
-      }));
-    }
+      // Load request stats
+      const { data: components } = await supabase.from('request_components').select('status');
+      if (components) {
+        const activeRequests = components.filter(c => c.status !== 'Done').length;
+        const pendingEng = components.filter(c => c.status === 'Eng').length;
+        const toOrder = components.filter(c => c.status === 'Order').length;
+        setStats(prev => ({ ...prev, activeRequests, pendingEng, toOrder }));
+      }
 
-    // Load active requests count
-    const { count: activeCount } = await supabase
-      .from('request_components')
-      .select('*', { count: 'exact', head: true })
-      .not('status', 'eq', 'Done');
+      // Load recent movements
+      const { data: movements } = await supabase
+        .from('movements')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (movements) setRecentMovements(movements);
 
-    setStats(prev => ({ ...prev, activeRequests: activeCount || 0 }));
-
-    // Load recent movements
-    const { data: movements } = await supabase
-      .from('movements')
-      .select('*')
-      .order('movement_date', { ascending: false })
-      .limit(5);
-
-    setRecentMovements(movements || []);
-
-    // Load KPIs from log
-    const { data: logData } = await supabase
-      .from('log_requests')
-      .select('days_to_close, passed_engineering, passed_management, became_order');
-
-    if (logData) {
-      setKpis({
-        closedIn1Day: logData.filter(r => r.days_to_close <= 1).length,
-        closed2to7Days: logData.filter(r => r.days_to_close >= 2 && r.days_to_close <= 7).length,
-        closedUnder3Weeks: logData.filter(r => r.days_to_close >= 8 && r.days_to_close <= 21).length,
-        closedOver3Weeks: logData.filter(r => r.days_to_close > 21).length,
-        passedEngineering: logData.filter(r => r.passed_engineering).length,
-        passedManagement: logData.filter(r => r.passed_management).length,
-        becameOrders: logData.filter(r => r.became_order).length
-      });
+    } catch (error) {
+      console.error('Error loading dashboard:', error);
     }
   };
 
   return (
     <div>
-      <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>Dashboard</h2>
-
-      {/* Inventory Overview */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* Inventory Stats - Equal boxes */}
+      <div style={styles.gridEqual}>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.secondary }}>
-          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>YARD</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.yard.toLocaleString()}</p>
+          <h3 style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🏢 YARD</h3>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.yardQty.toLocaleString()}</p>
+          <p style={{ fontSize: '12px', opacity: 0.7 }}>Total items</p>
         </div>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.info }}>
-          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>SITE</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.site.toLocaleString()}</p>
+          <h3 style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🏗️ SITE</h3>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.siteQty.toLocaleString()}</p>
+          <p style={{ fontSize: '12px', opacity: 0.7 }}>Total items</p>
         </div>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.orange }}>
-          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>LOST</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.lost}</p>
+          <h3 style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>⚠️ LOST</h3>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.lostQty}</p>
+          <p style={{ fontSize: '12px', opacity: 0.7 }}>Total items</p>
         </div>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.purple }}>
-          <h3 style={{ fontSize: '18px', marginBottom: '8px' }}>BROKEN</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.broken}</p>
+          <h3 style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🔧 BROKEN</h3>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.brokenQty}</p>
+          <p style={{ fontSize: '12px', opacity: 0.7 }}>Total items</p>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* Request Stats - Equal boxes */}
+      <div style={styles.gridThree}>
+        <div style={styles.card}>
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>📋 Active Requests</p>
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.primary }}>{stats.activeRequests}</p>
+          </div>
+        </div>
+        <div style={styles.card}>
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>⚙️ Pending Engineering</p>
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.purple }}>{stats.pendingEng}</p>
+          </div>
+        </div>
+        <div style={styles.card}>
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>🛒 To Order</p>
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.warning }}>{stats.toOrder}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Closure Time Stats - Equal boxes */}
+      <div style={styles.gridEqual}>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.success }}>
-          <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>⚡ Chiuse in 1 giorno</h3>
-          <p style={{ fontSize: '28px', fontWeight: 'bold' }}>{kpis.closedIn1Day}</p>
+          <h3 style={{ fontSize: '12px', opacity: 0.9, marginBottom: '8px' }}>⚡ Closed in 1 day</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.closed1day}</p>
         </div>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.info }}>
-          <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>📅 Chiuse 2-7 giorni</h3>
-          <p style={{ fontSize: '28px', fontWeight: 'bold' }}>{kpis.closed2to7Days}</p>
+          <h3 style={{ fontSize: '12px', opacity: 0.9, marginBottom: '8px' }}>📅 Closed 2-7 days</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.closed7days}</p>
         </div>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.warning }}>
-          <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>📆 Chiuse &lt;3 settimane</h3>
-          <p style={{ fontSize: '28px', fontWeight: 'bold' }}>{kpis.closedUnder3Weeks}</p>
+          <h3 style={{ fontSize: '12px', opacity: 0.9, marginBottom: '8px' }}>📆 Closed &lt;3 weeks</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.closed3weeks}</p>
         </div>
         <div style={{ ...styles.statsBox, backgroundColor: COLORS.primary }}>
-          <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>⏰ Chiuse &gt;3 settimane</h3>
-          <p style={{ fontSize: '28px', fontWeight: 'bold' }}>{kpis.closedOver3Weeks}</p>
+          <h3 style={{ fontSize: '12px', opacity: 0.9, marginBottom: '8px' }}>🕐 Closed &gt;3 weeks</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.closedOver3weeks}</p>
         </div>
       </div>
 
-      {/* Active Requests */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* Flow Stats - Equal boxes */}
+      <div style={styles.gridThree}>
         <div style={styles.card}>
-          <div style={{ padding: '24px', textAlign: 'center' }}>
-            <p style={{ color: '#6b7280', marginBottom: '8px' }}>🔧 Passate da Engineering</p>
-            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.purple }}>{kpis.passedEngineering}</p>
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>🔧 Passed through Engineering</p>
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.purple }}>{stats.passedEng}</p>
           </div>
         </div>
         <div style={styles.card}>
-          <div style={{ padding: '24px', textAlign: 'center' }}>
-            <p style={{ color: '#6b7280', marginBottom: '8px' }}>👔 Passate da Management</p>
-            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.yellow }}>{kpis.passedManagement}</p>
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>👔 Passed through Management</p>
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.yellow }}>{stats.passedMng}</p>
           </div>
         </div>
         <div style={styles.card}>
-          <div style={{ padding: '24px', textAlign: 'center' }}>
-            <p style={{ color: '#6b7280', marginBottom: '8px' }}>🛒 Diventate Ordini</p>
-            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.primary }}>{kpis.becameOrders}</p>
+          <div style={{ padding: '20px', textAlign: 'center' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>🛒 Became Orders</p>
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.primary }}>{stats.becameOrders}</p>
           </div>
         </div>
       </div>
@@ -669,43 +712,41 @@ function DashboardPage({ user }) {
       {/* Recent Movements */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600' }}>Ultimi Movimenti</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: 'bold' }}>📋 Recent Movements</h3>
         </div>
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>Data</th>
-              <th style={styles.th}>Tipo</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Date</th>
+              <th style={styles.th}>Type</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Location</th>
-              <th style={styles.th}>Note</th>
+              <th style={styles.th}>From → To</th>
             </tr>
           </thead>
           <tbody>
-            {recentMovements.map(mov => (
-              <tr key={mov.id}>
-                <td style={styles.td}>{new Date(mov.movement_date).toLocaleDateString('it-IT')}</td>
+            {recentMovements.map((mov, idx) => (
+              <tr key={idx}>
+                <td style={styles.td}>{new Date(mov.created_at).toLocaleDateString()}</td>
                 <td style={styles.td}>
                   <span style={{
                     ...styles.badge,
-                    backgroundColor: mov.type === 'IN' ? COLORS.success : 
+                    backgroundColor: mov.type === 'IN' ? COLORS.success :
                                     mov.type === 'OUT' ? COLORS.primary :
-                                    mov.type === 'BAL' ? COLORS.warning : COLORS.info
+                                    mov.type === 'TRF' ? COLORS.info : COLORS.warning
                   }}>
                     {mov.type}
                   </span>
                 </td>
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
-                <td style={styles.td}>{mov.quantity > 0 ? '+' : ''}{mov.quantity}</td>
-                <td style={styles.td}>{mov.location}</td>
-                <td style={{ ...styles.td, color: '#6b7280', fontSize: '12px' }}>{mov.note}</td>
+                <td style={styles.td}>{mov.quantity}</td>
+                <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
               </tr>
             ))}
             {recentMovements.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun movimento registrato
+                <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No movements recorded
                 </td>
               </tr>
             )}
@@ -717,80 +758,68 @@ function DashboardPage({ user }) {
 }
 
 // ============================================================
-// PAGINA NUOVA RICHIESTA
+// REQUESTS PAGE - NEW REQUEST
 // ============================================================
 function RequestsPage({ user }) {
   const [requestType, setRequestType] = useState('Piping');
   const [subCategory, setSubCategory] = useState('Bulk');
   const [isoNumber, setIsoNumber] = useState('');
   const [spoolNumber, setSpoolNumber] = useState('');
-  const [hfNumber, setHfNumber] = useState('');
-  const [description, setDescription] = useState('');
-  const [testPackNumber, setTestPackNumber] = useState('');
-  const [missingType, setMissingType] = useState('Material');
   const [materials, setMaterials] = useState([]);
-  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '' });
-  const [isoOptions, setIsoOptions] = useState([]);
-  const [identOptions, setIdentOptions] = useState([]);
-  const [nextNumber, setNextNumber] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
+  const [identCodes, setIdentCodes] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [selectedCode, setSelectedCode] = useState('');
+  const [selectedTag, setSelectedTag] = useState('');
+  const [qty, setQty] = useState('');
+  const [nextNumber, setNextNumber] = useState('00001');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    loadIsoOptions();
+    loadIdentCodes();
+    loadTags();
     loadNextNumber();
   }, []);
 
+  const loadIdentCodes = async () => {
+    const { data } = await supabase.from('project_database').select('ident_code, description').order('ident_code');
+    if (data) setIdentCodes(data);
+  };
+
+  const loadTags = async () => {
+    const { data } = await supabase.from('tags').select('*').order('tag_code');
+    if (data) setTags(data);
+  };
+
   const loadNextNumber = async () => {
     const { data } = await supabase
-      .from('counters')
-      .select('value')
-      .eq('id', 'request_number')
-      .single();
-    if (data) setNextNumber(data.value + 1);
-  };
-
-  const loadIsoOptions = async () => {
-    const { data } = await supabase
-      .from('project_database')
-      .select('iso_number')
-      .order('iso_number');
-    if (data) {
-      const unique = [...new Set(data.map(d => d.iso_number))];
-      setIsoOptions(unique);
+      .from('requests')
+      .select('request_number')
+      .order('request_number', { ascending: false })
+      .limit(1);
+    
+    if (data && data.length > 0) {
+      const lastNum = parseInt(data[0].request_number.split('-')[0]) || 0;
+      setNextNumber(String(lastNum + 1).padStart(5, '0'));
     }
-  };
-
-  const loadIdentOptions = async (iso) => {
-    const { data } = await supabase
-      .from('project_database')
-      .select('ident_code, tag, description, qty_yard, qty_site')
-      .eq('iso_number', iso);
-    if (data) {
-      setIdentOptions(data);
-    }
-  };
-
-  const handleIsoChange = (value) => {
-    setIsoNumber(value);
-    loadIdentOptions(value);
   };
 
   const addMaterial = () => {
-    if (!currentMaterial.ident_code || !currentMaterial.qty) return;
-    
-    const selectedMat = identOptions.find(o => 
-      o.ident_code === currentMaterial.ident_code && 
-      (o.tag || '') === (currentMaterial.tag || '')
-    );
-
+    if (!selectedCode || !qty) {
+      setError('Please select a code and enter quantity');
+      return;
+    }
+    const codeInfo = identCodes.find(c => c.ident_code === selectedCode);
     setMaterials([...materials, {
-      ...currentMaterial,
-      description: selectedMat?.description || '',
-      qty_yard: selectedMat?.qty_yard || 0,
-      qty_site: selectedMat?.qty_site || 0
+      ident_code: selectedCode,
+      description: codeInfo?.description || '',
+      tag: selectedTag || null,
+      quantity: parseInt(qty)
     }]);
-    setCurrentMaterial({ ident_code: '', tag: '', qty: '' });
+    setSelectedCode('');
+    setSelectedTag('');
+    setQty('');
+    setError('');
   };
 
   const removeMaterial = (index) => {
@@ -798,43 +827,28 @@ function RequestsPage({ user }) {
   };
 
   const submitRequest = async (destination) => {
-    setLoading(true);
-    setMessage({ type: '', text: '' });
+    if (materials.length === 0) {
+      setError('Add at least one material');
+      return;
+    }
+    if (!isoNumber) {
+      setError('ISO Number is required');
+      return;
+    }
 
+    setError('');
     try {
-      // Validation
-      if (requestType === 'Piping' && (!isoNumber || !spoolNumber)) {
-        throw new Error('ISO Number e Full Spool Number sono obbligatori per Piping');
-      }
-      if (requestType === 'Mechanical' && !description) {
-        throw new Error('Descrizione è obbligatoria per Mechanical');
-      }
-      if (requestType === 'TestPack' && !testPackNumber) {
-        throw new Error('Test Pack Number è obbligatorio');
-      }
-      if (requestType !== 'Mechanical' && materials.length === 0 && missingType === 'Material') {
-        throw new Error('Aggiungi almeno un materiale');
-      }
-
-      // Get next request number
-      const { data: counterData } = await supabase.rpc('get_next_request_number');
-      const reqNumber = counterData || nextNumber;
-
       // Create request
       const { data: request, error: reqError } = await supabase
         .from('requests')
         .insert({
-          request_number: reqNumber,
-          sub_number: 0,
-          requester_user_id: user.id,
+          request_number: `${nextNumber}-0`,
           request_type: requestType,
-          sub_category: requestType === 'Piping' ? subCategory : null,
-          iso_number: isoNumber || null,
-          full_spool_number: spoolNumber || null,
-          hf_number: requestType === 'Piping' && subCategory === 'Erection' ? hfNumber : null,
-          test_pack_number: requestType === 'TestPack' ? testPackNumber : null,
-          missing_type: requestType === 'TestPack' ? missingType : null,
-          description: description || null
+          sub_category: subCategory,
+          iso_number: isoNumber,
+          spool_number: spoolNumber,
+          created_by: user.id,
+          status: 'Open'
         })
         .select()
         .single();
@@ -842,747 +856,493 @@ function RequestsPage({ user }) {
       if (reqError) throw reqError;
 
       // Create components
-      const statusMap = {
-        'site': 'Site',
-        'yard': 'Yard',
-        'engineering': 'Eng'
-      };
-      const status = statusMap[destination];
+      const componentsToInsert = materials.map(m => ({
+        request_id: request.id,
+        ident_code: m.ident_code,
+        tag_id: m.tag || null,
+        requested_qty: m.quantity,
+        status: destination === 'Site' ? 'Site' : destination === 'Yard' ? 'Yard' : 'Eng'
+      }));
 
-      if (requestType === 'Mechanical') {
-        // For Mechanical, create one component with just description
-        await supabase
-          .from('request_components')
-          .insert({
-            request_id: request.id,
-            ident_code: 'MECHANICAL',
-            description: description,
-            quantity: 1,
-            status: status,
-            current_location: destination === 'yard' ? 'YARD' : 'SITE'
-          });
-      } else {
-        // For Piping and TestPack, create components from materials list
-        for (const mat of materials) {
-          const { error: compError } = await supabase
-            .from('request_components')
-            .insert({
-              request_id: request.id,
-              ident_code: mat.ident_code,
-              tag: mat.tag || null,
-              description: mat.description,
-              quantity: parseInt(mat.qty),
-              status: status,
-              current_location: destination === 'yard' ? 'YARD' : 'SITE'
-            });
-          if (compError) throw compError;
-        }
-      }
+      const { error: compError } = await supabase
+        .from('request_components')
+        .insert(componentsToInsert);
 
-      // Log the creation
-      await supabase.from('component_history').insert({
-        component_id: null,
-        action: 'Request Created',
-        to_status: status,
-        performed_by_user_id: user.id,
-        performed_by_name: user.full_name,
-        note: `Request ${String(reqNumber).padStart(5, '0')}-0 created and sent to ${destination}`
-      });
+      if (compError) throw compError;
 
-      setMessage({ type: 'success', text: `Richiesta ${String(reqNumber).padStart(5, '0')}-0 creata con successo!` });
-      
-      // Reset form
+      setSuccess(`Request ${nextNumber}-0 created successfully!`);
+      setMaterials([]);
       setIsoNumber('');
       setSpoolNumber('');
-      setHfNumber('');
-      setDescription('');
-      setTestPackNumber('');
-      setMaterials([]);
       loadNextNumber();
-
-    } catch (error) {
-      setMessage({ type: 'error', text: error.message });
-    } finally {
-      setLoading(false);
+      
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError('Error creating request: ' + err.message);
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_requests === 'modify';
-
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>Nuova Richiesta</h2>
-        <div style={{
-          padding: '8px 16px',
-          backgroundColor: '#f3f4f6',
-          borderRadius: '6px',
-          fontSize: '14px'
-        }}>
-          Preview: <strong>{String(nextNumber).padStart(5, '0')}-0</strong> (non salvato)
-        </div>
+      {/* Preview */}
+      <div style={{ textAlign: 'right', marginBottom: '16px', color: '#6b7280' }}>
+        Preview: <strong>{nextNumber}-0</strong> (not saved)
       </div>
 
-      {message.text && (
+      {/* Alerts */}
+      {error && (
         <div style={{
+          backgroundColor: '#FEE2E2',
+          color: '#DC2626',
           padding: '12px 16px',
-          borderRadius: '6px',
-          marginBottom: '16px',
-          backgroundColor: message.type === 'success' ? '#D1FAE5' : '#FEE2E2',
-          color: message.type === 'success' ? '#065F46' : '#DC2626'
+          borderRadius: '8px',
+          marginBottom: '16px'
         }}>
-          {message.text}
+          {error}
+        </div>
+      )}
+      {success && (
+        <div style={{
+          backgroundColor: '#D1FAE5',
+          color: '#059669',
+          padding: '12px 16px',
+          borderRadius: '8px',
+          marginBottom: '16px'
+        }}>
+          {success}
         </div>
       )}
 
+      {/* Request Form */}
       <div style={styles.card}>
         <div style={{ padding: '24px' }}>
-          {/* Request Type Selection */}
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ ...styles.label, marginBottom: '12px' }}>Tipo Richiesta</label>
+          {/* Request Type */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Request Type</label>
             <div style={{ display: 'flex', gap: '16px' }}>
               {REQUEST_TYPES.map(type => (
                 <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                   <input
                     type="radio"
-                    name="requestType"
-                    value={type}
                     checked={requestType === type}
-                    onChange={(e) => setRequestType(e.target.value)}
-                    disabled={!canModify}
+                    onChange={() => setRequestType(type)}
                   />
-                  <span style={{ fontWeight: requestType === type ? '600' : '400' }}>{type}</span>
+                  {type}
                 </label>
               ))}
             </div>
           </div>
 
-          {/* Piping Form */}
-          {requestType === 'Piping' && (
-            <>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={styles.label}>Sub-Category</label>
-                <select
-                  value={subCategory}
-                  onChange={(e) => setSubCategory(e.target.value)}
-                  style={styles.select}
-                  disabled={!canModify}
-                >
-                  {SUB_CATEGORIES.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
+          {/* Sub-Category */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Sub-Category</label>
+            <select
+              value={subCategory}
+              onChange={(e) => setSubCategory(e.target.value)}
+              style={styles.select}
+            >
+              {SUB_CATEGORIES.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <label style={styles.label}>ISO Number *</label>
-                  <input
-                    type="text"
-                    list="iso-options"
-                    value={isoNumber}
-                    onChange={(e) => handleIsoChange(e.target.value)}
-                    style={styles.input}
-                    placeholder="Es: I181C02-DF21065-0-01"
-                    disabled={!canModify}
-                  />
-                  <datalist id="iso-options">
-                    {isoOptions.map(iso => (
-                      <option key={iso} value={iso} />
-                    ))}
-                  </datalist>
-                </div>
-                <div>
-                  <label style={styles.label}>Full Spool Number *</label>
-                  <input
-                    type="text"
-                    value={spoolNumber}
-                    onChange={(e) => setSpoolNumber(e.target.value)}
-                    style={styles.input}
-                    placeholder="Es: I181C02-DF21065-0-01-SP001"
-                    disabled={!canModify}
-                  />
-                </div>
-              </div>
-
-              {subCategory === 'Erection' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={styles.label}>HF Number *</label>
-                  <input
-                    type="text"
-                    value={hfNumber}
-                    onChange={(e) => setHfNumber(e.target.value)}
-                    style={styles.input}
-                    placeholder="Numero HF"
-                    disabled={!canModify}
-                  />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Mechanical Form */}
-          {requestType === 'Mechanical' && (
-            <div style={{ marginBottom: '16px' }}>
-              <label style={styles.label}>Descrizione *</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                style={{ ...styles.input, minHeight: '100px' }}
-                placeholder="Descrivi la richiesta mechanical..."
-                disabled={!canModify}
+          {/* ISO and Spool */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>ISO Number *</label>
+              <input
+                type="text"
+                value={isoNumber}
+                onChange={(e) => setIsoNumber(e.target.value)}
+                placeholder="Ex: I181C02-DF21065-0-01"
+                style={styles.input}
               />
-              <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                Per richieste Mechanical, tutti gli altri campi sono disabilitati.
-              </p>
             </div>
-          )}
-
-          {/* TestPack Form */}
-          {requestType === 'TestPack' && (
-            <>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={styles.label}>Test Pack Number *</label>
-                <input
-                  type="text"
-                  value={testPackNumber}
-                  onChange={(e) => setTestPackNumber(e.target.value)}
-                  style={styles.input}
-                  placeholder="Es: TP-2024-001"
-                  disabled={!canModify}
-                />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-                <div>
-                  <label style={styles.label}>ISO Number (opzionale)</label>
-                  <input
-                    type="text"
-                    value={isoNumber}
-                    onChange={(e) => handleIsoChange(e.target.value)}
-                    style={styles.input}
-                    disabled={!canModify}
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Full Spool Number (opzionale)</label>
-                  <input
-                    type="text"
-                    value={spoolNumber}
-                    onChange={(e) => setSpoolNumber(e.target.value)}
-                    style={styles.input}
-                    disabled={!canModify}
-                  />
-                </div>
-              </div>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={styles.label}>Missing Type</label>
-                <div style={{ display: 'flex', gap: '16px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="radio"
-                      name="missingType"
-                      value="Material"
-                      checked={missingType === 'Material'}
-                      onChange={(e) => setMissingType(e.target.value)}
-                    />
-                    Material
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <input
-                      type="radio"
-                      name="missingType"
-                      value="Spool"
-                      checked={missingType === 'Spool'}
-                      onChange={(e) => setMissingType(e.target.value)}
-                    />
-                    Spool
-                  </label>
-                </div>
-              </div>
-              {missingType === 'Spool' && (
-                <div style={{ marginBottom: '16px' }}>
-                  <label style={styles.label}>Descrizione Spool Mancante</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    style={{ ...styles.input, minHeight: '80px' }}
-                    placeholder="Descrivi lo spool mancante..."
-                    disabled={!canModify}
-                  />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Materials Section (for Piping and TestPack with Material) */}
-          {requestType !== 'Mechanical' && (requestType !== 'TestPack' || missingType === 'Material') && (
-            <div style={{
-              marginTop: '24px',
-              padding: '16px',
-              backgroundColor: '#f9fafb',
-              borderRadius: '8px'
-            }}>
-              <h4 style={{ fontWeight: '600', marginBottom: '16px' }}>📦 Aggiungi Materiali</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '12px', alignItems: 'end' }}>
-                <div>
-                  <label style={styles.label}>Ident Code</label>
-                  <select
-                    value={currentMaterial.ident_code}
-                    onChange={(e) => setCurrentMaterial({ ...currentMaterial, ident_code: e.target.value })}
-                    style={styles.select}
-                    disabled={!canModify}
-                  >
-                    <option value="">Seleziona...</option>
-                    {[...new Set(identOptions.map(o => o.ident_code))].map(code => (
-                      <option key={code} value={code}>{code}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={styles.label}>Tag</label>
-                  <select
-                    value={currentMaterial.tag}
-                    onChange={(e) => setCurrentMaterial({ ...currentMaterial, tag: e.target.value })}
-                    style={styles.select}
-                    disabled={!canModify || !identOptions.some(o => o.ident_code === currentMaterial.ident_code && o.tag)}
-                  >
-                    <option value="">Nessuno</option>
-                    {identOptions
-                      .filter(o => o.ident_code === currentMaterial.ident_code && o.tag)
-                      .map(o => (
-                        <option key={o.tag} value={o.tag}>{o.tag}</option>
-                      ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={styles.label}>Qty</label>
-                  <input
-                    type="number"
-                    value={currentMaterial.qty}
-                    onChange={(e) => setCurrentMaterial({ ...currentMaterial, qty: e.target.value })}
-                    style={styles.input}
-                    min="1"
-                    disabled={!canModify}
-                  />
-                </div>
-                <button
-                  onClick={addMaterial}
-                  style={{ ...styles.button, ...styles.buttonPrimary, height: '38px' }}
-                  disabled={!canModify}
-                >
-                  + Add
-                </button>
-              </div>
-
-              {/* Materials List */}
-              {materials.length > 0 && (
-                <table style={{ ...styles.table, marginTop: '16px' }}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Codice</th>
-                      <th style={styles.th}>Tag</th>
-                      <th style={styles.th}>Descrizione</th>
-                      <th style={styles.th}>Qty</th>
-                      <th style={styles.th}>YARD</th>
-                      <th style={styles.th}>SITE</th>
-                      <th style={styles.th}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {materials.map((mat, idx) => (
-                      <tr key={idx}>
-                        <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mat.ident_code}</td>
-                        <td style={styles.td}>{mat.tag || '-'}</td>
-                        <td style={styles.td}>{mat.description}</td>
-                        <td style={styles.td}>{mat.qty}</td>
-                        <td style={{ ...styles.td, color: COLORS.secondary, fontWeight: '600' }}>{mat.qty_yard}</td>
-                        <td style={{ ...styles.td, color: COLORS.info, fontWeight: '600' }}>{mat.qty_site}</td>
-                        <td style={styles.td}>
-                          <button
-                            onClick={() => removeMaterial(idx)}
-                            style={{ ...styles.actionBtn, backgroundColor: COLORS.primary }}
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Full Spool Number *</label>
+              <input
+                type="text"
+                value={spoolNumber}
+                onChange={(e) => setSpoolNumber(e.target.value)}
+                placeholder="Ex: I181C02-DF21065-0-01-SP001"
+                style={styles.input}
+              />
             </div>
-          )}
-
-          {/* Submit Buttons */}
-          <div style={{
-            marginTop: '24px',
-            paddingTop: '24px',
-            borderTop: '1px solid #e5e7eb',
-            display: 'flex',
-            gap: '12px'
-          }}>
-            <button
-              onClick={() => submitRequest('site')}
-              disabled={loading || !canModify}
-              style={{
-                ...styles.button,
-                backgroundColor: COLORS.info,
-                color: 'white',
-                opacity: loading ? 0.7 : 1
-              }}
-            >
-              🏭 Send to Site
-            </button>
-            <button
-              onClick={() => submitRequest('yard')}
-              disabled={loading || !canModify}
-              style={{
-                ...styles.button,
-                backgroundColor: COLORS.secondary,
-                color: 'white',
-                opacity: loading ? 0.7 : 1
-              }}
-            >
-              🏢 Send to Yard
-            </button>
-            <button
-              onClick={() => submitRequest('engineering')}
-              disabled={loading || !canModify}
-              style={{
-                ...styles.button,
-                backgroundColor: COLORS.purple,
-                color: 'white',
-                opacity: loading ? 0.7 : 1
-              }}
-            >
-              ⚙️ Send to Engineering
-            </button>
           </div>
         </div>
+      </div>
+
+      {/* Add Materials */}
+      <div style={{ ...styles.card, backgroundColor: '#f9fafb' }}>
+        <div style={{ padding: '24px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '16px' }}>📦 Add Materials</h3>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '12px', alignItems: 'end' }}>
+            <div>
+              <label style={styles.label}>Ident Code</label>
+              <select
+                value={selectedCode}
+                onChange={(e) => setSelectedCode(e.target.value)}
+                style={styles.select}
+              >
+                <option value="">Select code...</option>
+                {identCodes.map(c => (
+                  <option key={c.ident_code} value={c.ident_code}>
+                    {c.ident_code} - {c.description}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={styles.label}>Tag</label>
+              <select
+                value={selectedTag}
+                onChange={(e) => setSelectedTag(e.target.value)}
+                style={styles.select}
+              >
+                <option value="">None</option>
+                {tags.map(t => (
+                  <option key={t.id} value={t.id}>{t.tag_code}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={styles.label}>Qty</label>
+              <input
+                type="number"
+                value={qty}
+                onChange={(e) => setQty(e.target.value)}
+                min="1"
+                style={styles.input}
+              />
+            </div>
+            <button
+              onClick={addMaterial}
+              style={{ ...styles.button, ...styles.buttonPrimary, height: '42px' }}
+            >
+              + Add
+            </button>
+          </div>
+
+          {/* Materials List */}
+          {materials.length > 0 && (
+            <div style={{ marginTop: '20px' }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Code</th>
+                    <th style={styles.th}>Description</th>
+                    <th style={styles.th}>Tag</th>
+                    <th style={styles.th}>Qty</th>
+                    <th style={styles.th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materials.map((m, idx) => (
+                    <tr key={idx}>
+                      <td style={{ ...styles.td, fontFamily: 'monospace' }}>{m.ident_code}</td>
+                      <td style={styles.td}>{m.description}</td>
+                      <td style={styles.td}>{m.tag || '-'}</td>
+                      <td style={styles.td}>{m.quantity}</td>
+                      <td style={styles.td}>
+                        <button
+                          onClick={() => removeMaterial(idx)}
+                          style={{ ...styles.actionBtn, backgroundColor: COLORS.primary }}
+                        >
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Submit Buttons */}
+      <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+        <button
+          onClick={() => submitRequest('Site')}
+          style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+        >
+          🏗️ Send to Site
+        </button>
+        <button
+          onClick={() => submitRequest('Yard')}
+          style={{ ...styles.button, backgroundColor: COLORS.secondary, color: 'white' }}
+        >
+          🏢 Send to Yard
+        </button>
+        <button
+          onClick={() => submitRequest('Eng')}
+          style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+        >
+          ⚙️ Send to Engineering
+        </button>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// PAGINA WH SITE
+// WH SITE PAGE
 // ============================================================
-function WHSitePage({ user }) {
+function WHSitePage({ user, onRefreshCounts }) {
   const [components, setComponents] = useState([]);
-  const [toCollect, setToCollect] = useState([]);
-  const [engNotes, setEngNotes] = useState([]);
+  const [readyOut, setReadyOut] = useState([]);
+  const [checkNotifications, setCheckNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showPTModal, setShowPTModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
-  const [showPassageModal, setShowPassageModal] = useState(false);
-  const [passageNote, setPassageNote] = useState('');
-  const [passageDestination, setPassageDestination] = useState('Yard');
-  const [showCheckResponseModal, setShowCheckResponseModal] = useState(false);
+  const [note, setNote] = useState('');
+  const [ptQty, setPtQty] = useState('');
 
   useEffect(() => {
-    loadComponents();
+    loadData();
   }, []);
 
-  const loadComponents = async () => {
+  const loadData = async () => {
     setLoading(true);
-    
-    // Load components in Site status
-    const { data: siteComponents } = await supabase
-      .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type,
-          requester_user_id,
-          iso_number
-        )
-      `)
-      .eq('status', 'Site')
-      .order('created_at', { ascending: false });
+    try {
+      // Load Site components
+      const { data: siteComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Site')
+        .order('created_at', { ascending: false });
+      
+      if (siteComps) setComponents(siteComps);
 
-    // Get inventory data for each component
-    if (siteComponents) {
-      const enrichedComponents = await Promise.all(
-        siteComponents.map(async (comp) => {
-          const { data: invData } = await supabase
-            .from('project_database')
-            .select('qty_yard, qty_site')
-            .eq('ident_code', comp.ident_code)
-            .maybeSingle();
-          
-          return {
-            ...comp,
-            qty_yard: invData?.qty_yard || 0,
-            qty_site: invData?.qty_site || 0
-          };
-        })
-      );
-      setComponents(enrichedComponents);
+      // Load Ready for delivery
+      const { data: readyComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'ToCollect')
+        .order('created_at', { ascending: false });
+      
+      if (readyComps) setReadyOut(readyComps);
+
+      // Load Check notifications from Engineering
+      const { data: checks } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Check')
+        .eq('check_target', 'Site')
+        .order('created_at', { ascending: false });
+      
+      if (checks) setCheckNotifications(checks);
+
+    } catch (error) {
+      console.error('Error loading WH Site data:', error);
     }
-
-    // Load ToCollect items
-    const { data: collectItems } = await supabase
-      .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          requester_user_id
-        )
-      `)
-      .eq('status', 'ToCollect')
-      .eq('current_location', 'SITE');
-
-    if (collectItems) {
-      // Get requester names
-      const enrichedCollect = await Promise.all(
-        collectItems.map(async (item) => {
-          const { data: userData } = await supabase
-            .from('users')
-            .select('full_name')
-            .eq('id', item.requests.requester_user_id)
-            .single();
-          return { ...item, requester_name: userData?.full_name || 'Unknown' };
-        })
-      );
-      setToCollect(enrichedCollect);
-    }
-
-    // Load engineering notes (checks pending)
-    const { data: checkItems } = await supabase
-      .from('request_components')
-      .select(`
-        *,
-        requests (request_number, sub_number)
-      `)
-      .eq('has_eng_check', true)
-      .or('eng_check_sent_to.eq.Site,eng_check_sent_to.eq.Both')
-      .is('eng_check_site_response', null);
-
-    setEngNotes(checkItems || []);
     setLoading(false);
   };
 
   const handleAction = async (component, action) => {
-    setSelectedComponent(component);
-    
-    switch(action) {
-      case 'ready':
-        await moveToCollect(component);
-        break;
-      case 'yard':
-        setPassageDestination('Yard');
-        setShowPassageModal(true);
-        break;
-      case 'engineering':
-        setPassageDestination('Eng');
-        setShowPassageModal(true);
-        break;
-      case 'checkResponse':
-        setShowCheckResponseModal(true);
-        break;
-      default:
-        break;
-    }
-  };
-
-  const moveToCollect = async (component) => {
-    await supabase
-      .from('request_components')
-      .update({ status: 'ToCollect' })
-      .eq('id', component.id);
-
-    await logHistory(component.id, 'Prepared for Collection', 'Site', 'ToCollect');
-    loadComponents();
-  };
-
-  const confirmPassage = async () => {
-    if (!selectedComponent) return;
-
-    await supabase
-      .from('request_components')
-      .update({
-        status: passageDestination,
-        passage_note: passageNote,
-        current_location: passageDestination === 'Yard' ? 'YARD' : null
-      })
-      .eq('id', selectedComponent.id);
-
-    await logHistory(
-      selectedComponent.id,
-      `Sent to ${passageDestination}`,
-      'Site',
-      passageDestination,
-      passageNote
-    );
-
-    setShowPassageModal(false);
-    setPassageNote('');
-    loadComponents();
-  };
-
-  const handleCheckResponse = async (response) => {
-    if (!selectedComponent) return;
-
-    const updates = {
-      eng_check_site_response: response
-    };
-
-    // If resolved, move to ToCollect
-    if (response === 'Resolved') {
-      updates.status = 'ToCollect';
-      updates.has_eng_check = false;
-
-      // If sent to Both, clear the check for Yard too
-      if (selectedComponent.eng_check_sent_to === 'Both') {
-        // The notification should disappear from Yard
+    try {
+      switch (action) {
+        case 'ready':
+          await supabase
+            .from('request_components')
+            .update({ status: 'ToCollect', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'toYard':
+          setSelectedComponent(component);
+          setShowNoteModal(true);
+          return;
+        
+        case 'toEng':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Eng', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'pt':
+          setSelectedComponent(component);
+          setPtQty('');
+          setShowPTModal(true);
+          return;
+        
+        case 'deliver':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Done', delivered_at: new Date().toISOString() })
+            .eq('id', component.id);
+          // Update inventory
+          await supabase.rpc('decrement_site_qty', {
+            p_ident_code: component.ident_code,
+            p_qty: component.requested_qty
+          });
+          break;
+        
+        case 'delete':
+          if (window.confirm('Are you sure you want to delete this component?')) {
+            await supabase.from('request_components').delete().eq('id', component.id);
+          }
+          break;
       }
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
     }
+  };
 
-    await supabase
-      .from('request_components')
-      .update(updates)
-      .eq('id', selectedComponent.id);
+  const handleCheckResponse = async (component, response) => {
+    try {
+      if (response === 'found') {
+        await supabase
+          .from('request_components')
+          .update({ status: 'ToCollect', check_response: 'Found', updated_at: new Date().toISOString() })
+          .eq('id', component.id);
+      } else if (response === 'partial') {
+        setSelectedComponent(component);
+        setPtQty('');
+        setShowPTModal(true);
+        return;
+      } else if (response === 'notfound') {
+        await supabase
+          .from('request_components')
+          .update({ status: 'Eng', check_response: 'Not Found', updated_at: new Date().toISOString() })
+          .eq('id', component.id);
+      }
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
 
-    await logHistory(
-      selectedComponent.id,
-      `Check Response: ${response}`,
-      'Site',
-      response === 'Resolved' ? 'ToCollect' : 'Site'
-    );
-
-    // If both responded NotFound, create BAL movement
-    if (response === 'NotFound') {
-      const { data: comp } = await supabase
+  const submitTransferToYard = async () => {
+    if (!selectedComponent) return;
+    try {
+      await supabase
         .from('request_components')
-        .select('eng_check_yard_response, eng_check_sent_to')
-        .eq('id', selectedComponent.id)
-        .single();
-
-      if (comp.eng_check_sent_to === 'Both' && comp.eng_check_yard_response === 'NotFound') {
-        // Both not found - create automatic BAL
-        await createAutomaticBAL(selectedComponent);
-      }
+        .update({ 
+          status: 'Yard', 
+          notes: note,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedComponent.id);
+      
+      setShowNoteModal(false);
+      setNote('');
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
     }
-
-    setShowCheckResponseModal(false);
-    loadComponents();
   };
 
-  const createAutomaticBAL = async (component) => {
-    // Zero out quantities
-    await supabase
-      .from('project_database')
-      .update({ qty_yard: 0, qty_site: 0 })
-      .eq('ident_code', component.ident_code);
-
-    // Create movement record
-    await supabase.from('movements').insert({
-      type: 'BAL',
-      location: 'YARD+SITE',
-      ident_code: component.ident_code,
-      tag: component.tag,
-      quantity: 0,
-      note: 'Azzeramento automatico da Check Engineering - Non trovato in Site e Yard',
-      balance_type: 'CheckNotFound',
-      auto_generated: true,
-      created_by_user_id: user.id
-    });
-  };
-
-  const logHistory = async (componentId, action, fromStatus, toStatus, note = null) => {
-    await supabase.from('component_history').insert({
-      component_id: componentId,
-      action,
-      from_status: fromStatus,
-      to_status: toStatus,
-      note,
-      performed_by_user_id: user.id,
-      performed_by_name: user.full_name
-    });
-  };
-
-  const handleCollect = async (item) => {
-    // Only requester can collect
-    if (item.requests.requester_user_id !== user.id && user.role !== 'admin') {
-      alert('Solo chi ha creato la richiesta può ritirare il materiale');
+  const submitPartialTransfer = async () => {
+    if (!selectedComponent || !ptQty) return;
+    const partialQty = parseInt(ptQty);
+    if (partialQty >= selectedComponent.requested_qty) {
+      alert('Partial quantity must be less than requested quantity');
       return;
     }
 
-    // Update status to Done
-    await supabase
-      .from('request_components')
-      .update({ status: 'Done' })
-      .eq('id', item.id);
-
-    // Subtract from inventory
-    const { data: inv } = await supabase
-      .from('project_database')
-      .select('qty_site')
-      .eq('ident_code', item.ident_code)
-      .maybeSingle();
-
-    if (inv) {
+    try {
+      // Update original with reduced qty
       await supabase
-        .from('project_database')
-        .update({ qty_site: Math.max(0, inv.qty_site - item.quantity) })
-        .eq('ident_code', item.ident_code);
+        .from('request_components')
+        .update({ 
+          requested_qty: selectedComponent.requested_qty - partialQty,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedComponent.id);
+
+      // Create new component for partial qty - ready for delivery
+      const { data: request } = await supabase
+        .from('requests')
+        .select('request_number')
+        .eq('id', selectedComponent.request_id)
+        .single();
+
+      // Get split number
+      const baseNum = request.request_number.split('-')[0];
+      const { data: splits } = await supabase
+        .from('requests')
+        .select('request_number')
+        .like('request_number', `${baseNum}-%`);
+      
+      const nextSplit = splits ? splits.length : 1;
+
+      // Create split request
+      const { data: newRequest } = await supabase
+        .from('requests')
+        .insert({
+          request_number: `${baseNum}-${nextSplit}`,
+          request_type: selectedComponent.request?.request_type,
+          sub_category: selectedComponent.request?.sub_category,
+          iso_number: selectedComponent.request?.iso_number,
+          spool_number: selectedComponent.request?.spool_number,
+          created_by: user.id,
+          status: 'Open',
+          parent_request_id: selectedComponent.request_id
+        })
+        .select()
+        .single();
+
+      await supabase
+        .from('request_components')
+        .insert({
+          request_id: newRequest.id,
+          ident_code: selectedComponent.ident_code,
+          requested_qty: partialQty,
+          status: 'ToCollect'
+        });
+
+      setShowPTModal(false);
+      setPtQty('');
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
     }
-
-    // Create movement
-    await supabase.from('movements').insert({
-      type: 'DEL',
-      location: 'SITE',
-      ident_code: item.ident_code,
-      tag: item.tag,
-      quantity: -item.quantity,
-      note: `Delivered - Request ${item.requests.request_number}-${item.requests.sub_number}`,
-      request_reference: `${item.requests.request_number}-${item.requests.sub_number}`,
-      created_by_user_id: user.id
-    });
-
-    // Log to log_requests
-    await supabase.from('log_requests').insert({
-      request_number: `${item.requests.request_number}-${item.requests.sub_number}`,
-      ident_code: item.ident_code,
-      tag: item.tag,
-      description: item.description,
-      quantity: item.quantity,
-      created_at: item.created_at,
-      close_type: 'Delivered',
-      closed_by_user_id: user.id
-    });
-
-    await logHistory(item.id, 'Collected/Delivered', 'ToCollect', 'Done');
-    loadComponents();
   };
 
-  const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
-
   if (loading) {
-    return <div style={{ padding: '24px', textAlign: 'center' }}>Caricamento...</div>;
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
   }
 
   return (
     <div>
-      <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '24px' }}>WH Site</h2>
-
-      {/* Engineering Notes Alert */}
-      {engNotes.length > 0 && (
+      {/* Check Notifications from Engineering */}
+      {checkNotifications.length > 0 && (
         <div style={{
-          backgroundColor: '#F3E8FF',
+          backgroundColor: '#F5F3FF',
           border: '1px solid #C4B5FD',
           borderRadius: '8px',
           padding: '16px',
           marginBottom: '24px'
         }}>
-          <h4 style={{ color: COLORS.purple, fontWeight: '600', marginBottom: '12px' }}>
-            🔍 Check da Engineering ({engNotes.length})
+          <h4 style={{ fontWeight: 'bold', color: COLORS.purple, marginBottom: '12px' }}>
+            🔍 Check Requests from Engineering
           </h4>
-          {engNotes.map(note => (
-            <div key={note.id} style={{
+          {checkNotifications.map(comp => (
+            <div key={comp.id} style={{
               backgroundColor: 'white',
               padding: '12px',
               borderRadius: '6px',
@@ -1592,65 +1352,74 @@ function WHSitePage({ user }) {
               alignItems: 'center'
             }}>
               <div>
-                <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{note.ident_code}</span>
-                <span style={{ marginLeft: '12px', color: '#6b7280' }}>{note.eng_check_message}</span>
+                <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{comp.ident_code}</span>
+                <span style={{ marginLeft: '12px', color: '#6b7280' }}>{comp.check_note}</span>
               </div>
-              <button
-                onClick={() => handleAction(note, 'checkResponse')}
-                style={{ ...styles.actionBtn, backgroundColor: COLORS.purple }}
-                disabled={!canModify}
-              >
-                🔍
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <ActionButton
+                  color={COLORS.success}
+                  onClick={() => handleCheckResponse(comp, 'found')}
+                  title="Found"
+                >
+                  ✓
+                </ActionButton>
+                <ActionButton
+                  color={COLORS.warning}
+                  onClick={() => handleCheckResponse(comp, 'partial')}
+                  title="Partial Found"
+                >
+                  PT
+                </ActionButton>
+                <ActionButton
+                  color={COLORS.primary}
+                  onClick={() => handleCheckResponse(comp, 'notfound')}
+                  title="Not Found"
+                >
+                  ✗
+                </ActionButton>
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* To Be Collected Section */}
-      {toCollect.length > 0 && (
+      {/* Ready OUT Section */}
+      {readyOut.length > 0 && (
         <div style={{ ...styles.card, marginBottom: '24px' }}>
-          <div style={{ ...styles.cardHeader, backgroundColor: '#DCFCE7' }}>
-            <h3 style={{ color: COLORS.success, fontWeight: '600' }}>📤 To Be Collected</h3>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#D1FAE5' }}>
+            <h3 style={{ fontWeight: 'bold', color: COLORS.success }}>✅ Ready OUT - Ready for delivery</h3>
           </div>
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>N° Richiesta</th>
-                <th style={styles.th}>Codice</th>
+                <th style={styles.th}>Request #</th>
+                <th style={styles.th}>Code</th>
+                <th style={styles.th}>Description</th>
                 <th style={styles.th}>Qty</th>
-                <th style={styles.th}>Richiedente</th>
-                <th style={styles.th}>Azioni</th>
+                <th style={styles.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {toCollect.map(item => (
-                <tr key={item.id}>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                    {String(item.requests.request_number).padStart(5, '0')}-{item.requests.sub_number}
+              {readyOut.map(comp => (
+                <tr key={comp.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                    {comp.request?.request_number}
                   </td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{item.ident_code}</td>
-                  <td style={styles.td}>{item.quantity}</td>
-                  <td style={styles.td}>{item.requester_name}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                  <td style={styles.td}>{comp.inventory?.description}</td>
+                  <td style={styles.td}>{comp.requested_qty}</td>
                   <td style={styles.td}>
-                    <button
-                      onClick={() => handleCollect(item)}
-                      disabled={!canModify || (item.requests.requester_user_id !== user.id && user.role !== 'admin')}
-                      style={{
-                        ...styles.actionBtn,
-                        backgroundColor: item.requests.requester_user_id === user.id || user.role === 'admin'
-                          ? COLORS.success
-                          : COLORS.gray,
-                        cursor: item.requests.requester_user_id === user.id || user.role === 'admin'
-                          ? 'pointer'
-                          : 'not-allowed'
-                      }}
-                      title={item.requests.requester_user_id !== user.id && user.role !== 'admin'
-                        ? `Solo ${item.requester_name} può ritirare`
-                        : 'Ritira'}
-                    >
-                      ✓
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'deliver')} title="Deliver">
+                        📤
+                      </ActionButton>
+                      <ActionButton color={COLORS.primary} onClick={() => {}} title="Create MIR">
+                        📋
+                      </ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => {}} title="Cancel">
+                        ↩
+                      </ActionButton>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1659,70 +1428,60 @@ function WHSitePage({ user }) {
         </div>
       )}
 
-      {/* Main Components Table */}
+      {/* Site Components */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Componenti in WH Site</h3>
+          <h3 style={{ fontWeight: 'bold' }}>🏗️ Warehouse Site - Components</h3>
         </div>
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>N° Richiesta</th>
-              <th style={styles.th}>Codice</th>
-              <th style={styles.th}>Tag</th>
-              <th style={styles.th}>Descrizione</th>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
-              <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white' }}>YARD</th>
-              <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white' }}>SITE</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Category</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {components.map(comp => (
               <tr key={comp.id}>
-                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                  {comp.requests ? `${String(comp.requests.request_number).padStart(5, '0')}-${comp.requests.sub_number}` : '-'}
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  {comp.request?.request_number}
                 </td>
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
-                <td style={styles.td}>{comp.tag || '-'}</td>
-                <td style={styles.td}>{comp.description}</td>
-                <td style={styles.td}>{comp.quantity}</td>
-                <td style={{ ...styles.td, fontWeight: '600' }}>{comp.qty_yard}</td>
-                <td style={{ ...styles.td, fontWeight: '600' }}>{comp.qty_site}</td>
+                <td style={styles.td}>{comp.inventory?.description}</td>
+                <td style={styles.td}>{comp.requested_qty}</td>
+                <td style={styles.td}>{comp.request?.sub_category}</td>
                 <td style={styles.td}>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      onClick={() => handleAction(comp, 'ready')}
-                      style={{ ...styles.actionBtn, backgroundColor: COLORS.success }}
-                      title="Prepara consegna"
-                      disabled={!canModify}
-                    >
+                    <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'ready')} title="Prepare delivery">
                       ✓
-                    </button>
-                    <button
-                      onClick={() => handleAction(comp, 'yard')}
-                      style={{ ...styles.actionBtn, backgroundColor: COLORS.secondary }}
-                      title="Invia a Yard"
-                      disabled={!canModify}
-                    >
+                    </ActionButton>
+                    <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} title="Partial Split">
+                      PT
+                    </ActionButton>
+                    <ActionButton color={COLORS.secondary} onClick={() => handleAction(comp, 'toYard')} title="Send to Yard">
                       Y
-                    </button>
-                    <button
-                      onClick={() => handleAction(comp, 'engineering')}
-                      style={{ ...styles.actionBtn, backgroundColor: COLORS.purple }}
-                      title="Invia a Engineering"
-                      disabled={!canModify}
-                    >
+                    </ActionButton>
+                    <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'toEng')} title="Send to Engineering">
                       UT
-                    </button>
+                    </ActionButton>
+                    <ActionButton color={COLORS.gray} onClick={() => {}} title="Return">
+                      ↩
+                    </ActionButton>
+                    <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} title="Delete">
+                      🗑️
+                    </ActionButton>
                   </div>
                 </td>
               </tr>
             ))}
             {components.length === 0 && (
               <tr>
-                <td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun componente in WH Site
+                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No components in Site warehouse
                 </td>
               </tr>
             )}
@@ -1730,109 +1489,63 @@ function WHSitePage({ user }) {
         </table>
       </div>
 
-      {/* Passage Modal */}
-      <Modal
-        isOpen={showPassageModal}
-        onClose={() => setShowPassageModal(false)}
-        title="📝 Nota Passaggio"
-      >
+      {/* Note Modal for Yard Transfer */}
+      <Modal isOpen={showNoteModal} onClose={() => setShowNoteModal(false)} title="Transfer to Yard">
         <div style={styles.formGroup}>
-          <label style={styles.label}>Destinazione</label>
-          <select
-            value={passageDestination}
-            onChange={(e) => setPassageDestination(e.target.value)}
-            style={styles.select}
-          >
-            <option value="Yard">→ YARD</option>
-            <option value="Eng">→ ENGINEERING</option>
-          </select>
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Nota (opzionale)</label>
+          <label style={styles.label}>Note (optional)</label>
           <textarea
-            value={passageNote}
-            onChange={(e) => setPassageNote(e.target.value)}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
             style={{ ...styles.input, minHeight: '100px' }}
-            placeholder="Spiega il motivo del passaggio..."
+            placeholder="Add a note for Yard warehouse..."
           />
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
-            onClick={() => setShowPassageModal(false)}
+            onClick={() => setShowNoteModal(false)}
             style={{ ...styles.button, ...styles.buttonSecondary }}
           >
-            Annulla
+            Cancel
           </button>
           <button
-            onClick={confirmPassage}
+            onClick={submitTransferToYard}
             style={{ ...styles.button, ...styles.buttonPrimary }}
           >
-            ✓ Conferma
+            Send to Yard
           </button>
         </div>
       </Modal>
 
-      {/* Check Response Modal */}
-      <Modal
-        isOpen={showCheckResponseModal}
-        onClose={() => setShowCheckResponseModal(false)}
-        title="📥 Check U.T."
-      >
-        <div style={{
-          padding: '12px',
-          backgroundColor: '#f3f4f6',
-          borderRadius: '6px',
-          marginBottom: '16px'
-        }}>
-          {selectedComponent?.eng_check_message}
+      {/* PT Modal for Partial Split */}
+      <Modal isOpen={showPTModal} onClose={() => setShowPTModal(false)} title="Partial Split (PT)">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Total Requested:</strong> {selectedComponent?.requested_qty}</p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Quantity found (will be ready for delivery)</label>
+          <input
+            type="number"
+            value={ptQty}
+            onChange={(e) => setPtQty(e.target.value)}
+            min="1"
+            max={selectedComponent?.requested_qty - 1}
+            style={styles.input}
+            placeholder="Enter partial quantity"
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
-            onClick={() => handleCheckResponse('Resolved')}
-            style={{
-              ...styles.button,
-              backgroundColor: COLORS.success,
-              color: 'white',
-              justifyContent: 'center',
-              padding: '12px'
-            }}
+            onClick={() => setShowPTModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
           >
-            ✓ Risolto
+            Cancel
           </button>
           <button
-            onClick={() => handleCheckResponse('NotFound')}
-            style={{
-              ...styles.button,
-              backgroundColor: COLORS.orange,
-              color: 'white',
-              justifyContent: 'center',
-              padding: '12px'
-            }}
+            onClick={submitPartialTransfer}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
           >
-            ✗ Non trovato
-          </button>
-          <button
-            onClick={() => handleCheckResponse('Other')}
-            style={{
-              ...styles.button,
-              backgroundColor: COLORS.info,
-              color: 'white',
-              justifyContent: 'center',
-              padding: '12px'
-            }}
-          >
-            ↔ Altro
-          </button>
-          <button
-            onClick={() => setShowCheckResponseModal(false)}
-            style={{
-              ...styles.button,
-              ...styles.buttonSecondary,
-              justifyContent: 'center',
-              padding: '12px'
-            }}
-          >
-            Chiudi
+            Split
           </button>
         </div>
       </Modal>
@@ -1840,137 +1553,1852 @@ function WHSitePage({ user }) {
   );
 }
 
-// Continua nel prossimo file per completare tutte le pagine...
-// Per ora esportiamo l'App principale
+// ============================================================
+// WH YARD PAGE
+// ============================================================
+function WHYardPage({ user, onRefreshCounts }) {
+  const [components, setComponents] = useState([]);
+  const [checkNotifications, setCheckNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showPTModal, setShowPTModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [note, setNote] = useState('');
+  const [ptQty, setPtQty] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Load Yard components
+      const { data: yardComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description, qty_yard)
+        `)
+        .eq('status', 'Yard')
+        .order('created_at', { ascending: false });
+      
+      if (yardComps) setComponents(yardComps);
+
+      // Load Check notifications from Engineering
+      const { data: checks } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description, qty_yard)
+        `)
+        .eq('status', 'Check')
+        .eq('check_target', 'Yard')
+        .order('created_at', { ascending: false });
+      
+      if (checks) setCheckNotifications(checks);
+
+    } catch (error) {
+      console.error('Error loading WH Yard data:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleAction = async (component, action) => {
+    try {
+      switch (action) {
+        case 'found':
+          // Transfer to Site IN (Trans status)
+          setSelectedComponent(component);
+          setShowNoteModal(true);
+          return;
+        
+        case 'toEng':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Eng', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'pt':
+          setSelectedComponent(component);
+          setPtQty('');
+          setShowPTModal(true);
+          return;
+        
+        case 'return':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Site', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'delete':
+          if (window.confirm('Are you sure you want to delete this component?')) {
+            await supabase.from('request_components').delete().eq('id', component.id);
+          }
+          break;
+      }
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleCheckResponse = async (component, response) => {
+    try {
+      if (response === 'found') {
+        // Found - send to Site IN
+        await supabase
+          .from('request_components')
+          .update({ status: 'Trans', check_response: 'Found', updated_at: new Date().toISOString() })
+          .eq('id', component.id);
+      } else if (response === 'partial') {
+        setSelectedComponent(component);
+        setPtQty('');
+        setShowPTModal(true);
+        return;
+      } else if (response === 'notfound') {
+        await supabase
+          .from('request_components')
+          .update({ status: 'Eng', check_response: 'Not Found', updated_at: new Date().toISOString() })
+          .eq('id', component.id);
+      }
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const submitFoundTransfer = async () => {
+    if (!selectedComponent) return;
+    try {
+      // Update component to Transit status
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Trans', 
+          notes: note,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedComponent.id);
+      
+      // Decrement Yard qty
+      await supabase.rpc('decrement_yard_qty', {
+        p_ident_code: selectedComponent.ident_code,
+        p_qty: selectedComponent.requested_qty
+      });
+      
+      setShowNoteModal(false);
+      setNote('');
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const submitPartialTransfer = async () => {
+    if (!selectedComponent || !ptQty) return;
+    const partialQty = parseInt(ptQty);
+    if (partialQty >= selectedComponent.requested_qty) {
+      alert('Partial quantity must be less than requested quantity');
+      return;
+    }
+
+    try {
+      // Update original - remains in Yard with reduced qty
+      await supabase
+        .from('request_components')
+        .update({ 
+          requested_qty: selectedComponent.requested_qty - partialQty,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedComponent.id);
+
+      // Create split for found part
+      const { data: request } = await supabase
+        .from('requests')
+        .select('request_number, request_type, sub_category, iso_number, spool_number')
+        .eq('id', selectedComponent.request_id)
+        .single();
+
+      const baseNum = request.request_number.split('-')[0];
+      const { data: splits } = await supabase
+        .from('requests')
+        .select('request_number')
+        .like('request_number', `${baseNum}-%`);
+      
+      const nextSplit = splits ? splits.length : 1;
+
+      const { data: newRequest } = await supabase
+        .from('requests')
+        .insert({
+          request_number: `${baseNum}-${nextSplit}`,
+          request_type: request.request_type,
+          sub_category: request.sub_category,
+          iso_number: request.iso_number,
+          spool_number: request.spool_number,
+          created_by: user.id,
+          status: 'Open',
+          parent_request_id: selectedComponent.request_id
+        })
+        .select()
+        .single();
+
+      await supabase
+        .from('request_components')
+        .insert({
+          request_id: newRequest.id,
+          ident_code: selectedComponent.ident_code,
+          requested_qty: partialQty,
+          status: 'Trans'
+        });
+
+      // Decrement Yard qty for the partial found
+      await supabase.rpc('decrement_yard_qty', {
+        p_ident_code: selectedComponent.ident_code,
+        p_qty: partialQty
+      });
+
+      setShowPTModal(false);
+      setPtQty('');
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
+  return (
+    <div>
+      {/* Check Notifications from Engineering */}
+      {checkNotifications.length > 0 && (
+        <div style={{
+          backgroundColor: '#F5F3FF',
+          border: '1px solid #C4B5FD',
+          borderRadius: '8px',
+          padding: '16px',
+          marginBottom: '24px'
+        }}>
+          <h4 style={{ fontWeight: 'bold', color: COLORS.purple, marginBottom: '12px' }}>
+            🔍 Check Requests from Engineering
+          </h4>
+          {checkNotifications.map(comp => (
+            <div key={comp.id} style={{
+              backgroundColor: 'white',
+              padding: '12px',
+              borderRadius: '6px',
+              marginBottom: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{comp.ident_code}</span>
+                <span style={{ marginLeft: '12px', color: '#6b7280' }}>{comp.check_note}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <ActionButton
+                  color={COLORS.success}
+                  onClick={() => handleCheckResponse(comp, 'found')}
+                  title="Found"
+                >
+                  ✓
+                </ActionButton>
+                <ActionButton
+                  color={COLORS.warning}
+                  onClick={() => handleCheckResponse(comp, 'partial')}
+                  title="Partial Found"
+                >
+                  PT
+                </ActionButton>
+                <ActionButton
+                  color={COLORS.primary}
+                  onClick={() => handleCheckResponse(comp, 'notfound')}
+                  title="Not Found"
+                >
+                  ✗
+                </ActionButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Yard Components */}
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>🏢 Warehouse Yard - Components</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty Requested</th>
+              <th style={styles.th}>Available</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map(comp => {
+              const available = comp.inventory?.qty_yard || 0;
+              const canProcess = available >= comp.requested_qty;
+              
+              return (
+                <tr key={comp.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                    {comp.request?.request_number}
+                  </td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                  <td style={styles.td}>{comp.inventory?.description}</td>
+                  <td style={styles.td}>{comp.requested_qty}</td>
+                  <td style={styles.td}>
+                    <span style={{ 
+                      fontWeight: 'bold', 
+                      color: canProcess ? COLORS.success : COLORS.primary 
+                    }}>
+                      {available}
+                    </span>
+                  </td>
+                  <td style={styles.td}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <ActionButton 
+                        color={canProcess ? COLORS.success : '#d1d5db'} 
+                        onClick={() => handleAction(comp, 'found')} 
+                        title={canProcess ? "Found / Transfer" : "Insufficient quantity"}
+                        disabled={!canProcess}
+                      >
+                        ✓
+                      </ActionButton>
+                      <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} title="Partial Split">
+                        PT
+                      </ActionButton>
+                      <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'toEng')} title="Send to Engineering">
+                        UT
+                      </ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} title="Return to Site">
+                        ↩
+                      </ActionButton>
+                      <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} title="Delete">
+                        🗑️
+                      </ActionButton>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {components.length === 0 && (
+              <tr>
+                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No components in Yard warehouse
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Note Modal for Transfer */}
+      <Modal isOpen={showNoteModal} onClose={() => setShowNoteModal(false)} title="Found - Transfer to Site">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#D1FAE5', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Quantity:</strong> {selectedComponent?.requested_qty}</p>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Note (optional)</label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            style={{ ...styles.input, minHeight: '100px' }}
+            placeholder="Add a note..."
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowNoteModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitFoundTransfer}
+            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+          >
+            ✓ Confirm Transfer
+          </button>
+        </div>
+      </Modal>
+
+      {/* PT Modal */}
+      <Modal isOpen={showPTModal} onClose={() => setShowPTModal(false)} title="Partial Split (PT)">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Total Requested:</strong> {selectedComponent?.requested_qty}</p>
+          <p><strong>Available in Yard:</strong> {selectedComponent?.inventory?.qty_yard || 0}</p>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Quantity found (will be transferred)</label>
+          <input
+            type="number"
+            value={ptQty}
+            onChange={(e) => setPtQty(e.target.value)}
+            min="1"
+            max={Math.min(selectedComponent?.requested_qty - 1, selectedComponent?.inventory?.qty_yard || 0)}
+            style={styles.input}
+            placeholder="Enter partial quantity"
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowPTModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitPartialTransfer}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            Split & Transfer
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
 
 // ============================================================
-// PAGINE PLACEHOLDER (da completare)
+// ENGINEERING PAGE
 // ============================================================
-function PlaceholderPage({ title }) {
+function EngineeringPage({ user, onRefreshCounts }) {
+  const [components, setComponents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCheckModal, setShowCheckModal] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [showPTModal, setShowPTModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [checkTarget, setCheckTarget] = useState('Site');
+  const [checkNote, setCheckNote] = useState('');
+  const [note, setNote] = useState('');
+  const [ptQty, setPtQty] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: engComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description, qty_yard, qty_site)
+        `)
+        .eq('status', 'Eng')
+        .order('created_at', { ascending: false });
+      
+      if (engComps) setComponents(engComps);
+    } catch (error) {
+      console.error('Error loading Engineering data:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleAction = async (component, action) => {
+    try {
+      switch (action) {
+        case 'resolved':
+          // Resolved - send back to Site as ready
+          await supabase
+            .from('request_components')
+            .update({ status: 'ToCollect', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'check':
+          setSelectedComponent(component);
+          setCheckTarget('Site');
+          setCheckNote('');
+          setShowCheckModal(true);
+          return;
+        
+        case 'note':
+          setSelectedComponent(component);
+          setNote('');
+          setShowNoteModal(true);
+          return;
+        
+        case 'pt':
+          setSelectedComponent(component);
+          setPtQty('');
+          setShowPTModal(true);
+          return;
+        
+        case 'spare':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Spare', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'mng':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Mng', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'return':
+          await supabase
+            .from('request_components')
+            .update({ status: 'Site', updated_at: new Date().toISOString() })
+            .eq('id', component.id);
+          break;
+        
+        case 'delete':
+          if (window.confirm('Are you sure you want to delete this component?')) {
+            await supabase.from('request_components').delete().eq('id', component.id);
+          }
+          break;
+      }
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const submitCheck = async () => {
+    if (!selectedComponent) return;
+    try {
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Check',
+          check_target: checkTarget,
+          check_note: checkNote,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedComponent.id);
+      
+      setShowCheckModal(false);
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const submitNote = async () => {
+    if (!selectedComponent) return;
+    try {
+      await supabase
+        .from('request_components')
+        .update({ 
+          eng_note: note,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedComponent.id);
+      
+      setShowNoteModal(false);
+      setNote('');
+      setSelectedComponent(null);
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const submitPartialTransfer = async () => {
+    if (!selectedComponent || !ptQty) return;
+    const partialQty = parseInt(ptQty);
+    if (partialQty >= selectedComponent.requested_qty) {
+      alert('Partial quantity must be less than requested quantity');
+      return;
+    }
+
+    try {
+      await supabase
+        .from('request_components')
+        .update({ 
+          requested_qty: selectedComponent.requested_qty - partialQty,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedComponent.id);
+
+      const { data: request } = await supabase
+        .from('requests')
+        .select('request_number, request_type, sub_category, iso_number, spool_number')
+        .eq('id', selectedComponent.request_id)
+        .single();
+
+      const baseNum = request.request_number.split('-')[0];
+      const { data: splits } = await supabase
+        .from('requests')
+        .select('request_number')
+        .like('request_number', `${baseNum}-%`);
+      
+      const nextSplit = splits ? splits.length : 1;
+
+      const { data: newRequest } = await supabase
+        .from('requests')
+        .insert({
+          request_number: `${baseNum}-${nextSplit}`,
+          request_type: request.request_type,
+          sub_category: request.sub_category,
+          iso_number: request.iso_number,
+          spool_number: request.spool_number,
+          created_by: user.id,
+          status: 'Open',
+          parent_request_id: selectedComponent.request_id
+        })
+        .select()
+        .single();
+
+      await supabase
+        .from('request_components')
+        .insert({
+          request_id: newRequest.id,
+          ident_code: selectedComponent.ident_code,
+          requested_qty: partialQty,
+          status: 'ToCollect'
+        });
+
+      setShowPTModal(false);
+      setPtQty('');
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
   return (
-    <div style={styles.card}>
-      <div style={{ padding: '48px', textAlign: 'center' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '16px' }}>{title}</h2>
-        <p style={{ color: '#6b7280' }}>Questa pagina è in fase di sviluppo...</p>
+    <div>
+      {/* Info Box */}
+      <div style={{
+        backgroundColor: '#F5F3FF',
+        border: '1px solid #C4B5FD',
+        borderRadius: '8px',
+        padding: '16px',
+        marginBottom: '24px'
+      }}>
+        <h4 style={{ fontWeight: 'bold', color: COLORS.purple, marginBottom: '8px' }}>
+          ⚙️ Engineering Workflow
+        </h4>
+        <p style={{ fontSize: '14px', color: '#6b7280' }}>
+          Review materials, check archives, send verification requests to warehouses, or forward to Spare Parts / Management.
+        </p>
+      </div>
+
+      {/* Components Table */}
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>⚙️ Engineering - Components under review</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Yard Stock</th>
+              <th style={styles.th}>Site Stock</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map(comp => (
+              <tr key={comp.id}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  {comp.request?.request_number}
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                <td style={styles.td}>{comp.inventory?.description}</td>
+                <td style={styles.td}>{comp.requested_qty}</td>
+                <td style={styles.td}>
+                  <span style={{ fontWeight: 'bold', color: comp.inventory?.qty_yard > 0 ? COLORS.success : COLORS.gray }}>
+                    {comp.inventory?.qty_yard || 0}
+                  </span>
+                </td>
+                <td style={styles.td}>
+                  <span style={{ fontWeight: 'bold', color: comp.inventory?.qty_site > 0 ? COLORS.success : COLORS.gray }}>
+                    {comp.inventory?.qty_site || 0}
+                  </span>
+                </td>
+                <td style={styles.td}>
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'resolved')} title="Resolved">
+                      ✓
+                    </ActionButton>
+                    <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} title="Partial Split">
+                      PT
+                    </ActionButton>
+                    <ActionButton color={COLORS.info} onClick={() => handleAction(comp, 'check')} title="Send Check">
+                      🔍
+                    </ActionButton>
+                    <ActionButton color={COLORS.cyan} onClick={() => handleAction(comp, 'note')} title="Add Note">
+                      📝
+                    </ActionButton>
+                    <ActionButton color={COLORS.pink} onClick={() => handleAction(comp, 'spare')} title="Spare Parts">
+                      Sp
+                    </ActionButton>
+                    <ActionButton color={COLORS.yellow} onClick={() => handleAction(comp, 'mng')} title="Management">
+                      Mng
+                    </ActionButton>
+                    <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} title="Return">
+                      ↩
+                    </ActionButton>
+                    <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} title="Delete">
+                      🗑️
+                    </ActionButton>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {components.length === 0 && (
+              <tr>
+                <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No components pending engineering review
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Check Modal */}
+      <Modal isOpen={showCheckModal} onClose={() => setShowCheckModal(false)} title="🔍 Send Check Request">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Qty:</strong> {selectedComponent?.requested_qty}</p>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Send check to:</label>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                checked={checkTarget === 'Site'}
+                onChange={() => setCheckTarget('Site')}
+              />
+              WH Site
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                checked={checkTarget === 'Yard'}
+                onChange={() => setCheckTarget('Yard')}
+              />
+              WH Yard
+            </label>
+          </div>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Note / Instructions</label>
+          <textarea
+            value={checkNote}
+            onChange={(e) => setCheckNote(e.target.value)}
+            style={{ ...styles.input, minHeight: '100px' }}
+            placeholder="Instructions for warehouse to recheck..."
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowCheckModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitCheck}
+            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+          >
+            🔍 Send Check
+          </button>
+        </div>
+      </Modal>
+
+      {/* Note Modal */}
+      <Modal isOpen={showNoteModal} onClose={() => setShowNoteModal(false)} title="📝 Add Engineering Note">
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Note</label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            style={{ ...styles.input, minHeight: '100px' }}
+            placeholder="Add notes or observations..."
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowNoteModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitNote}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            Save Note
+          </button>
+        </div>
+      </Modal>
+
+      {/* PT Modal */}
+      <Modal isOpen={showPTModal} onClose={() => setShowPTModal(false)} title="Partial Split (PT)">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Total Requested:</strong> {selectedComponent?.requested_qty}</p>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Quantity to split (will be ready for delivery)</label>
+          <input
+            type="number"
+            value={ptQty}
+            onChange={(e) => setPtQty(e.target.value)}
+            min="1"
+            max={selectedComponent?.requested_qty - 1}
+            style={styles.input}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowPTModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submitPartialTransfer}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            Split
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// SITE IN PAGE
+// ============================================================
+function SiteInPage({ user, onRefreshCounts }) {
+  const [components, setComponents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: transComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Trans')
+        .order('created_at', { ascending: false });
+      
+      if (transComps) setComponents(transComps);
+    } catch (error) {
+      console.error('Error loading Site IN data:', error);
+    }
+    setLoading(false);
+  };
+
+  const confirmArrival = async (component) => {
+    try {
+      // Update status to Site
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Site',
+          arrived_at: new Date().toISOString(),
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', component.id);
+
+      // Increment Site qty
+      await supabase.rpc('increment_site_qty', {
+        p_ident_code: component.ident_code,
+        p_qty: component.requested_qty
+      });
+
+      // Log movement
+      await supabase.from('movements').insert({
+        type: 'TRF',
+        ident_code: component.ident_code,
+        quantity: component.requested_qty,
+        from_location: 'YARD',
+        to_location: 'SITE',
+        user_id: user.id,
+        notes: `Request ${component.request?.request_number}`
+      });
+
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>🚚 Site IN - Materials in transit from Yard</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Sent Date</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map(comp => (
+              <tr key={comp.id}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  {comp.request?.request_number}
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                <td style={styles.td}>{comp.inventory?.description}</td>
+                <td style={styles.td}>{comp.requested_qty}</td>
+                <td style={styles.td}>{new Date(comp.updated_at).toLocaleDateString()}</td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => confirmArrival(comp)}
+                    style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                  >
+                    ✓ Confirm Arrival
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {components.length === 0 && (
+              <tr>
+                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No materials in transit
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// PAGINA MIR
+// MATERIAL IN PAGE
 // ============================================================
-function MIRPage({ user }) {
-  const [mirs, setMirs] = useState([]);
-  const [showNewMirModal, setShowNewMirModal] = useState(false);
-  const [newMir, setNewMir] = useState({
-    mir_number: '',
-    rk_number: '',
-    category: 'Erection',
-    forecast_date: '',
-    priority: 'Medium',
-    note: ''
-  });
+function MaterialInPage({ user }) {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [receivedQty, setReceivedQty] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: orderedComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Ordered')
+        .order('created_at', { ascending: false });
+      
+      if (orderedComps) setOrders(orderedComps);
+    } catch (error) {
+      console.error('Error loading Material IN data:', error);
+    }
+    setLoading(false);
+  };
+
+  const openReceiveModal = (order) => {
+    setSelectedOrder(order);
+    setReceivedQty(order.requested_qty.toString());
+    setShowReceiveModal(true);
+  };
+
+  const confirmReceive = async () => {
+    if (!selectedOrder || !receivedQty) return;
+    
+    try {
+      const qty = parseInt(receivedQty);
+      
+      // Update component status
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Site',
+          received_qty: qty,
+          received_at: new Date().toISOString(),
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedOrder.id);
+
+      // Increment Site qty
+      await supabase.rpc('increment_site_qty', {
+        p_ident_code: selectedOrder.ident_code,
+        p_qty: qty
+      });
+
+      // Log movement
+      await supabase.from('movements').insert({
+        type: 'IN',
+        ident_code: selectedOrder.ident_code,
+        quantity: qty,
+        from_location: 'SUPPLIER',
+        to_location: 'SITE',
+        user_id: user.id,
+        notes: `Order received - Request ${selectedOrder.request?.request_number}`
+      });
+
+      setShowReceiveModal(false);
+      setSelectedOrder(null);
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
+  return (
+    <div>
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>📥 Material IN - Ordered materials pending arrival</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty Ordered</th>
+              <th style={styles.th}>Order Date</th>
+              <th style={styles.th}>Expected</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map(order => (
+              <tr key={order.id}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  {order.request?.request_number}
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{order.ident_code}</td>
+                <td style={styles.td}>{order.inventory?.description}</td>
+                <td style={styles.td}>{order.requested_qty}</td>
+                <td style={styles.td}>{order.ordered_at ? new Date(order.ordered_at).toLocaleDateString() : '-'}</td>
+                <td style={styles.td}>{order.expected_date ? new Date(order.expected_date).toLocaleDateString() : '-'}</td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => openReceiveModal(order)}
+                    style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                  >
+                    📥 Receive
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {orders.length === 0 && (
+              <tr>
+                <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No orders pending arrival
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Receive Modal */}
+      <Modal isOpen={showReceiveModal} onClose={() => setShowReceiveModal(false)} title="📥 Receive Material">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedOrder?.ident_code}</p>
+          <p><strong>Ordered Qty:</strong> {selectedOrder?.requested_qty}</p>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Received Quantity</label>
+          <input
+            type="number"
+            value={receivedQty}
+            onChange={(e) => setReceivedQty(e.target.value)}
+            min="1"
+            style={styles.input}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowReceiveModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmReceive}
+            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+          >
+            ✓ Confirm Receipt
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// SPARE PARTS PAGE
+// ============================================================
+function SparePartsPage({ user, onRefreshCounts }) {
+  const [components, setComponents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showResponseModal, setShowResponseModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: spareComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Spare')
+        .order('created_at', { ascending: false });
+      
+      if (spareComps) setComponents(spareComps);
+    } catch (error) {
+      console.error('Error loading Spare Parts data:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleClientResponse = async (component, hasSpare) => {
+    try {
+      if (hasSpare) {
+        // Client has the spare - ready for delivery
+        await supabase
+          .from('request_components')
+          .update({ 
+            status: 'ToCollect',
+            spare_response: 'Client has spare',
+            updated_at: new Date().toISOString() 
+          })
+          .eq('id', component.id);
+      } else {
+        // Client doesn't have spare - show modal for Mng
+        setSelectedComponent(component);
+        setShowResponseModal(true);
+        return;
+      }
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const sendToManagement = async () => {
+    if (!selectedComponent) return;
+    try {
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Mng',
+          spare_response: 'Client does not have spare - needs purchase',
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedComponent.id);
+      
+      setShowResponseModal(false);
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
+  return (
+    <div>
+      {/* Info Box */}
+      <div style={{
+        backgroundColor: '#FDF2F8',
+        border: '1px solid #F9A8D4',
+        borderRadius: '8px',
+        padding: '16px',
+        marginBottom: '24px'
+      }}>
+        <h4 style={{ fontWeight: 'bold', color: COLORS.pink, marginBottom: '8px' }}>
+          🔧 Spare Parts Workflow
+        </h4>
+        <p style={{ fontSize: '14px', color: '#6b7280' }}>
+          Contact client to check if they have spare parts available. If yes, mark as ready. If no, send to Management for purchase.
+        </p>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>🔧 Spare Parts - Pending client response</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map(comp => (
+              <tr key={comp.id}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  {comp.request?.request_number}
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                <td style={styles.td}>{comp.inventory?.description}</td>
+                <td style={styles.td}>{comp.requested_qty}</td>
+                <td style={styles.td}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleClientResponse(comp, true)}
+                      style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                    >
+                      ✓ Client Has It
+                    </button>
+                    <button
+                      onClick={() => handleClientResponse(comp, false)}
+                      style={{ ...styles.button, backgroundColor: COLORS.yellow, color: 'white' }}
+                    >
+                      ✗ No Spare → Mng
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {components.length === 0 && (
+              <tr>
+                <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No spare parts requests pending
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Confirmation Modal for Mng */}
+      <Modal isOpen={showResponseModal} onClose={() => setShowResponseModal(false)} title="⚠️ Client doesn't have spare">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#FEF3C7', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Qty:</strong> {selectedComponent?.requested_qty}</p>
+          <p style={{ marginTop: '12px', color: COLORS.warning }}>
+            <strong>Note:</strong> Client does not have this spare part available. Request will be sent to Management for purchase decision.
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowResponseModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={sendToManagement}
+            style={{ ...styles.button, backgroundColor: COLORS.yellow, color: 'white' }}
+          >
+            👔 Send to Management
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// ORDERS PAGE
+// ============================================================
+function OrdersPage({ user, onRefreshCounts }) {
+  const [activeTab, setActiveTab] = useState('toOrder');
+  const [toOrder, setToOrder] = useState([]);
+  const [ordered, setOrdered] = useState([]);
+  const [orderLog, setOrderLog] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [expectedDate, setExpectedDate] = useState('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // To Order
+      const { data: orderComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Order')
+        .order('created_at', { ascending: false });
+      if (orderComps) setToOrder(orderComps);
+
+      // Ordered
+      const { data: orderedComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Ordered')
+        .order('ordered_at', { ascending: false });
+      if (orderedComps) setOrdered(orderedComps);
+
+      // Order Log
+      const { data: logData } = await supabase
+        .from('order_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (logData) setOrderLog(logData);
+
+    } catch (error) {
+      console.error('Error loading Orders data:', error);
+    }
+    setLoading(false);
+  };
+
+  const openOrderModal = (component) => {
+    setSelectedComponent(component);
+    setExpectedDate('');
+    setShowOrderModal(true);
+  };
+
+  const confirmOrder = async () => {
+    if (!selectedComponent) return;
+    
+    try {
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Ordered',
+          ordered_at: new Date().toISOString(),
+          expected_date: expectedDate || null,
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', selectedComponent.id);
+
+      // Log the order
+      await supabase.from('order_log').insert({
+        component_id: selectedComponent.id,
+        ident_code: selectedComponent.ident_code,
+        quantity: selectedComponent.requested_qty,
+        ordered_by: user.id,
+        expected_date: expectedDate || null
+      });
+
+      setShowOrderModal(false);
+      setSelectedComponent(null);
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
+  const tabs = [
+    { id: 'toOrder', label: 'To Order', count: toOrder.length },
+    { id: 'ordered', label: 'Ordered', count: ordered.length },
+    { id: 'log', label: 'Log', count: null }
+  ];
+
+  return (
+    <div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              ...styles.button,
+              backgroundColor: activeTab === tab.id ? 'white' : '#e5e7eb',
+              color: activeTab === tab.id ? COLORS.primary : '#6b7280',
+              boxShadow: activeTab === tab.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+            }}
+          >
+            {tab.label} {tab.count !== null && `(${tab.count})`}
+          </button>
+        ))}
+      </div>
+
+      {/* To Order Tab */}
+      {activeTab === 'toOrder' && (
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: 'bold' }}>🛒 To Order</h3>
+          </div>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Request #</th>
+                <th style={styles.th}>Code</th>
+                <th style={styles.th}>Description</th>
+                <th style={styles.th}>Qty</th>
+                <th style={styles.th}>Type</th>
+                <th style={styles.th}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {toOrder.map(comp => (
+                <tr key={comp.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                    {comp.request?.request_number}
+                  </td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                  <td style={styles.td}>{comp.inventory?.description}</td>
+                  <td style={styles.td}>{comp.requested_qty}</td>
+                  <td style={styles.td}>{comp.order_type || 'Internal'}</td>
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => openOrderModal(comp)}
+                      style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                    >
+                      🛒 Place Order
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {toOrder.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                    No orders pending
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Ordered Tab */}
+      {activeTab === 'ordered' && (
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: 'bold' }}>📦 Ordered - Awaiting delivery</h3>
+          </div>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Request #</th>
+                <th style={styles.th}>Code</th>
+                <th style={styles.th}>Description</th>
+                <th style={styles.th}>Qty</th>
+                <th style={styles.th}>Order Date</th>
+                <th style={styles.th}>Expected</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map(comp => (
+                <tr key={comp.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                    {comp.request?.request_number}
+                  </td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                  <td style={styles.td}>{comp.inventory?.description}</td>
+                  <td style={styles.td}>{comp.requested_qty}</td>
+                  <td style={styles.td}>{comp.ordered_at ? new Date(comp.ordered_at).toLocaleDateString() : '-'}</td>
+                  <td style={styles.td}>{comp.expected_date ? new Date(comp.expected_date).toLocaleDateString() : '-'}</td>
+                </tr>
+              ))}
+              {ordered.length === 0 && (
+                <tr>
+                  <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                    No active orders
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Log Tab */}
+      {activeTab === 'log' && (
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: 'bold' }}>📋 Order Log</h3>
+          </div>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Date</th>
+                <th style={styles.th}>Code</th>
+                <th style={styles.th}>Qty</th>
+                <th style={styles.th}>Expected</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orderLog.map((log, idx) => (
+                <tr key={idx}>
+                  <td style={styles.td}>{new Date(log.created_at).toLocaleString()}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{log.ident_code}</td>
+                  <td style={styles.td}>{log.quantity}</td>
+                  <td style={styles.td}>{log.expected_date ? new Date(log.expected_date).toLocaleDateString() : '-'}</td>
+                </tr>
+              ))}
+              {orderLog.length === 0 && (
+                <tr>
+                  <td colSpan="4" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                    No order history
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Order Modal */}
+      <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="🛒 Place Order">
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Qty:</strong> {selectedComponent?.requested_qty}</p>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Expected Delivery Date</label>
+          <input
+            type="date"
+            value={expectedDate}
+            onChange={(e) => setExpectedDate(e.target.value)}
+            style={styles.input}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowOrderModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmOrder}
+            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+          >
+            ✓ Confirm Order
+          </button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
+// MANAGEMENT PAGE
+// ============================================================
+function ManagementPage({ user, onRefreshCounts }) {
+  const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadMirs();
+    loadData();
   }, []);
 
-  const loadMirs = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('mirs')
-      .select('*')
-      .order('created_at', { ascending: false });
-    setMirs(data || []);
+    try {
+      const { data: mngComps } = await supabase
+        .from('request_components')
+        .select(`
+          *,
+          request:requests(*),
+          inventory:project_database(description)
+        `)
+        .eq('status', 'Mng')
+        .order('created_at', { ascending: false });
+      
+      if (mngComps) setComponents(mngComps);
+    } catch (error) {
+      console.error('Error loading Management data:', error);
+    }
+    setLoading(false);
+  };
+
+  const handleDecision = async (component, decision) => {
+    try {
+      await supabase
+        .from('request_components')
+        .update({ 
+          status: 'Order',
+          order_type: decision, // 'Internal' or 'Client'
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', component.id);
+
+      loadData();
+      if (onRefreshCounts) onRefreshCounts();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
+
+  return (
+    <div>
+      {/* Info Box */}
+      <div style={{
+        backgroundColor: '#FEF9C3',
+        border: '1px solid #FDE047',
+        borderRadius: '8px',
+        padding: '16px',
+        marginBottom: '24px'
+      }}>
+        <h4 style={{ fontWeight: 'bold', color: COLORS.yellow, marginBottom: '8px' }}>
+          👔 Management Decisions
+        </h4>
+        <p style={{ fontSize: '14px', color: '#6b7280' }}>
+          Review requests and decide: Internal Order (company pays) or Client Order (client pays).
+        </p>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>👔 Management - Pending decisions</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Notes</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map(comp => (
+              <tr key={comp.id}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>
+                  {comp.request?.request_number}
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                <td style={styles.td}>{comp.inventory?.description}</td>
+                <td style={styles.td}>{comp.requested_qty}</td>
+                <td style={styles.td}>
+                  <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                    {comp.spare_response || comp.eng_note || '-'}
+                  </span>
+                </td>
+                <td style={styles.td}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleDecision(comp, 'Internal')}
+                      style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+                    >
+                      🏢 Internal Order
+                    </button>
+                    <button
+                      onClick={() => handleDecision(comp, 'Client')}
+                      style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white' }}
+                    >
+                      👤 Client Order
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {components.length === 0 && (
+              <tr>
+                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No decisions pending
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// MIR PAGE
+// ============================================================
+function MIRPage({ user }) {
+  const [mirs, setMirs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newMir, setNewMir] = useState({
+    category: 'Erection',
+    priority: 'Normal',
+    expected_date: ''
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data: mirData } = await supabase
+        .from('mirs')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (mirData) setMirs(mirData);
+    } catch (error) {
+      console.error('Error loading MIR data:', error);
+    }
     setLoading(false);
   };
 
   const createMir = async () => {
-    if (!newMir.mir_number || !newMir.rk_number || !newMir.forecast_date) {
-      alert('Compila tutti i campi obbligatori');
-      return;
-    }
+    try {
+      // Generate MIR number
+      const { data: lastMir } = await supabase
+        .from('mirs')
+        .select('mir_number')
+        .order('mir_number', { ascending: false })
+        .limit(1);
+      
+      const nextNum = lastMir && lastMir.length > 0 
+        ? String(parseInt(lastMir[0].mir_number.replace('MIR-', '')) + 1).padStart(4, '0')
+        : '0001';
 
-    const { error } = await supabase.from('mirs').insert({
-      ...newMir,
-      created_by_user_id: user.id
-    });
+      await supabase.from('mirs').insert({
+        mir_number: `MIR-${nextNum}`,
+        category: newMir.category,
+        priority: newMir.priority,
+        expected_date: newMir.expected_date || null,
+        status: 'Open',
+        created_by: user.id
+      });
 
-    if (error) {
-      alert('Errore: ' + error.message);
-      return;
-    }
-
-    setShowNewMirModal(false);
-    setNewMir({
-      mir_number: '',
-      rk_number: '',
-      category: 'Erection',
-      forecast_date: '',
-      priority: 'Medium',
-      note: ''
-    });
-    loadMirs();
-  };
-
-  const canModify = user.role === 'admin' || user.perm_mir === 'modify';
-
-  const getCategoryColor = (cat) => {
-    switch(cat) {
-      case 'Erection': return COLORS.purple;
-      case 'Bulk': return COLORS.info;
-      case 'Instrument': return COLORS.cyan;
-      case 'Support': return COLORS.warning;
-      default: return COLORS.gray;
+      setShowCreateModal(false);
+      setNewMir({ category: 'Erection', priority: 'Normal', expected_date: '' });
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
     }
   };
+
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>MIR - Material Issue Report</h2>
-        {canModify && (
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>📦 MIR - Material Issue Report</h3>
           <button
-            onClick={() => setShowNewMirModal(true)}
+            onClick={() => setShowCreateModal(true)}
             style={{ ...styles.button, ...styles.buttonPrimary }}
           >
-            + Nuovo MIR
+            + New MIR
           </button>
-        )}
-      </div>
-
-      <div style={styles.card}>
+        </div>
         <table style={styles.table}>
           <thead>
             <tr>
               <th style={styles.th}>MIR Number</th>
               <th style={styles.th}>RK Number</th>
-              <th style={styles.th}>Categoria</th>
-              <th style={styles.th}>Data Inserimento</th>
-              <th style={styles.th}>Data Prevista</th>
-              <th style={styles.th}>Priorità</th>
+              <th style={styles.th}>Category</th>
+              <th style={styles.th}>Created Date</th>
+              <th style={styles.th}>Expected Date</th>
+              <th style={styles.th}>Priority</th>
               <th style={styles.th}>Status</th>
             </tr>
           </thead>
           <tbody>
             {mirs.map(mir => (
               <tr key={mir.id}>
-                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{mir.mir_number}</td>
-                <td style={styles.td}>{mir.rk_number}</td>
-                <td style={styles.td}>
-                  <span style={{ ...styles.badge, backgroundColor: getCategoryColor(mir.category) }}>
-                    {mir.category}
-                  </span>
-                </td>
-                <td style={styles.td}>{new Date(mir.insert_date).toLocaleDateString('it-IT')}</td>
-                <td style={styles.td}>{new Date(mir.forecast_date).toLocaleDateString('it-IT')}</td>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>{mir.mir_number}</td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mir.rk_number || '-'}</td>
+                <td style={styles.td}>{mir.category}</td>
+                <td style={styles.td}>{new Date(mir.created_at).toLocaleDateString()}</td>
+                <td style={styles.td}>{mir.expected_date ? new Date(mir.expected_date).toLocaleDateString() : '-'}</td>
                 <td style={styles.td}>
                   <span style={{
                     ...styles.badge,
-                    backgroundColor: mir.priority === 'High' ? COLORS.primary :
-                                    mir.priority === 'Medium' ? COLORS.warning : COLORS.gray
+                    backgroundColor: mir.priority === 'High' ? COLORS.primary : 
+                                    mir.priority === 'Normal' ? COLORS.info : COLORS.gray
                   }}>
                     {mir.priority}
                   </span>
@@ -1978,8 +3406,8 @@ function MIRPage({ user }) {
                 <td style={styles.td}>
                   <span style={{
                     ...styles.badge,
-                    backgroundColor: mir.status === 'Done' ? COLORS.success :
-                                    mir.status === 'Partial' ? COLORS.warning : COLORS.info
+                    backgroundColor: mir.status === 'Open' ? COLORS.warning :
+                                    mir.status === 'Completed' ? COLORS.success : COLORS.gray
                   }}>
                     {mir.status}
                   </span>
@@ -1989,7 +3417,7 @@ function MIRPage({ user }) {
             {mirs.length === 0 && (
               <tr>
                 <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun MIR registrato
+                  No MIR registered
                 </td>
               </tr>
             )}
@@ -1997,34 +3425,10 @@ function MIRPage({ user }) {
         </table>
       </div>
 
-      {/* New MIR Modal */}
-      <Modal
-        isOpen={showNewMirModal}
-        onClose={() => setShowNewMirModal(false)}
-        title="📦 Nuovo MIR"
-      >
+      {/* Create MIR Modal */}
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New MIR">
         <div style={styles.formGroup}>
-          <label style={styles.label}>MIR Number *</label>
-          <input
-            type="text"
-            value={newMir.mir_number}
-            onChange={(e) => setNewMir({ ...newMir, mir_number: e.target.value })}
-            style={styles.input}
-            placeholder="Es: MIR-2024-001"
-          />
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>RK Number *</label>
-          <input
-            type="text"
-            value={newMir.rk_number}
-            onChange={(e) => setNewMir({ ...newMir, rk_number: e.target.value })}
-            style={styles.input}
-            placeholder="Es: RK-12345"
-          />
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Categoria *</label>
+          <label style={styles.label}>Category</label>
           <select
             value={newMir.category}
             onChange={(e) => setNewMir({ ...newMir, category: e.target.value })}
@@ -2034,52 +3438,40 @@ function MIRPage({ user }) {
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
-          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-            ⚠️ Importante: indica il tipo di materiale per chi deve ritirare
-          </p>
         </div>
         <div style={styles.formGroup}>
-          <label style={styles.label}>Data Prevista Consegna *</label>
-          <input
-            type="date"
-            value={newMir.forecast_date}
-            onChange={(e) => setNewMir({ ...newMir, forecast_date: e.target.value })}
-            style={styles.input}
-          />
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Priorità</label>
+          <label style={styles.label}>Priority</label>
           <select
             value={newMir.priority}
             onChange={(e) => setNewMir({ ...newMir, priority: e.target.value })}
             style={styles.select}
           >
-            <option value="High">High</option>
-            <option value="Medium">Medium</option>
             <option value="Low">Low</option>
+            <option value="Normal">Normal</option>
+            <option value="High">High</option>
           </select>
         </div>
         <div style={styles.formGroup}>
-          <label style={styles.label}>Note</label>
-          <textarea
-            value={newMir.note}
-            onChange={(e) => setNewMir({ ...newMir, note: e.target.value })}
-            style={{ ...styles.input, minHeight: '80px' }}
-            placeholder="Note aggiuntive..."
+          <label style={styles.label}>Expected Date</label>
+          <input
+            type="date"
+            value={newMir.expected_date}
+            onChange={(e) => setNewMir({ ...newMir, expected_date: e.target.value })}
+            style={styles.input}
           />
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button
-            onClick={() => setShowNewMirModal(false)}
+            onClick={() => setShowCreateModal(false)}
             style={{ ...styles.button, ...styles.buttonSecondary }}
           >
-            Annulla
+            Cancel
           </button>
           <button
             onClick={createMir}
             style={{ ...styles.button, ...styles.buttonPrimary }}
           >
-            ✓ Crea MIR
+            Create MIR
           </button>
         </div>
       </Modal>
@@ -2088,308 +3480,291 @@ function MIRPage({ user }) {
 }
 
 // ============================================================
-// PAGINA DATABASE
+// DATABASE PAGE
 // ============================================================
 function DatabasePage({ user }) {
-  const [items, setItems] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editItem, setEditItem] = useState(null);
+  const [newItem, setNewItem] = useState({
+    ident_code: '',
+    description: '',
+    qty_yard: 0,
+    qty_site: 0
+  });
 
   useEffect(() => {
-    loadItems();
+    loadData();
   }, []);
 
-  const loadItems = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('project_database')
-      .select('*')
-      .order('iso_number', { ascending: true });
-    setItems(data || []);
+    try {
+      const { data: invData } = await supabase
+        .from('project_database')
+        .select('*')
+        .order('ident_code');
+      if (invData) setInventory(invData);
+    } catch (error) {
+      console.error('Error loading Database:', error);
+    }
     setLoading(false);
   };
 
-  const filteredItems = items.filter(item =>
-    item.ident_code.toLowerCase().includes(search.toLowerCase()) ||
-    item.iso_number.toLowerCase().includes(search.toLowerCase()) ||
-    (item.description && item.description.toLowerCase().includes(search.toLowerCase()))
-  );
+  const addItem = async () => {
+    if (!newItem.ident_code) {
+      alert('Ident Code is required');
+      return;
+    }
+    try {
+      await supabase.from('project_database').insert({
+        ident_code: newItem.ident_code,
+        description: newItem.description,
+        qty_yard: parseInt(newItem.qty_yard) || 0,
+        qty_site: parseInt(newItem.qty_site) || 0
+      });
+      setShowAddModal(false);
+      setNewItem({ ident_code: '', description: '', qty_yard: 0, qty_site: 0 });
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
 
-  const canModify = user.role === 'admin' || user.perm_database === 'modify';
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>Database Inventario</h2>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <input
-            type="text"
-            placeholder="Cerca..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ ...styles.input, width: '250px' }}
-          />
-          {canModify && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{ ...styles.button, ...styles.buttonPrimary }}
-            >
-              + Aggiungi Riga
-            </button>
-          )}
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
+        <button
+          onClick={() => setShowAddModal(true)}
+          style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+        >
+          + Manual Balance
+        </button>
       </div>
 
       <div style={styles.card}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>ISO Number</th>
-                <th style={styles.th}>Spool</th>
-                <th style={styles.th}>Ident Code</th>
-                <th style={styles.th}>Tag</th>
-                <th style={styles.th}>Descrizione</th>
-                <th style={{ ...styles.th, textAlign: 'center' }}>PRJ</th>
-                <th style={{ ...styles.th, textAlign: 'center' }}>WTD</th>
-                <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.secondary, color: 'white' }}>YARD</th>
-                <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.info, color: 'white' }}>SITE</th>
-                <th style={{ ...styles.th, textAlign: 'center' }}>TOT</th>
-                {canModify && <th style={styles.th}>Azioni</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map(item => (
-                <tr key={item.id}>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '12px' }}>{item.iso_number}</td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>
-                    {item.full_spool_number ? item.full_spool_number.split('-').pop() : '-'}
-                  </td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
-                  <td style={styles.td}>{item.tag || '-'}</td>
-                  <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {item.description}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.prj_qty}</td>
-                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.withdrawn_qty}</td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.qty_yard}</td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.qty_site}</td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.primary }}>
-                    {item.qty_yard + item.qty_site}
-                  </td>
-                  {canModify && (
-                    <td style={styles.td}>
-                      <button
-                        onClick={() => setEditItem(item)}
-                        style={{ ...styles.actionBtn, backgroundColor: COLORS.info }}
-                      >
-                        ✏️
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>💾 Inventory Database</h3>
         </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.secondary, color: 'white' }}>YARD</th>
+              <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.info, color: 'white' }}>SITE</th>
+              <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.orange, color: 'white' }}>LOST</th>
+              <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.purple, color: 'white' }}>BROKEN</th>
+              <th style={{ ...styles.th, textAlign: 'center' }}>TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {inventory.map(item => {
+              const total = (item.qty_yard || 0) + (item.qty_site || 0);
+              return (
+                <tr key={item.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: 'bold' }}>{item.ident_code}</td>
+                  <td style={styles.td}>{item.description}</td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>{item.qty_yard || 0}</td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>{item.qty_site || 0}</td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>{item.qty_lost || 0}</td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold' }}>{item.qty_broken || 0}</td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: 'bold', color: COLORS.primary }}>{total}</td>
+                </tr>
+              );
+            })}
+            {inventory.length === 0 && (
+              <tr>
+                <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No items in database
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <div style={{ marginTop: '16px', color: '#6b7280', fontSize: '12px' }}>
-        <strong>Legenda:</strong> PRJ = Project Qty, WTD = Withdrawn Qty, TOT = Total Available (YARD + SITE)
-      </div>
+      {/* Add Item Modal */}
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="+ Manual Balance">
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Ident Code *</label>
+          <input
+            type="text"
+            value={newItem.ident_code}
+            onChange={(e) => setNewItem({ ...newItem, ident_code: e.target.value })}
+            style={styles.input}
+          />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Description</label>
+          <input
+            type="text"
+            value={newItem.description}
+            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+            style={styles.input}
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Qty Yard</label>
+            <input
+              type="number"
+              value={newItem.qty_yard}
+              onChange={(e) => setNewItem({ ...newItem, qty_yard: e.target.value })}
+              style={styles.input}
+            />
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Qty Site</label>
+            <input
+              type="number"
+              value={newItem.qty_site}
+              onChange={(e) => setNewItem({ ...newItem, qty_site: e.target.value })}
+              style={styles.input}
+            />
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button
+            onClick={() => setShowAddModal(false)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={addItem}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            ✓ Save
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 // ============================================================
-// PAGINA LOG
+// LOG PAGE
 // ============================================================
 function LogPage({ user }) {
   const [movements, setMovements] = useState([]);
-  const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newMovement, setNewMovement] = useState({
-    type: 'BAL',
-    location: 'YARD',
+    type: 'IN',
     ident_code: '',
-    tag: '',
     quantity: '',
-    note: '',
-    balance_type: 'Adjustment'
+    from_location: '',
+    to_location: '',
+    notes: ''
   });
-  const [identOptions, setIdentOptions] = useState([]);
 
   useEffect(() => {
-    loadMovements();
-    loadIdentOptions();
+    loadData();
   }, []);
 
-  const loadMovements = async () => {
+  const loadData = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('movements')
-      .select('*')
-      .order('movement_date', { ascending: false })
-      .limit(100);
-    setMovements(data || []);
+    try {
+      const { data: movData } = await supabase
+        .from('movements')
+        .select('*, user:users(full_name)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (movData) setMovements(movData);
+    } catch (error) {
+      console.error('Error loading Log:', error);
+    }
     setLoading(false);
   };
 
-  const loadIdentOptions = async () => {
-    const { data } = await supabase
-      .from('project_database')
-      .select('ident_code, tag')
-      .order('ident_code');
-    if (data) {
-      setIdentOptions(data);
+  const addMovement = async () => {
+    if (!newMovement.ident_code || !newMovement.quantity) {
+      alert('Code and quantity are required');
+      return;
+    }
+    try {
+      await supabase.from('movements').insert({
+        type: newMovement.type,
+        ident_code: newMovement.ident_code,
+        quantity: parseInt(newMovement.quantity),
+        from_location: newMovement.from_location,
+        to_location: newMovement.to_location,
+        notes: newMovement.notes,
+        user_id: user.id
+      });
+      setShowAddModal(false);
+      setNewMovement({ type: 'IN', ident_code: '', quantity: '', from_location: '', to_location: '', notes: '' });
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
     }
   };
 
-  const createMovement = async () => {
-    if (!newMovement.ident_code || !newMovement.quantity || !newMovement.note) {
-      alert('Compila tutti i campi obbligatori (Codice, Quantità, Note)');
-      return;
+  const getTypeColor = (type) => {
+    switch (type) {
+      case 'IN': return COLORS.success;
+      case 'OUT': return COLORS.primary;
+      case 'TRF': return COLORS.info;
+      case 'LOST': return COLORS.orange;
+      case 'BROKEN': return COLORS.purple;
+      case 'BAL': return COLORS.yellow;
+      default: return COLORS.gray;
     }
-
-    const quantity = parseInt(newMovement.quantity);
-    const isNegative = ['Lost', 'Broken', 'Adjustment'].includes(newMovement.balance_type) && newMovement.type === 'BAL';
-
-    // Create movement
-    const { error } = await supabase.from('movements').insert({
-      type: newMovement.type,
-      location: newMovement.location,
-      ident_code: newMovement.ident_code,
-      tag: newMovement.tag || null,
-      quantity: isNegative ? -Math.abs(quantity) : quantity,
-      note: newMovement.note,
-      balance_type: newMovement.type === 'BAL' ? newMovement.balance_type : null,
-      created_by_user_id: user.id
-    });
-
-    if (error) {
-      alert('Errore: ' + error.message);
-      return;
-    }
-
-    // Update inventory
-    const { data: inv } = await supabase
-      .from('project_database')
-      .select('qty_yard, qty_site')
-      .eq('ident_code', newMovement.ident_code)
-      .maybeSingle();
-
-    if (inv) {
-      const updates = {};
-      if (newMovement.location === 'YARD') {
-        updates.qty_yard = Math.max(0, inv.qty_yard + (isNegative ? -Math.abs(quantity) : quantity));
-      } else {
-        updates.qty_site = Math.max(0, inv.qty_site + (isNegative ? -Math.abs(quantity) : quantity));
-      }
-      await supabase.from('project_database').update(updates).eq('ident_code', newMovement.ident_code);
-    }
-
-    setShowAddModal(false);
-    setNewMovement({
-      type: 'BAL',
-      location: 'YARD',
-      ident_code: '',
-      tag: '',
-      quantity: '',
-      note: '',
-      balance_type: 'Adjustment'
-    });
-    loadMovements();
   };
 
-  const canModify = user.role === 'admin' || user.perm_log === 'modify';
-
-  const filteredMovements = movements.filter(m => 
-    filter === 'all' || m.type === filter
-  );
+  if (loading) {
+    return <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>;
+  }
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>LOG Movimenti</h2>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            style={{ ...styles.select, width: '150px' }}
-          >
-            <option value="all">Tutti</option>
-            <option value="IN">IN</option>
-            <option value="OUT">OUT</option>
-            <option value="BAL">BAL</option>
-            <option value="TRF">TRF</option>
-            <option value="DEL">DEL</option>
-          </select>
-          {canModify && (
-            <button
-              onClick={() => setShowAddModal(true)}
-              style={{ ...styles.button, ...styles.buttonPrimary }}
-            >
-              + Registra Movimento
-            </button>
-          )}
-        </div>
-      </div>
-
       <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: 'bold' }}>📝 Movement Log</h3>
+          <button
+            onClick={() => setShowAddModal(true)}
+            style={{ ...styles.button, ...styles.buttonPrimary }}
+          >
+            + Add Movement
+          </button>
+        </div>
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>Data/Ora</th>
-              <th style={styles.th}>Tipo</th>
-              <th style={styles.th}>Codice</th>
-              <th style={styles.th}>Tag</th>
+              <th style={styles.th}>Date</th>
+              <th style={styles.th}>Type</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Location</th>
-              <th style={styles.th}>Note</th>
+              <th style={styles.th}>From → To</th>
+              <th style={styles.th}>Notes</th>
+              <th style={styles.th}>User</th>
             </tr>
           </thead>
           <tbody>
-            {filteredMovements.map(mov => (
-              <tr key={mov.id}>
+            {movements.map((mov, idx) => (
+              <tr key={idx}>
+                <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
                 <td style={styles.td}>
-                  {new Date(mov.movement_date).toLocaleDateString('it-IT')} {new Date(mov.movement_date).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-                </td>
-                <td style={styles.td}>
-                  <span style={{
-                    ...styles.badge,
-                    backgroundColor: mov.type === 'IN' ? COLORS.success :
-                                    mov.type === 'OUT' || mov.type === 'DEL' ? COLORS.primary :
-                                    mov.type === 'BAL' ? COLORS.warning :
-                                    mov.type === 'TRF' ? COLORS.info : COLORS.gray
-                  }}>
+                  <span style={{ ...styles.badge, backgroundColor: getTypeColor(mov.type) }}>
                     {mov.type}
                   </span>
                 </td>
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
-                <td style={styles.td}>{mov.tag || '-'}</td>
-                <td style={{
-                  ...styles.td,
-                  fontWeight: '600',
-                  color: mov.quantity > 0 ? COLORS.success : COLORS.primary
-                }}>
-                  {mov.quantity > 0 ? '+' : ''}{mov.quantity}
-                </td>
-                <td style={styles.td}>{mov.location}</td>
-                <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280', maxWidth: '250px' }}>
-                  {mov.note}
-                  {mov.auto_generated && (
-                    <span style={{ marginLeft: '8px', fontSize: '10px', color: COLORS.purple }}>[AUTO]</span>
-                  )}
-                </td>
+                <td style={styles.td}>{mov.quantity}</td>
+                <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
+                <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280' }}>{mov.notes || '-'}</td>
+                <td style={styles.td}>{mov.user?.full_name || '-'}</td>
               </tr>
             ))}
-            {filteredMovements.length === 0 && (
+            {movements.length === 0 && (
               <tr>
                 <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun movimento registrato
+                  No movements recorded
                 </td>
               </tr>
             )}
@@ -2398,92 +3773,66 @@ function LogPage({ user }) {
       </div>
 
       {/* Add Movement Modal */}
-      <Modal
-        isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        title="📦 Registra Movimento"
-      >
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="+ Add Movement">
         <div style={styles.formGroup}>
-          <label style={styles.label}>Tipo</label>
+          <label style={styles.label}>Type</label>
           <select
             value={newMovement.type}
             onChange={(e) => setNewMovement({ ...newMovement, type: e.target.value })}
             style={styles.select}
           >
-            <option value="IN">IN (Entrata)</option>
-            <option value="BAL">BAL (Bilanciamento)</option>
-          </select>
-        </div>
-        {newMovement.type === 'BAL' && (
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Tipo Bilanciamento</label>
-            <select
-              value={newMovement.balance_type}
-              onChange={(e) => setNewMovement({ ...newMovement, balance_type: e.target.value })}
-              style={styles.select}
-            >
-              <option value="Adjustment">Adjustment (+/-)</option>
-              <option value="Lost">Lost (-)</option>
-              <option value="Broken">Broken (-)</option>
-            </select>
-          </div>
-        )}
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Location</label>
-          <select
-            value={newMovement.location}
-            onChange={(e) => setNewMovement({ ...newMovement, location: e.target.value })}
-            style={styles.select}
-          >
-            <option value="YARD">YARD</option>
-            <option value="SITE">SITE</option>
+            <option value="IN">IN</option>
+            <option value="OUT">OUT</option>
+            <option value="TRF">TRANSFER</option>
+            <option value="LOST">LOST</option>
+            <option value="BROKEN">BROKEN</option>
+            <option value="BAL">BALANCE</option>
           </select>
         </div>
         <div style={styles.formGroup}>
-          <label style={styles.label}>Codice Materiale *</label>
-          <select
+          <label style={styles.label}>Ident Code *</label>
+          <input
+            type="text"
             value={newMovement.ident_code}
             onChange={(e) => setNewMovement({ ...newMovement, ident_code: e.target.value })}
-            style={styles.select}
-          >
-            <option value="">Seleziona...</option>
-            {[...new Set(identOptions.map(o => o.ident_code))].map(code => (
-              <option key={code} value={code}>{code}</option>
-            ))}
-          </select>
+            style={styles.input}
+          />
         </div>
         <div style={styles.formGroup}>
-          <label style={styles.label}>Tag</label>
-          <select
-            value={newMovement.tag}
-            onChange={(e) => setNewMovement({ ...newMovement, tag: e.target.value })}
-            style={styles.select}
-          >
-            <option value="">Nessuno</option>
-            {identOptions
-              .filter(o => o.ident_code === newMovement.ident_code && o.tag)
-              .map(o => (
-                <option key={o.tag} value={o.tag}>{o.tag}</option>
-              ))}
-          </select>
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Quantità * {newMovement.type === 'BAL' && newMovement.balance_type !== 'Adjustment' && '(verrà sottratta)'}</label>
+          <label style={styles.label}>Quantity *</label>
           <input
             type="number"
             value={newMovement.quantity}
             onChange={(e) => setNewMovement({ ...newMovement, quantity: e.target.value })}
             style={styles.input}
-            min="1"
           />
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>From</label>
+            <input
+              type="text"
+              value={newMovement.from_location}
+              onChange={(e) => setNewMovement({ ...newMovement, from_location: e.target.value })}
+              style={styles.input}
+            />
+          </div>
+          <div style={styles.formGroup}>
+            <label style={styles.label}>To</label>
+            <input
+              type="text"
+              value={newMovement.to_location}
+              onChange={(e) => setNewMovement({ ...newMovement, to_location: e.target.value })}
+              style={styles.input}
+            />
+          </div>
+        </div>
         <div style={styles.formGroup}>
-          <label style={styles.label}>Note * (OBBLIGATORIE)</label>
+          <label style={styles.label}>Notes</label>
           <textarea
-            value={newMovement.note}
-            onChange={(e) => setNewMovement({ ...newMovement, note: e.target.value })}
+            value={newMovement.notes}
+            onChange={(e) => setNewMovement({ ...newMovement, notes: e.target.value })}
             style={{ ...styles.input, minHeight: '80px' }}
-            placeholder="Spiega il motivo del movimento..."
           />
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
@@ -2491,13 +3840,13 @@ function LogPage({ user }) {
             onClick={() => setShowAddModal(false)}
             style={{ ...styles.button, ...styles.buttonSecondary }}
           >
-            Annulla
+            Cancel
           </button>
           <button
-            onClick={createMovement}
+            onClick={addMovement}
             style={{ ...styles.button, ...styles.buttonPrimary }}
           >
-            ✓ Registra
+            ✓ Save
           </button>
         </div>
       </Modal>
@@ -2506,16 +3855,16 @@ function LogPage({ user }) {
 }
 
 // ============================================================
-// APP PRINCIPALE
+// MAIN APP
 // ============================================================
 export default function App() {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [counts, setCounts] = useState({});
 
   useEffect(() => {
-    // Check for saved session
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
       try {
@@ -2526,6 +3875,38 @@ export default function App() {
     }
     setLoading(false);
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadCounts();
+      // Refresh counts every 30 seconds
+      const interval = setInterval(loadCounts, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
+
+  const loadCounts = async () => {
+    try {
+      const { data: components } = await supabase
+        .from('request_components')
+        .select('status, check_target');
+      
+      if (components) {
+        const newCounts = {
+          siteIn: components.filter(c => c.status === 'Trans').length,
+          whSite: components.filter(c => c.status === 'Site' || (c.status === 'Check' && c.check_target === 'Site')).length,
+          whYard: components.filter(c => c.status === 'Yard' || (c.status === 'Check' && c.check_target === 'Yard')).length,
+          engineering: components.filter(c => c.status === 'Eng').length,
+          spare: components.filter(c => c.status === 'Spare').length,
+          orders: components.filter(c => c.status === 'Order').length,
+          management: components.filter(c => c.status === 'Mng').length
+        };
+        setCounts(newCounts);
+      }
+    } catch (error) {
+      console.error('Error loading counts:', error);
+    }
+  };
 
   const handleLogin = (userData) => {
     setUser(userData);
@@ -2546,7 +3927,7 @@ export default function App() {
         justifyContent: 'center',
         backgroundColor: COLORS.secondary
       }}>
-        <div style={{ color: 'white', fontSize: '18px' }}>Caricamento...</div>
+        <div style={{ color: 'white', fontSize: '18px' }}>Loading...</div>
       </div>
     );
   }
@@ -2562,29 +3943,27 @@ export default function App() {
       case 'requests':
         return <RequestsPage user={user} />;
       case 'whSite':
-        return <WHSitePage user={user} />;
+        return <WHSitePage user={user} onRefreshCounts={loadCounts} />;
+      case 'whYard':
+        return <WHYardPage user={user} onRefreshCounts={loadCounts} />;
+      case 'engineering':
+        return <EngineeringPage user={user} onRefreshCounts={loadCounts} />;
+      case 'siteIn':
+        return <SiteInPage user={user} onRefreshCounts={loadCounts} />;
+      case 'materialIn':
+        return <MaterialInPage user={user} />;
+      case 'spareParts':
+        return <SparePartsPage user={user} onRefreshCounts={loadCounts} />;
+      case 'orders':
+        return <OrdersPage user={user} onRefreshCounts={loadCounts} />;
+      case 'management':
+        return <ManagementPage user={user} onRefreshCounts={loadCounts} />;
       case 'mir':
         return <MIRPage user={user} />;
       case 'database':
         return <DatabasePage user={user} />;
       case 'log':
         return <LogPage user={user} />;
-      case 'whYard':
-        return <PlaceholderPage title="WH Yard" />;
-      case 'engineering':
-        return <PlaceholderPage title="Engineering" />;
-      case 'spareParts':
-        return <PlaceholderPage title="Spare Parts" />;
-      case 'orders':
-        return <PlaceholderPage title="Orders" />;
-      case 'management':
-        return <PlaceholderPage title="Management" />;
-      case 'testPack':
-        return <PlaceholderPage title="Test Pack Materials" />;
-      case 'materialIn':
-        return <PlaceholderPage title="Material IN" />;
-      case 'siteIn':
-        return <PlaceholderPage title="Site IN" />;
       default:
         return <DashboardPage user={user} />;
     }
@@ -2592,7 +3971,7 @@ export default function App() {
 
   const pageTitles = {
     dashboard: 'Dashboard',
-    requests: 'Nuova Richiesta',
+    requests: 'New Request',
     mir: 'MIR',
     materialIn: 'Material IN',
     siteIn: 'Site IN',
@@ -2602,7 +3981,6 @@ export default function App() {
     spareParts: 'Spare Parts',
     orders: 'Orders',
     management: 'Management',
-    testPack: 'Test Pack Materials',
     log: 'LOG',
     database: 'Database'
   };
@@ -2616,6 +3994,7 @@ export default function App() {
         collapsed={sidebarCollapsed}
         setCollapsed={setSidebarCollapsed}
         onLogout={handleLogout}
+        counts={counts}
       />
       <div style={styles.main}>
         <header style={styles.header}>
@@ -2623,7 +4002,10 @@ export default function App() {
             {pageTitles[currentPage] || currentPage}
           </h2>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              loadCounts();
+              window.location.reload();
+            }}
             style={{ ...styles.button, ...styles.buttonSecondary }}
           >
             🔄 Refresh
