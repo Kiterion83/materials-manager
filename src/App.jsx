@@ -193,10 +193,6 @@ const styles = {
     backgroundColor: '#e5e7eb',
     color: '#374151'
   },
-  buttonSuccess: {
-    backgroundColor: COLORS.success,
-    color: 'white'
-  },
   actionBtn: {
     width: '32px',
     height: '32px',
@@ -706,7 +702,7 @@ function DashboardPage({ user }) {
 }
 
 // ============================================================
-// PAGINA NUOVA RICHIESTA - FIXED VERSION
+// PAGINA NUOVA RICHIESTA - V26 with Project Materials
 // ============================================================
 function RequestsPage({ user }) {
   const [requestType, setRequestType] = useState('Piping');
@@ -754,111 +750,99 @@ function RequestsPage({ user }) {
     }
   };
 
+  const loadTagOptions = async () => {
+    const { data } = await supabase
+      .from('project_materials')
+      .select('tag_number')
+      .not('tag_number', 'is', null);
+    if (data) {
+      const unique = [...new Set(data.map(d => d.tag_number).filter(Boolean))];
+      setTagOptions(unique.map(t => ({ tag_code: t, description: t })));
+    }
+  };
+
   const loadSpoolOptions = async (iso) => {
     const { data } = await supabase
       .from('project_materials')
       .select('full_spool_number')
-      .eq('iso_number', iso);
+      .eq('iso_number', iso)
+      .order('full_spool_number');
     if (data) {
       const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))];
-      setSpoolOptions(unique.sort());
+      setSpoolOptions(unique);
     }
-  };
-
-  const loadTagOptions = async () => {
-    const { data } = await supabase
-      .from('tags')
-      .select('tag_code, description')
-      .order('tag_code');
-    if (data) setTagOptions(data);
   };
 
   const loadIdentOptions = async (spool) => {
-    // Load materials for the selected spool from project_materials
-    const { data: pmData } = await supabase
+    const { data } = await supabase
       .from('project_materials')
-      .select('ident_code, tag_number, description, pos_qty')
+      .select('ident_code, tag_number, description, pos_qty, uom')
       .eq('full_spool_number', spool);
-    
-    // Also get inventory quantities
-    const { data: invData } = await supabase
-      .from('inventory')
-      .select('ident_code, yard_qty, site_qty');
-    
-    const invMap = {};
-    if (invData) {
-      invData.forEach(inv => {
-        invMap[inv.ident_code] = { yard_qty: inv.yard_qty || 0, site_qty: inv.site_qty || 0 };
-      });
-    }
-    
-    if (pmData) {
-      const options = pmData.map(pm => ({
-        ident_code: pm.ident_code,
-        tag: pm.tag_number || '',
-        description: pm.description,
-        pos_qty: pm.pos_qty,
-        qty_yard: invMap[pm.ident_code]?.yard_qty || 0,
-        qty_site: invMap[pm.ident_code]?.site_qty || 0
+    if (data) {
+      // Map to expected format
+      const mapped = data.map(d => ({
+        ident_code: d.ident_code,
+        tag: d.tag_number || '',
+        description: d.description,
+        pos_qty: d.pos_qty || 0,
+        uom: d.uom
       }));
-      setIdentOptions(options);
+      setIdentOptions(mapped);
     }
-  };
-
-  // Check for over-quantity situation
-  const checkOverQuantity = async (spool, ident_code, requestedQty) => {
-    // Get project quantity for this spool + ident_code
-    const { data: pmData } = await supabase
-      .from('project_materials')
-      .select('pos_qty')
-      .eq('full_spool_number', spool)
-      .eq('ident_code', ident_code);
-    
-    const projectQty = pmData?.reduce((sum, p) => sum + (p.pos_qty || 0), 0) || 0;
-    
-    // Get already requested quantity for this spool + ident_code
-    const { data: rcData } = await supabase
-      .from('request_components')
-      .select('quantity')
-      .eq('full_spool_number', spool)
-      .eq('ident_code', ident_code)
-      .not('status', 'in', '("Cancelled","Done")');
-    
-    const alreadyRequested = rcData?.reduce((sum, r) => sum + (r.quantity || 0), 0) || 0;
-    const totalRequested = alreadyRequested + requestedQty;
-    
-    if (totalRequested > projectQty) {
-      return {
-        isOver: true,
-        projectQty,
-        alreadyRequested,
-        totalRequested
-      };
-    }
-    return { isOver: false };
   };
 
   const handleIsoChange = (value) => {
     setIsoNumber(value);
-    setSpoolNumber(''); // Reset spool when ISO changes
-    setIdentOptions([]); // Reset materials
-    setMaterials([]); // Clear added materials
+    setSpoolNumber('');
+    setSpoolOptions([]);
+    setIdentOptions([]);
     setOverQuantityWarning(null);
-    if (value) {
-      loadSpoolOptions(value);
-    } else {
-      setSpoolOptions([]);
-    }
+    if (value) loadSpoolOptions(value);
   };
 
   const handleSpoolChange = (value) => {
     setSpoolNumber(value);
-    setIdentOptions([]); // Reset materials
-    setMaterials([]); // Clear added materials
+    setIdentOptions([]);
     setOverQuantityWarning(null);
-    if (value) {
-      loadIdentOptions(value);
+    if (value) loadIdentOptions(value);
+  };
+
+  // Check over-quantity when adding material
+  const checkOverQuantity = async (identCode, qty) => {
+    if (!spoolNumber || !identCode) return false;
+    
+    // Get project quantity for this spool+code
+    const { data: projectData } = await supabase
+      .from('project_materials')
+      .select('pos_qty')
+      .eq('full_spool_number', spoolNumber)
+      .eq('ident_code', identCode);
+    
+    const projectQty = projectData?.reduce((sum, d) => sum + (d.pos_qty || 0), 0) || 0;
+    
+    // Get already requested quantity (excluding Done and Cancelled)
+    const { data: requestedData } = await supabase
+      .from('request_components')
+      .select('quantity')
+      .eq('full_spool_number', spoolNumber)
+      .eq('ident_code', identCode)
+      .not('status', 'in', '("Done","Cancelled")');
+    
+    const alreadyRequested = requestedData?.reduce((sum, d) => sum + (d.quantity || 0), 0) || 0;
+    const totalRequested = alreadyRequested + parseInt(qty || 0);
+    
+    if (totalRequested > projectQty) {
+      setOverQuantityWarning({
+        ident_code: identCode,
+        projectQty,
+        alreadyRequested,
+        totalRequested
+      });
+      return true;
     }
+    
+    setOverQuantityWarning(null);
+    return false;
   };
 
   const handleRequestTypeChange = (type) => {
@@ -871,27 +855,15 @@ function RequestsPage({ user }) {
     setTestPackNumber('');
     setDescription('');
     setMaterials([]);
-    setIdentOptions([]);
     setOverQuantityWarning(null);
   };
 
   const addMaterial = async () => {
     if (!currentMaterial.ident_code || !currentMaterial.qty) return;
     
-    // Check for over-quantity if we have a spool number
-    if (spoolNumber && requestType === 'Piping') {
-      const check = await checkOverQuantity(spoolNumber, currentMaterial.ident_code, parseInt(currentMaterial.qty));
-      if (check.isOver) {
-        setOverQuantityWarning({
-          ident_code: currentMaterial.ident_code,
-          projectQty: check.projectQty,
-          alreadyRequested: check.alreadyRequested,
-          totalRequested: check.totalRequested
-        });
-        // Still allow adding but show warning
-      } else {
-        setOverQuantityWarning(null);
-      }
+    // Check over-quantity for Piping
+    if (requestType === 'Piping') {
+      await checkOverQuantity(currentMaterial.ident_code, currentMaterial.qty);
     }
     
     const selectedMat = identOptions.find(o => 
@@ -902,8 +874,6 @@ function RequestsPage({ user }) {
     setMaterials([...materials, {
       ...currentMaterial,
       description: selectedMat?.description || '',
-      qty_yard: selectedMat?.qty_yard || 0,
-      qty_site: selectedMat?.qty_site || 0,
       pos_qty: selectedMat?.pos_qty || 0
     }]);
     setCurrentMaterial({ ident_code: '', tag: '', qty: '' });
@@ -946,7 +916,6 @@ function RequestsPage({ user }) {
           request_number: reqNumber,
           sub_number: 0,
           requester_user_id: user.id,
-          requester_name: user.full_name,
           request_type: requestType,
           sub_category: requestType === 'Piping' ? subCategory : null,
           iso_number: requestType !== 'TestPack' ? (isoNumber || null) : null,
@@ -990,13 +959,13 @@ function RequestsPage({ user }) {
               request_id: request.id,
               ident_code: mat.ident_code,
               tag: mat.tag || null,
+              iso_number: requestType === 'Piping' ? isoNumber : null,
+              full_spool_number: requestType === 'Piping' ? spoolNumber : null,
+              tag_number: mat.tag || null,
               description: mat.description,
               quantity: parseInt(mat.qty),
               status: status,
-              current_location: destination === 'yard' ? 'YARD' : 'SITE',
-              iso_number: requestType === 'Piping' ? isoNumber : null,
-              full_spool_number: requestType === 'Piping' ? spoolNumber : null,
-              tag_number: mat.tag || null
+              current_location: destination === 'yard' ? 'YARD' : 'SITE'
             });
           if (compError) throw compError;
         }
@@ -1022,7 +991,6 @@ function RequestsPage({ user }) {
       setDescription('');
       setTestPackNumber('');
       setMaterials([]);
-      setIdentOptions([]);
       setOverQuantityWarning(null);
       loadNextNumber();
 
@@ -1123,50 +1091,34 @@ function RequestsPage({ user }) {
                 </div>
                 <div>
                   <label style={styles.label}>Full Spool Number *</label>
-                  <select
-                    value={spoolNumber}
-                    onChange={(e) => handleSpoolChange(e.target.value)}
-                    style={styles.select}
-                    disabled={!canModify || !isoNumber}
-                  >
-                    <option value="">{isoNumber ? 'Select spool...' : 'First select ISO'}</option>
-                    {spoolOptions.map(spool => (
-                      <option key={spool} value={spool}>{spool}</option>
-                    ))}
-                  </select>
-                  {!isoNumber && (
-                    <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
-                      Select an ISO Number first to see available spools
-                    </p>
+                  {isoNumber ? (
+                    <>
+                      <input
+                        type="text"
+                        list="spool-options"
+                        value={spoolNumber}
+                        onChange={(e) => handleSpoolChange(e.target.value)}
+                        style={styles.input}
+                        placeholder="Select spool..."
+                        disabled={!canModify}
+                      />
+                      <datalist id="spool-options">
+                        {spoolOptions.map(spool => (
+                          <option key={spool} value={spool} />
+                        ))}
+                      </datalist>
+                    </>
+                  ) : (
+                    <input
+                      type="text"
+                      value=""
+                      style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                      disabled={true}
+                      placeholder="Select ISO first"
+                    />
                   )}
                 </div>
               </div>
-
-              {/* Over-Quantity Warning */}
-              {overQuantityWarning && (
-                <div style={{ 
-                  marginBottom: '20px', 
-                  padding: '16px', 
-                  backgroundColor: '#FEF2F2', 
-                  borderRadius: '8px',
-                  border: '2px solid #EF4444'
-                }}>
-                  <h4 style={{ color: '#DC2626', fontWeight: '600', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    ⚠️ Over Quantity Warning
-                  </h4>
-                  <p style={{ color: '#7F1D1D', fontSize: '14px' }}>
-                    <strong>{overQuantityWarning.ident_code}</strong>: Requesting more than project quantity!
-                  </p>
-                  <div style={{ display: 'flex', gap: '24px', marginTop: '8px', fontSize: '13px' }}>
-                    <span>Project Qty: <strong>{overQuantityWarning.projectQty}</strong></span>
-                    <span>Already Requested: <strong>{overQuantityWarning.alreadyRequested}</strong></span>
-                    <span style={{ color: '#DC2626' }}>Total Would Be: <strong>{overQuantityWarning.totalRequested}</strong></span>
-                  </div>
-                  <p style={{ color: '#991B1B', fontSize: '13px', marginTop: '12px' }}>
-                    ⚠️ Only <strong>Send to Engineering</strong> is available. Contact Engineering for approval.
-                  </p>
-                </div>
-              )}
 
               {/* HF Number - Only visible for Erection */}
               {subCategory === 'Erection' && (
@@ -1389,8 +1341,7 @@ function RequestsPage({ user }) {
                       <th style={styles.th}>Description</th>
                       <th style={styles.th}>Tag</th>
                       <th style={styles.th}>Qty</th>
-                      <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white' }}>YARD</th>
-                      <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white' }}>SITE</th>
+                      <th style={{ ...styles.th, backgroundColor: COLORS.purple, color: 'white' }}>Project</th>
                       <th style={styles.th}></th>
                     </tr>
                   </thead>
@@ -1401,8 +1352,7 @@ function RequestsPage({ user }) {
                         <td style={styles.td}>{mat.description}</td>
                         <td style={styles.td}>{mat.tag || '-'}</td>
                         <td style={styles.td}>{mat.qty}</td>
-                        <td style={{ ...styles.td, fontWeight: '600' }}>{mat.qty_yard}</td>
-                        <td style={{ ...styles.td, fontWeight: '600' }}>{mat.qty_site}</td>
+                        <td style={{ ...styles.td, fontWeight: '600' }}>{mat.pos_qty}</td>
                         <td style={styles.td}>
                           <button
                             onClick={() => removeMaterial(idx)}
@@ -1415,6 +1365,32 @@ function RequestsPage({ user }) {
                     ))}
                   </tbody>
                 </table>
+              )}
+
+              {/* Over-Quantity Warning */}
+              {overQuantityWarning && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '16px',
+                  backgroundColor: '#FEE2E2',
+                  border: '2px solid #DC2626',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600', color: '#DC2626', marginBottom: '8px' }}>
+                    ⚠️ Over-Quantity Warning
+                  </div>
+                  <p style={{ fontSize: '14px', color: '#7F1D1D' }}>
+                    <strong>{overQuantityWarning.ident_code}</strong>: Requesting more than project quantity.
+                  </p>
+                  <div style={{ fontSize: '13px', color: '#991B1B', marginTop: '8px' }}>
+                    <div>Project Qty: <strong>{overQuantityWarning.projectQty}</strong></div>
+                    <div>Already Requested: <strong>{overQuantityWarning.alreadyRequested}</strong></div>
+                    <div>Total Would Be: <strong style={{ color: '#DC2626' }}>{overQuantityWarning.totalRequested}</strong></div>
+                  </div>
+                  <p style={{ fontSize: '12px', color: '#7F1D1D', marginTop: '12px' }}>
+                    Site and Yard are disabled. Send to Engineering for verification.
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -1435,10 +1411,9 @@ function RequestsPage({ user }) {
                 backgroundColor: overQuantityWarning ? '#9CA3AF' : COLORS.info,
                 color: 'white',
                 padding: '12px 24px',
-                opacity: (loading || overQuantityWarning) ? 0.7 : 1,
+                opacity: loading ? 0.7 : 1,
                 cursor: overQuantityWarning ? 'not-allowed' : 'pointer'
               }}
-              title={overQuantityWarning ? 'Disabled: Over quantity - use Engineering' : 'Send to Site'}
             >
               🏭 Send to Site
             </button>
@@ -1450,10 +1425,9 @@ function RequestsPage({ user }) {
                 backgroundColor: overQuantityWarning ? '#9CA3AF' : COLORS.secondary,
                 color: 'white',
                 padding: '12px 24px',
-                opacity: (loading || overQuantityWarning) ? 0.7 : 1,
+                opacity: loading ? 0.7 : 1,
                 cursor: overQuantityWarning ? 'not-allowed' : 'pointer'
               }}
-              title={overQuantityWarning ? 'Disabled: Over quantity - use Engineering' : 'Send to Yard'}
             >
               🏢 Send to Yard
             </button>
@@ -1462,11 +1436,11 @@ function RequestsPage({ user }) {
               disabled={loading || !canModify}
               style={{
                 ...styles.button,
-                backgroundColor: overQuantityWarning ? '#7C3AED' : COLORS.purple,
+                backgroundColor: COLORS.purple,
                 color: 'white',
                 padding: '12px 24px',
                 opacity: loading ? 0.7 : 1,
-                border: overQuantityWarning ? '3px solid #5B21B6' : 'none'
+                border: overQuantityWarning ? '3px solid #DC2626' : 'none'
               }}
             >
               ⚙️ Send to Engineering {overQuantityWarning && '(Required)'}
@@ -1492,23 +1466,10 @@ function WHSitePage({ user }) {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [passageNote, setPassageNote] = useState('');
   const [passageDestination, setPassageDestination] = useState('');
-  const [showDeliverModal, setShowDeliverModal] = useState(false);
-  const [deliverComponent, setDeliverComponent] = useState(null);
-  const [secondaryCollector, setSecondaryCollector] = useState('');
-  const [allUsers, setAllUsers] = useState([]);
 
   useEffect(() => {
     loadComponents();
-    loadUsers();
   }, []);
-
-  const loadUsers = async () => {
-    const { data } = await supabase
-      .from('users')
-      .select('id, username, full_name')
-      .order('full_name');
-    if (data) setAllUsers(data);
-  };
 
   const loadComponents = async () => {
     setLoading(true);
@@ -1538,8 +1499,7 @@ function WHSitePage({ user }) {
           request_number,
           sub_number,
           request_type,
-          iso_number,
-          requester_name
+          iso_number
         )
       `)
       .eq('status', 'ToCollect');
@@ -1731,70 +1691,6 @@ function WHSitePage({ user }) {
 
   const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
 
-  const handleDeliver = (component) => {
-    setDeliverComponent(component);
-    setSecondaryCollector('');
-    setShowDeliverModal(true);
-  };
-
-  const submitDelivery = async () => {
-    if (!deliverComponent) return;
-    
-    try {
-      // Update component status to Done
-      await supabase
-        .from('request_components')
-        .update({ 
-          status: 'Done',
-          secondary_collector: secondaryCollector || null,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', deliverComponent.id);
-      
-      // Decrement inventory from SITE and update record_out
-      if (deliverComponent.ident_code) {
-        await supabase.rpc('decrement_site_qty', {
-          p_ident_code: deliverComponent.ident_code,
-          p_quantity: deliverComponent.quantity
-        });
-        
-        await supabase.rpc('update_record_out', {
-          p_ident_code: deliverComponent.ident_code,
-          p_quantity: deliverComponent.quantity
-        });
-      }
-      
-      // Log the movement
-      await supabase.from('movements').insert({
-        ident_code: deliverComponent.ident_code,
-        movement_type: 'OUT',
-        quantity: deliverComponent.quantity,
-        from_location: 'SITE',
-        to_location: 'DELIVERED',
-        performed_by: user.full_name,
-        notes: `Delivered to ${deliverComponent.requests?.requester_name || 'requester'}${secondaryCollector ? ` (Alt: ${secondaryCollector})` : ''}`,
-        request_number: deliverComponent.requests?.request_number
-      });
-      
-      // Log in component history
-      await supabase.from('component_history').insert({
-        component_id: deliverComponent.id,
-        action: 'Delivered',
-        from_status: 'ToCollect',
-        to_status: 'Done',
-        user_name: user.full_name,
-        notes: secondaryCollector ? `Secondary collector: ${secondaryCollector}` : null
-      });
-      
-      setShowDeliverModal(false);
-      setDeliverComponent(null);
-      setSecondaryCollector('');
-      loadComponents();
-    } catch (error) {
-      alert('Error delivering: ' + error.message);
-    }
-  };
-
   if (loading) return <div>Loading...</div>;
 
   return (
@@ -1862,7 +1758,6 @@ function WHSitePage({ user }) {
                 <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
                 <th style={styles.th}>Qty</th>
-                <th style={styles.th}>Requester</th>
                 <th style={styles.th}>Actions</th>
               </tr>
             </thead>
@@ -1875,18 +1770,10 @@ function WHSitePage({ user }) {
                   <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
                   <td style={styles.td}>{comp.description}</td>
                   <td style={styles.td}>{comp.quantity}</td>
-                  <td style={styles.td}>{comp.requests?.requester_name || '-'}</td>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <ActionButton 
-                        color={COLORS.success} 
-                        onClick={() => handleDeliver(comp)} 
-                        disabled={!canModify}
-                        title="Deliver"
-                      >
-                        📤
-                      </ActionButton>
-                      <ActionButton color={COLORS.primary} title="Create MIR" disabled={!canModify}>📋</ActionButton>
+                      <ActionButton color={COLORS.success} title="Deliver">📤</ActionButton>
+                      <ActionButton color={COLORS.primary} title="Create MIR">📋</ActionButton>
                     </div>
                   </td>
                 </tr>
@@ -2001,81 +1888,6 @@ function WHSitePage({ user }) {
           </button>
           <button onClick={submitPT} style={{ ...styles.button, ...styles.buttonPrimary }}>
             Split
-          </button>
-        </div>
-      </Modal>
-
-      {/* Deliver Modal with Secondary Collector */}
-      <Modal 
-        isOpen={showDeliverModal} 
-        onClose={() => setShowDeliverModal(false)} 
-        title="Deliver Material"
-      >
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ 
-            padding: '16px', 
-            backgroundColor: '#F0FDF4', 
-            borderRadius: '8px',
-            marginBottom: '16px'
-          }}>
-            <p style={{ margin: 0, fontWeight: '600', fontFamily: 'monospace' }}>
-              {deliverComponent?.ident_code}
-            </p>
-            <p style={{ margin: '4px 0 0', color: '#6b7280', fontSize: '14px' }}>
-              {deliverComponent?.description}
-            </p>
-            <p style={{ margin: '8px 0 0', fontSize: '14px' }}>
-              Quantity: <strong>{deliverComponent?.quantity}</strong>
-            </p>
-            <p style={{ margin: '4px 0 0', fontSize: '14px' }}>
-              Requester: <strong>{deliverComponent?.requests?.requester_name || 'N/A'}</strong>
-            </p>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={styles.label}>Secondary Collector (optional)</label>
-            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
-              Add a person who can also collect this material on behalf of the requester
-            </p>
-            <input
-              type="text"
-              value={secondaryCollector}
-              onChange={(e) => setSecondaryCollector(e.target.value)}
-              list="usersList"
-              style={styles.input}
-              placeholder="Start typing name..."
-            />
-            <datalist id="usersList">
-              {allUsers.map(u => (
-                <option key={u.id} value={u.full_name} />
-              ))}
-            </datalist>
-          </div>
-
-          {secondaryCollector && (
-            <div style={{ 
-              padding: '12px', 
-              backgroundColor: '#FEF3C7', 
-              borderRadius: '8px',
-              fontSize: '14px'
-            }}>
-              ℹ️ Both <strong>{deliverComponent?.requests?.requester_name}</strong> and <strong>{secondaryCollector}</strong> can collect this material
-            </div>
-          )}
-        </div>
-        
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button 
-            onClick={() => setShowDeliverModal(false)} 
-            style={{ ...styles.button, ...styles.buttonSecondary }}
-          >
-            Cancel
-          </button>
-          <button 
-            onClick={submitDelivery} 
-            style={{ ...styles.button, ...styles.buttonSuccess }}
-          >
-            ✓ Confirm Delivery
           </button>
         </div>
       </Modal>
@@ -3750,14 +3562,9 @@ function MIRPage({ user }) {
 function MaterialInPage({ user }) {
   const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showReceiveModal, setShowReceiveModal] = useState(false);
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [receiveTag, setReceiveTag] = useState('');
-  const [availableTags, setAvailableTags] = useState([]);
 
   useEffect(() => {
     loadComponents();
-    loadTags();
   }, []);
 
   const loadComponents = async () => {
@@ -3778,57 +3585,31 @@ function MaterialInPage({ user }) {
     setLoading(false);
   };
 
-  const loadTags = async () => {
-    const { data } = await supabase
-      .from('project_materials')
-      .select('tag_number')
-      .not('tag_number', 'is', null);
-    
-    if (data) {
-      const unique = [...new Set(data.map(d => d.tag_number).filter(Boolean))];
-      setAvailableTags(unique.sort());
-    }
-  };
-
-  const openReceiveModal = (component) => {
-    setSelectedComponent(component);
-    setReceiveTag(component.tag_number || component.tag || '');
-    setShowReceiveModal(true);
-  };
-
-  const handleReceive = async () => {
-    if (!selectedComponent) return;
-    
+  const handleReceive = async (component) => {
     try {
       // Increment yard inventory
       await supabase.rpc('increment_yard_qty', { 
-        p_ident_code: selectedComponent.ident_code, 
-        p_qty: selectedComponent.quantity 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
       });
 
-      // Update component with tag and status
+      // Update status to Trans (will go to Site)
       await supabase
         .from('request_components')
-        .update({ 
-          status: 'Trans',
-          tag_number: receiveTag || null
-        })
-        .eq('id', selectedComponent.id);
+        .update({ status: 'Trans' })
+        .eq('id', component.id);
 
       // Log movement
       await supabase.from('movements').insert({
-        ident_code: selectedComponent.ident_code,
+        ident_code: component.ident_code,
         movement_type: 'IN',
-        quantity: selectedComponent.quantity,
+        quantity: component.quantity,
         from_location: 'SUPPLIER',
         to_location: 'YARD',
-        note: `Order received - Request ${selectedComponent.requests?.request_number}${receiveTag ? ` - Tag: ${receiveTag}` : ''}`,
+        note: `Order received - Request ${component.requests?.request_number}`,
         performed_by: user.full_name
       });
 
-      setShowReceiveModal(false);
-      setSelectedComponent(null);
-      setReceiveTag('');
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -3850,7 +3631,6 @@ function MaterialInPage({ user }) {
             <tr>
               <th style={styles.th}>Request #</th>
               <th style={styles.th}>Code</th>
-              <th style={styles.th}>Tag</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
               <th style={styles.th}>Expected</th>
@@ -3864,7 +3644,6 @@ function MaterialInPage({ user }) {
                   {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                 </td>
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
-                <td style={{ ...styles.td, fontSize: '12px' }}>{comp.tag_number || comp.tag || '-'}</td>
                 <td style={styles.td}>{comp.description}</td>
                 <td style={styles.td}>{comp.quantity}</td>
                 <td style={styles.td}>
@@ -3872,7 +3651,7 @@ function MaterialInPage({ user }) {
                 </td>
                 <td style={styles.td}>
                   <button
-                    onClick={() => openReceiveModal(comp)}
+                    onClick={() => handleReceive(comp)}
                     disabled={!canModify}
                     style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
                   >
@@ -3883,7 +3662,7 @@ function MaterialInPage({ user }) {
             ))}
             {components.length === 0 && (
               <tr>
-                <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                   No ordered materials waiting
                 </td>
               </tr>
@@ -3891,63 +3670,6 @@ function MaterialInPage({ user }) {
           </tbody>
         </table>
       </div>
-
-      {/* Receive Modal with Tag */}
-      <Modal
-        isOpen={showReceiveModal}
-        onClose={() => setShowReceiveModal(false)}
-        title="Receive Material"
-      >
-        {selectedComponent && (
-          <div>
-            <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#F0F9FF', borderRadius: '8px' }}>
-              <div style={{ fontWeight: '600', fontSize: '16px', marginBottom: '8px' }}>
-                {selectedComponent.ident_code}
-              </div>
-              <div style={{ color: '#6b7280', fontSize: '14px' }}>
-                {selectedComponent.description}
-              </div>
-              <div style={{ marginTop: '8px', fontWeight: '600' }}>
-                Quantity: {selectedComponent.quantity}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '20px' }}>
-              <label style={styles.label}>Tag Number (Optional)</label>
-              <input
-                type="text"
-                value={receiveTag}
-                onChange={(e) => setReceiveTag(e.target.value)}
-                list="material-tag-options"
-                style={styles.input}
-                placeholder="Select or enter tag..."
-              />
-              <datalist id="material-tag-options">
-                {availableTags.map(t => <option key={t} value={t} />)}
-              </datalist>
-              <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                Select from existing tags or enter a new one. If tag doesn't exist, add it in Database first.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowReceiveModal(false)}
-                style={{ ...styles.button, ...styles.buttonSecondary }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleReceive}
-                style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
-              >
-                ✓ Confirm Receive
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
-    </div>
     </div>
   );
 }
@@ -4033,36 +3755,20 @@ function LogPage({ user }) {
 // ============================================================
 // PAGINA DATABASE
 // ============================================================
-// ============================================================
-// DATABASE PAGE - V26 UPDATE
-// Features: Tag column, dynamic As Per Project counter,
-// pencil edit icon, project_materials integration
-// ============================================================
-
 function DatabasePage({ user }) {
   const [inventory, setInventory] = useState([]);
   const [projectMaterials, setProjectMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editItem, setEditItem] = useState(null);
   const [tagFilter, setTagFilter] = useState('');
-  const [availableTags, setAvailableTags] = useState([]);
-  
-  // Form states for editing
-  const [formData, setFormData] = useState({
-    ident_code: '',
-    description: '',
-    tag_number: '',
-    collected_ten_wh: 0,
-    yard_qty: 0,
-    site_qty: 0,
-    record_out: 0,
-    uom: 'EA'
+  const [allTags, setAllTags] = useState([]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newItem, setNewItem] = useState({
+    ident_code: '', description: '', yard_qty: 0, site_qty: 0,
+    lost_qty: 0, broken_qty: 0, collected_ten_wh: 0, record_out: 0, tag_number: '', uom: 'EA'
   });
-
-  const canModify = user.role === 'admin' || user.perm_database === 'modify';
 
   useEffect(() => {
     loadData();
@@ -4076,81 +3782,62 @@ function DatabasePage({ user }) {
       .from('inventory')
       .select('*')
       .order('ident_code');
+    if (invData) setInventory(invData);
     
-    // Load project materials for As Per Project and Tag info
-    // Group by ident_code + tag_number with sum of pos_qty
+    // Load project materials for As Per Project calculation
     const { data: pmData } = await supabase
       .from('project_materials')
-      .select('ident_code, description, tag_number, uom, pos_qty');
-    
-    if (invData) setInventory(invData);
+      .select('ident_code, tag_number, description, pos_qty');
     if (pmData) {
       setProjectMaterials(pmData);
       // Extract unique tags
-      const tags = [...new Set(pmData.map(p => p.tag_number).filter(Boolean))];
-      setAvailableTags(tags.sort());
+      const tags = [...new Set(pmData.map(p => p.tag_number).filter(Boolean))].sort();
+      setAllTags(tags);
     }
     
     setLoading(false);
   };
 
-  // Combine inventory with project materials data
+  // Combine project_materials with inventory for display
   const getCombinedData = () => {
     // Group project materials by ident_code + tag_number
-    const pmGrouped = {};
+    const grouped = {};
     projectMaterials.forEach(pm => {
       const key = `${pm.ident_code}|${pm.tag_number || ''}`;
-      if (!pmGrouped[key]) {
-        pmGrouped[key] = {
+      if (!grouped[key]) {
+        grouped[key] = {
           ident_code: pm.ident_code,
-          description: pm.description,
           tag_number: pm.tag_number || '',
-          uom: pm.uom,
+          description: pm.description,
           as_per_project: 0
         };
       }
-      pmGrouped[key].as_per_project += (pm.pos_qty || 0);
+      grouped[key].as_per_project += pm.pos_qty || 0;
     });
 
-    // Merge with inventory
-    const combined = [];
-    const inventoryByCode = {};
+    // Add inventory quantities (aggregated by ident_code only)
+    const invByCode = {};
     inventory.forEach(inv => {
-      inventoryByCode[inv.ident_code] = inv;
+      invByCode[inv.ident_code] = inv;
     });
 
-    // Add project materials data with inventory quantities
-    Object.values(pmGrouped).forEach(pm => {
-      const inv = inventoryByCode[pm.ident_code] || {};
-      combined.push({
-        id: inv.id || `pm-${pm.ident_code}-${pm.tag_number}`,
-        ident_code: pm.ident_code,
-        description: pm.description || inv.description,
-        tag_number: pm.tag_number,
-        uom: pm.uom || inv.uom || 'EA',
-        as_per_project: pm.as_per_project,
-        collected_ten_wh: inv.collected_ten_wh || 0,
+    // Build final list
+    const result = Object.values(grouped).map(item => {
+      const inv = invByCode[item.ident_code] || {};
+      return {
+        ...item,
         yard_qty: inv.yard_qty || 0,
         site_qty: inv.site_qty || 0,
+        lost_qty: inv.lost_qty || 0,
+        broken_qty: inv.broken_qty || 0,
+        collected_ten_wh: inv.collected_ten_wh || 0,
         record_out: inv.record_out || 0,
-        hasInventory: !!inv.id
-      });
+        uom: inv.uom || 'EA',
+        inv_id: inv.id
+      };
     });
 
-    // Add inventory items not in project_materials
-    inventory.forEach(inv => {
-      const exists = combined.some(c => c.ident_code === inv.ident_code);
-      if (!exists) {
-        combined.push({
-          ...inv,
-          as_per_project: 0,
-          tag_number: inv.tag_number || '',
-          hasInventory: true
-        });
-      }
-    });
-
-    return combined;
+    return result.sort((a, b) => a.ident_code.localeCompare(b.ident_code));
   };
 
   const combinedData = getCombinedData();
@@ -4160,445 +3847,384 @@ function DatabasePage({ user }) {
       item.ident_code?.toLowerCase().includes(search.toLowerCase()) ||
       item.description?.toLowerCase().includes(search.toLowerCase()) ||
       item.tag_number?.toLowerCase().includes(search.toLowerCase());
-    
     const matchesTag = !tagFilter || item.tag_number === tagFilter;
-    
     return matchesSearch && matchesTag;
   });
 
-  // Calculate dynamic sum of As Per Project for filtered items
-  const filteredAsPerProjectSum = filtered.reduce((sum, item) => sum + (item.as_per_project || 0), 0);
-  const filteredTotalQty = filtered.reduce((sum, item) => sum + (item.yard_qty || 0) + (item.site_qty || 0), 0);
+  // Calculate totals for filtered items
+  const filteredTotals = filtered.reduce((acc, item) => ({
+    asPerProject: acc.asPerProject + (item.as_per_project || 0),
+    totalStock: acc.totalStock + (item.yard_qty || 0) + (item.site_qty || 0)
+  }), { asPerProject: 0, totalStock: 0 });
 
-  const openEditModal = (item) => {
-    setEditItem(item);
-    setFormData({
-      ident_code: item.ident_code || '',
-      description: item.description || '',
-      tag_number: item.tag_number || '',
-      collected_ten_wh: item.collected_ten_wh || 0,
-      yard_qty: item.yard_qty || 0,
-      site_qty: item.site_qty || 0,
-      record_out: item.record_out || 0,
-      uom: item.uom || 'EA'
-    });
+  const handleEdit = (item) => {
+    setEditItem({ ...item });
     setShowEditModal(true);
   };
 
-  const openAddModal = () => {
-    setEditItem(null);
-    setFormData({
-      ident_code: '',
-      description: '',
-      tag_number: '',
-      collected_ten_wh: 0,
-      yard_qty: 0,
-      site_qty: 0,
-      record_out: 0,
-      uom: 'EA'
-    });
-    setShowAddModal(true);
+  const saveEdit = async () => {
+    if (!editItem.inv_id) {
+      // Need to create inventory record first
+      const { data, error } = await supabase.from('inventory').insert({
+        ident_code: editItem.ident_code,
+        description: editItem.description,
+        yard_qty: editItem.yard_qty || 0,
+        site_qty: editItem.site_qty || 0,
+        lost_qty: editItem.lost_qty || 0,
+        broken_qty: editItem.broken_qty || 0,
+        collected_ten_wh: editItem.collected_ten_wh || 0,
+        record_out: editItem.record_out || 0,
+        tag_number: editItem.tag_number || null,
+        uom: editItem.uom || 'EA'
+      }).select().single();
+      
+      if (error) {
+        alert('Error creating inventory record: ' + error.message);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('inventory').update({
+        description: editItem.description,
+        yard_qty: editItem.yard_qty || 0,
+        site_qty: editItem.site_qty || 0,
+        lost_qty: editItem.lost_qty || 0,
+        broken_qty: editItem.broken_qty || 0,
+        collected_ten_wh: editItem.collected_ten_wh || 0,
+        record_out: editItem.record_out || 0,
+        tag_number: editItem.tag_number || null,
+        uom: editItem.uom || 'EA'
+      }).eq('id', editItem.inv_id);
+      
+      if (error) {
+        alert('Error updating: ' + error.message);
+        return;
+      }
+    }
+    
+    setShowEditModal(false);
+    loadData();
   };
 
-  const handleSave = async () => {
-    if (!formData.ident_code) {
+  const saveNew = async () => {
+    if (!newItem.ident_code) {
       alert('Ident Code is required');
       return;
     }
-
-    try {
-      if (editItem && editItem.hasInventory) {
-        // Update existing inventory item
-        await supabase
-          .from('inventory')
-          .update({
-            description: formData.description,
-            tag_number: formData.tag_number,
-            collected_ten_wh: parseInt(formData.collected_ten_wh) || 0,
-            yard_qty: parseInt(formData.yard_qty) || 0,
-            site_qty: parseInt(formData.site_qty) || 0,
-            record_out: parseInt(formData.record_out) || 0,
-            uom: formData.uom
-          })
-          .eq('id', editItem.id);
-      } else {
-        // Insert new or update by ident_code
-        const { data: existing } = await supabase
-          .from('inventory')
-          .select('id')
-          .eq('ident_code', formData.ident_code)
-          .single();
-
-        if (existing) {
-          await supabase
-            .from('inventory')
-            .update({
-              description: formData.description,
-              tag_number: formData.tag_number,
-              collected_ten_wh: parseInt(formData.collected_ten_wh) || 0,
-              yard_qty: parseInt(formData.yard_qty) || 0,
-              site_qty: parseInt(formData.site_qty) || 0,
-              record_out: parseInt(formData.record_out) || 0,
-              uom: formData.uom
-            })
-            .eq('id', existing.id);
-        } else {
-          await supabase
-            .from('inventory')
-            .insert({
-              ident_code: formData.ident_code,
-              description: formData.description,
-              tag_number: formData.tag_number,
-              collected_ten_wh: parseInt(formData.collected_ten_wh) || 0,
-              yard_qty: parseInt(formData.yard_qty) || 0,
-              site_qty: parseInt(formData.site_qty) || 0,
-              lost_qty: 0,
-              broken_qty: 0,
-              record_out: parseInt(formData.record_out) || 0,
-              uom: formData.uom
-            });
-        }
-      }
-      
-      setShowEditModal(false);
-      setShowAddModal(false);
-      loadData();
-    } catch (error) {
-      alert('Error saving: ' + error.message);
+    
+    const { error } = await supabase.from('inventory').upsert({
+      ident_code: newItem.ident_code,
+      description: newItem.description,
+      yard_qty: newItem.yard_qty || 0,
+      site_qty: newItem.site_qty || 0,
+      lost_qty: newItem.lost_qty || 0,
+      broken_qty: newItem.broken_qty || 0,
+      collected_ten_wh: newItem.collected_ten_wh || 0,
+      record_out: newItem.record_out || 0,
+      tag_number: newItem.tag_number || null,
+      uom: newItem.uom || 'EA'
+    }, { onConflict: 'ident_code' });
+    
+    if (error) {
+      alert('Error: ' + error.message);
+      return;
     }
+    
+    setShowAddModal(false);
+    setNewItem({
+      ident_code: '', description: '', yard_qty: 0, site_qty: 0,
+      lost_qty: 0, broken_qty: 0, collected_ten_wh: 0, record_out: 0, tag_number: '', uom: 'EA'
+    });
+    loadData();
   };
 
-  if (loading) return <div style={{ padding: '20px' }}>Loading inventory database...</div>;
+  const canModify = user.role === 'admin' || user.perm_database === 'modify';
+
+  if (loading) return <div>Loading...</div>;
 
   return (
     <div>
-      {/* Search, Filter and Add Button */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', alignItems: 'center' }}>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by code, description, or tag..."
-          style={{ ...styles.input, maxWidth: '400px', flex: 1 }}
+          style={{ ...styles.input, maxWidth: '400px' }}
         />
         <select
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value)}
-          style={{ ...styles.input, maxWidth: '200px' }}
+          style={{ ...styles.select, maxWidth: '200px' }}
         >
           <option value="">All Tags</option>
-          {availableTags.map(tag => (
+          {allTags.map(tag => (
             <option key={tag} value={tag}>{tag}</option>
           ))}
         </select>
-        {canModify && (
-          <button 
-            onClick={openAddModal} 
-            style={{ ...styles.button, ...styles.buttonPrimary }}
-          >
-            + Add
-          </button>
-        )}
-        <button 
-          onClick={loadData} 
-          style={{ ...styles.button, ...styles.buttonSecondary }}
-        >
+        <button onClick={loadData} style={{ ...styles.button, ...styles.buttonSecondary }}>
           🔄 Refresh
         </button>
+        {canModify && (
+          <button 
+            onClick={() => setShowAddModal(true)} 
+            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+          >
+            + Add Manual
+          </button>
+        )}
       </div>
 
-      {/* Dynamic Counter Box - Only shows when filtering */}
+      {/* Dynamic Counter - only when filtering */}
       {(search || tagFilter) && (
-        <div style={{ 
-          display: 'flex', 
-          gap: '24px', 
-          marginBottom: '16px', 
-          padding: '16px', 
-          backgroundColor: '#EFF6FF', 
+        <div style={{
+          display: 'flex',
+          gap: '24px',
+          marginBottom: '16px',
+          padding: '16px',
+          backgroundColor: '#EFF6FF',
           borderRadius: '8px',
           border: '1px solid #BFDBFE'
         }}>
           <div>
             <span style={{ fontSize: '12px', color: '#1E40AF' }}>Filtered Items</span>
-            <div style={{ fontSize: '24px', fontWeight: '700', color: '#1E40AF' }}>{filtered.length}</div>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1E40AF' }}>{filtered.length}</div>
           </div>
           <div>
-            <span style={{ fontSize: '12px', color: '#0369A1' }}>Σ As Per Project</span>
-            <div style={{ fontSize: '24px', fontWeight: '700', color: '#0369A1' }}>{filteredAsPerProjectSum.toLocaleString()}</div>
+            <span style={{ fontSize: '12px', color: '#1E40AF' }}>Σ As Per Project</span>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1E40AF' }}>{filteredTotals.asPerProject}</div>
           </div>
           <div>
-            <span style={{ fontSize: '12px', color: '#059669' }}>Σ Total Stock (YARD+SITE)</span>
-            <div style={{ fontSize: '24px', fontWeight: '700', color: '#059669' }}>{filteredTotalQty.toLocaleString()}</div>
+            <span style={{ fontSize: '12px', color: '#1E40AF' }}>Σ Total Stock (YARD+SITE)</span>
+            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1E40AF' }}>{filteredTotals.totalStock}</div>
           </div>
         </div>
       )}
 
-      <div style={{ marginBottom: '8px', color: '#6b7280', fontSize: '14px' }}>
-        Showing {Math.min(filtered.length, 200)} of {filtered.length} items
-      </div>
-
-      {/* Inventory Table */}
-      <div style={{ ...styles.card, overflowX: 'auto' }}>
+      <div style={styles.card}>
         <div style={styles.cardHeader}>
           <h3 style={{ fontWeight: '600' }}>Inventory Database</h3>
+          <span style={{ color: '#6b7280', fontSize: '14px' }}>{filtered.length} items</span>
         </div>
-        <table style={{ ...styles.table, minWidth: '1300px' }}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Code</th>
-              <th style={styles.th}>Description</th>
-              <th style={styles.th}>Tag</th>
-              <th style={{ ...styles.th, backgroundColor: '#0369A1', color: 'white', textAlign: 'center', fontSize: '11px' }}>As Per<br/>Project</th>
-              <th style={{ ...styles.th, backgroundColor: '#7C3AED', color: 'white', textAlign: 'center', fontSize: '11px' }}>Collected<br/>TEN WH</th>
-              <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>YARD</th>
-              <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>SITE</th>
-              <th style={{ ...styles.th, backgroundColor: '#059669', color: 'white', textAlign: 'center' }}>TOT</th>
-              <th style={{ ...styles.th, backgroundColor: '#DC2626', color: 'white', textAlign: 'center', fontSize: '11px' }}>Record<br/>OUT</th>
-              {canModify && <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>Edit</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.slice(0, 200).map((item, idx) => {
-              const total = (item.yard_qty || 0) + (item.site_qty || 0);
-              return (
-                <tr key={item.id || idx} style={{ backgroundColor: item.hasInventory ? 'white' : '#FFFBEB' }}>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', fontSize: '12px' }}>
-                    {item.ident_code}
-                  </td>
-                  <td style={{ ...styles.td, maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '11px' }} title={item.description}>
-                    {item.description}
-                  </td>
-                  <td style={{ ...styles.td, fontSize: '11px', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.tag_number}>
-                    {item.tag_number || '-'}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', backgroundColor: '#F0F9FF' }}>
-                    {item.as_per_project || 0}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', backgroundColor: '#F5F3FF' }}>
-                    {item.collected_ten_wh || 0}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>
-                    {item.yard_qty || 0}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>
-                    {item.site_qty || 0}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '700', color: '#059669' }}>
-                    {total}
-                  </td>
-                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: '#DC2626' }}>
-                    {item.record_out || 0}
-                  </td>
-                  {canModify && (
-                    <td style={{ ...styles.td, textAlign: 'center' }}>
-                      <button
-                        onClick={() => openEditModal(item)}
-                        style={{ 
-                          padding: '6px 10px', 
-                          borderRadius: '4px', 
-                          border: 'none',
-                          backgroundColor: '#F3F4F6',
-                          cursor: 'pointer',
-                          fontSize: '14px'
-                        }}
-                        title="Edit item"
-                      >
-                        ✏️
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-            {filtered.length === 0 && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={styles.table}>
+            <thead>
               <tr>
-                <td colSpan={canModify ? 10 : 9} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af', padding: '40px' }}>
-                  No items found matching your search
-                </td>
+                <th style={styles.th}>Code</th>
+                <th style={styles.th}>Description</th>
+                <th style={styles.th}>Tag</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.purple, color: 'white', textAlign: 'center' }}>As Per Project</th>
+                <th style={{ ...styles.th, backgroundColor: '#059669', color: 'white', textAlign: 'center' }}>Col. TEN</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>YARD</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>SITE</th>
+                <th style={{ ...styles.th, textAlign: 'center' }}>TOT</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.orange, color: 'white', textAlign: 'center' }}>Record OUT</th>
+                <th style={styles.th}></th>
               </tr>
-            )}
-          </tbody>
-        </table>
-        {filtered.length > 200 && (
-          <div style={{ padding: '16px', textAlign: 'center', color: '#6b7280', borderTop: '1px solid #e5e7eb' }}>
-            Showing first 200 of {filtered.length} results. Refine your search to see more specific items.
-          </div>
-        )}
+            </thead>
+            <tbody>
+              {filtered.slice(0, 200).map((item, idx) => {
+                const total = (item.yard_qty || 0) + (item.site_qty || 0);
+                return (
+                  <tr key={idx}>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
+                    <td style={{ ...styles.td, maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.description}
+                    </td>
+                    <td style={styles.td}>{item.tag_number || '-'}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.as_per_project}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.collected_ten_wh}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.yard_qty}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.site_qty}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.primary }}>{total}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.record_out}</td>
+                    <td style={styles.td}>
+                      {canModify && (
+                        <button
+                          onClick={() => handleEdit(item)}
+                          style={{ ...styles.actionBtn, backgroundColor: COLORS.info }}
+                          title="Edit"
+                        >
+                          ✏️
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                    No items found
+                  </td>
+                </tr>
+              )}
+              {filtered.length > 200 && (
+                <tr>
+                  <td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#D97706', backgroundColor: '#FEF3C7' }}>
+                    Showing first 200 of {filtered.length} results. Use filters to narrow down.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Edit Modal */}
-      <Modal 
-        isOpen={showEditModal} 
-        onClose={() => setShowEditModal(false)} 
-        title={`Edit: ${editItem?.ident_code}`}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={styles.label}>Ident Code</label>
-            <input
-              type="text"
-              value={formData.ident_code}
-              disabled
-              style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
-            />
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={styles.label}>Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
-              style={{ ...styles.input, minHeight: '60px' }}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>Tag Number</label>
-            <input
-              type="text"
-              value={formData.tag_number}
-              onChange={(e) => setFormData({...formData, tag_number: e.target.value})}
-              style={styles.input}
-              list="tag-options-edit"
-            />
-            <datalist id="tag-options-edit">
-              {availableTags.map(t => <option key={t} value={t} />)}
-            </datalist>
-          </div>
-          <div>
-            <label style={styles.label}>UoM</label>
-            <input
-              type="text"
-              value={formData.uom}
-              onChange={(e) => setFormData({...formData, uom: e.target.value})}
-              style={styles.input}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>Collected TEN WH</label>
-            <input
-              type="number"
-              value={formData.collected_ten_wh}
-              onChange={(e) => setFormData({...formData, collected_ten_wh: e.target.value})}
-              style={styles.input}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>YARD Qty</label>
-            <input
-              type="number"
-              value={formData.yard_qty}
-              onChange={(e) => setFormData({...formData, yard_qty: e.target.value})}
-              style={styles.input}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>SITE Qty</label>
-            <input
-              type="number"
-              value={formData.site_qty}
-              onChange={(e) => setFormData({...formData, site_qty: e.target.value})}
-              style={styles.input}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>Record OUT</label>
-            <input
-              type="number"
-              value={formData.record_out}
-              onChange={(e) => setFormData({...formData, record_out: e.target.value})}
-              style={styles.input}
-            />
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-          <button onClick={() => setShowEditModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={handleSave} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Save Changes
-          </button>
-        </div>
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Inventory">
+        {editItem && (
+          <>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Ident Code</label>
+              <input
+                type="text"
+                value={editItem.ident_code}
+                style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                disabled
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Description</label>
+              <input
+                type="text"
+                value={editItem.description || ''}
+                onChange={(e) => setEditItem({ ...editItem, description: e.target.value })}
+                style={styles.input}
+              />
+            </div>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Tag Number</label>
+              <input
+                type="text"
+                list="edit-tag-options"
+                value={editItem.tag_number || ''}
+                onChange={(e) => setEditItem({ ...editItem, tag_number: e.target.value })}
+                style={styles.input}
+              />
+              <datalist id="edit-tag-options">
+                {allTags.map(tag => (
+                  <option key={tag} value={tag} />
+                ))}
+              </datalist>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Collected TEN WH</label>
+                <input
+                  type="number"
+                  value={editItem.collected_ten_wh || 0}
+                  onChange={(e) => setEditItem({ ...editItem, collected_ten_wh: parseInt(e.target.value) || 0 })}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>YARD Qty</label>
+                <input
+                  type="number"
+                  value={editItem.yard_qty || 0}
+                  onChange={(e) => setEditItem({ ...editItem, yard_qty: parseInt(e.target.value) || 0 })}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>SITE Qty</label>
+                <input
+                  type="number"
+                  value={editItem.site_qty || 0}
+                  onChange={(e) => setEditItem({ ...editItem, site_qty: parseInt(e.target.value) || 0 })}
+                  style={styles.input}
+                />
+              </div>
+              <div style={styles.formGroup}>
+                <label style={styles.label}>Record OUT</label>
+                <input
+                  type="number"
+                  value={editItem.record_out || 0}
+                  onChange={(e) => setEditItem({ ...editItem, record_out: parseInt(e.target.value) || 0 })}
+                  style={styles.input}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button onClick={() => setShowEditModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
+                Cancel
+              </button>
+              <button onClick={saveEdit} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
+                Save
+              </button>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* Add Modal */}
-      <Modal 
-        isOpen={showAddModal} 
-        onClose={() => setShowAddModal(false)} 
-        title="Add New Item"
-      >
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Inventory Item">
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Ident Code *</label>
+          <input
+            type="text"
+            value={newItem.ident_code}
+            onChange={(e) => setNewItem({ ...newItem, ident_code: e.target.value })}
+            style={styles.input}
+          />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Description</label>
+          <input
+            type="text"
+            value={newItem.description}
+            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+            style={styles.input}
+          />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Tag Number</label>
+          <input
+            type="text"
+            list="new-tag-options"
+            value={newItem.tag_number}
+            onChange={(e) => setNewItem({ ...newItem, tag_number: e.target.value })}
+            style={styles.input}
+          />
+          <datalist id="new-tag-options">
+            {allTags.map(tag => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={styles.label}>Ident Code *</label>
-            <input
-              type="text"
-              value={formData.ident_code}
-              onChange={(e) => setFormData({...formData, ident_code: e.target.value})}
-              style={styles.input}
-              placeholder="Enter material code"
-            />
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <label style={styles.label}>Description</label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
-              style={{ ...styles.input, minHeight: '60px' }}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>Tag Number</label>
-            <input
-              type="text"
-              value={formData.tag_number}
-              onChange={(e) => setFormData({...formData, tag_number: e.target.value})}
-              style={styles.input}
-              list="tag-options-add"
-            />
-            <datalist id="tag-options-add">
-              {availableTags.map(t => <option key={t} value={t} />)}
-            </datalist>
-          </div>
-          <div>
-            <label style={styles.label}>UoM</label>
-            <input
-              type="text"
-              value={formData.uom}
-              onChange={(e) => setFormData({...formData, uom: e.target.value})}
-              style={styles.input}
-              placeholder="EA"
-            />
-          </div>
-          <div>
+          <div style={styles.formGroup}>
             <label style={styles.label}>YARD Qty</label>
             <input
               type="number"
-              value={formData.yard_qty}
-              onChange={(e) => setFormData({...formData, yard_qty: e.target.value})}
+              value={newItem.yard_qty}
+              onChange={(e) => setNewItem({ ...newItem, yard_qty: parseInt(e.target.value) || 0 })}
               style={styles.input}
             />
           </div>
-          <div>
+          <div style={styles.formGroup}>
             <label style={styles.label}>SITE Qty</label>
             <input
               type="number"
-              value={formData.site_qty}
-              onChange={(e) => setFormData({...formData, site_qty: e.target.value})}
+              value={newItem.site_qty}
+              onChange={(e) => setNewItem({ ...newItem, site_qty: parseInt(e.target.value) || 0 })}
               style={styles.input}
             />
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
           <button onClick={() => setShowAddModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
             Cancel
           </button>
-          <button onClick={handleSave} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Add Item
+          <button onClick={saveNew} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
+            Save
           </button>
         </div>
       </Modal>
     </div>
   );
 }
-
 
 // ============================================================
 // APP PRINCIPALE
