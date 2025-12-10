@@ -1,6 +1,6 @@
 // ============================================================
-// MATERIALS MANAGER - APP.JSX COMPLETA
-// MAX STREICHER Edition - English Version with Fixes
+// MATERIALS MANAGER V26.1 - APP.JSX COMPLETA
+// MAX STREICHER Edition - All Features Implemented
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -48,6 +48,7 @@ const STATUS_COLORS = {
 const MIR_CATEGORIES = ['Erection', 'Bulk', 'Instrument', 'Support'];
 const REQUEST_TYPES = ['Piping', 'Mechanical', 'TestPack'];
 const SUB_CATEGORIES = ['Bulk', 'Erection', 'Support'];
+const MOVEMENT_TYPES = ['IN', 'OUT', 'LOST', 'BROKEN', 'BAL', 'TRANSFER'];
 
 // ============================================================
 // STILI GLOBALI
@@ -101,25 +102,12 @@ const styles = {
     color: '#9ca3af',
     cursor: 'pointer',
     transition: 'all 0.2s',
-    borderLeft: '4px solid transparent',
-    position: 'relative'
+    borderLeft: '4px solid transparent'
   },
   navItemActive: {
     backgroundColor: 'rgba(227, 30, 36, 0.2)',
     borderLeftColor: COLORS.primary,
     color: 'white'
-  },
-  badge: {
-    position: 'absolute',
-    right: '12px',
-    backgroundColor: COLORS.primary,
-    color: 'white',
-    borderRadius: '10px',
-    padding: '2px 8px',
-    fontSize: '11px',
-    fontWeight: 'bold',
-    minWidth: '20px',
-    textAlign: 'center'
   },
   main: {
     flex: 1,
@@ -132,8 +120,8 @@ const styles = {
     padding: '16px 24px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
   content: {
     flex: 1,
@@ -144,7 +132,7 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '8px',
     boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    marginBottom: '24px'
+    overflow: 'hidden'
   },
   cardHeader: {
     padding: '16px',
@@ -155,8 +143,7 @@ const styles = {
   },
   table: {
     width: '100%',
-    borderCollapse: 'separate',
-    borderSpacing: '0'
+    borderCollapse: 'collapse'
   },
   th: {
     padding: '12px 16px',
@@ -170,8 +157,7 @@ const styles = {
   td: {
     padding: '12px 16px',
     borderBottom: '1px solid #e5e7eb',
-    fontSize: '14px',
-    verticalAlign: 'middle'
+    fontSize: '14px'
   },
   button: {
     padding: '8px 16px',
@@ -180,7 +166,7 @@ const styles = {
     cursor: 'pointer',
     fontSize: '14px',
     fontWeight: '500',
-    display: 'inline-flex',
+    display: 'flex',
     alignItems: 'center',
     gap: '8px',
     transition: 'all 0.2s'
@@ -190,35 +176,14 @@ const styles = {
     color: 'white'
   },
   buttonSecondary: {
-    backgroundColor: '#e5e7eb',
+    backgroundColor: '#f3f4f6',
     color: '#374151'
-  },
-  actionBtn: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '4px',
-    border: 'none',
-    color: 'white',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'transform 0.2s'
-  },
-  statusBadge: {
-    padding: '2px 8px',
-    borderRadius: '4px',
-    color: 'white',
-    fontSize: '11px',
-    fontWeight: '500'
   },
   input: {
     width: '100%',
     padding: '10px 12px',
-    border: '1px solid #d1d5db',
     borderRadius: '6px',
+    border: '1px solid #d1d5db',
     fontSize: '14px',
     outline: 'none',
     boxSizing: 'border-box'
@@ -226,35 +191,12 @@ const styles = {
   select: {
     width: '100%',
     padding: '10px 12px',
-    border: '1px solid #d1d5db',
     borderRadius: '6px',
+    border: '1px solid #d1d5db',
     fontSize: '14px',
+    outline: 'none',
     backgroundColor: 'white',
     boxSizing: 'border-box'
-  },
-  modal: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '24px',
-    maxWidth: '500px',
-    width: '90%',
-    maxHeight: '90vh',
-    overflowY: 'auto'
-  },
-  formGroup: {
-    marginBottom: '16px'
   },
   label: {
     display: 'block',
@@ -263,42 +205,57 @@ const styles = {
     fontWeight: '500',
     color: '#374151'
   },
-  statsBox: {
-    padding: '24px',
-    borderRadius: '8px',
-    color: 'white'
+  statusBadge: {
+    padding: '4px 8px',
+    borderRadius: '4px',
+    color: 'white',
+    fontSize: '11px',
+    fontWeight: '500',
+    display: 'inline-block'
   },
-  // Grid styles for consistent spacing
-  gridRow: {
-    display: 'grid',
-    gap: '16px',
-    marginBottom: '16px'
-  },
-  gridTwo: {
-    gridTemplateColumns: '1fr 1fr'
-  },
-  gridThree: {
-    gridTemplateColumns: '1fr 1fr 1fr'
+  actionButton: {
+    width: '32px',
+    height: '32px',
+    borderRadius: '4px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'white',
+    fontSize: '12px',
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    border: 'none',
+    transition: 'transform 0.2s'
   }
 };
 
 // ============================================================
-// COMPONENTI UTILITY
+// COMPONENTI DI UTILITÀ
 // ============================================================
-function Modal({ isOpen, onClose, title, children }) {
+function Modal({ isOpen, onClose, title, children, wide }) {
   if (!isOpen) return null;
-  
   return (
-    <div style={styles.modal} onClick={onClose}>
-      <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+    <div style={{
+      position: 'fixed',
+      inset: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }} onClick={onClose}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        padding: '24px',
+        maxWidth: wide ? '800px' : '500px',
+        width: '90%',
+        maxHeight: '80vh',
+        overflow: 'auto'
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600' }}>{title}</h3>
-          <button 
-            onClick={onClose}
-            style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#9ca3af' }}
-          >
-            ×
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button>
         </div>
         {children}
       </div>
@@ -306,15 +263,15 @@ function Modal({ isOpen, onClose, title, children }) {
   );
 }
 
-function ActionButton({ color, onClick, disabled, title, children }) {
+function ActionButton({ color, onClick, disabled, children, title }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       title={title}
       style={{
-        ...styles.actionBtn,
-        backgroundColor: disabled ? '#9CA3AF' : color,
+        ...styles.actionButton,
+        backgroundColor: disabled ? '#d1d5db' : color,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.6 : 1
       }}
@@ -324,16 +281,23 @@ function ActionButton({ color, onClick, disabled, title, children }) {
   );
 }
 
-function StatusBadge({ status }) {
+function StatBox({ title, value, color, subtitle }) {
   return (
-    <span style={{ ...styles.statusBadge, backgroundColor: STATUS_COLORS[status] || COLORS.gray }}>
-      {status}
-    </span>
+    <div style={{
+      padding: '24px',
+      borderRadius: '8px',
+      backgroundColor: color,
+      color: 'white'
+    }}>
+      <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', opacity: 0.9 }}>{title}</h3>
+      <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{value}</p>
+      {subtitle && <p style={{ fontSize: '12px', opacity: 0.75, marginTop: '4px' }}>{subtitle}</p>}
+    </div>
   );
 }
 
 // ============================================================
-// COMPONENTE LOGIN
+// LOGIN SCREEN
 // ============================================================
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -341,13 +305,16 @@ function LoginScreen({ onLogin }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  const handleLogin = async () => {
+    if (!username || !password) {
+      setError('Please enter username and password');
+      return;
+    }
     setLoading(true);
     setError('');
 
     try {
-      const { data, error: dbError } = await supabase
+      const { data, error: queryError } = await supabase
         .from('users')
         .select('*')
         .eq('username', username)
@@ -355,17 +322,15 @@ function LoginScreen({ onLogin }) {
         .eq('is_active', true)
         .single();
 
-      if (dbError || !data) {
+      if (queryError || !data) {
         setError('Invalid username or password');
-        setLoading(false);
-        return;
+      } else {
+        onLogin(data);
       }
-
-      onLogin(data);
     } catch (err) {
-      setError('Login error. Please try again.');
-      setLoading(false);
+      setError('Connection error');
     }
+    setLoading(false);
   };
 
   return (
@@ -386,107 +351,105 @@ function LoginScreen({ onLogin }) {
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
-            width: '80px',
-            height: '80px',
+            width: '64px',
+            height: '64px',
             backgroundColor: COLORS.primary,
-            borderRadius: '16px',
+            borderRadius: '12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 16px',
             color: 'white',
             fontWeight: 'bold',
-            fontSize: '24px'
+            fontSize: '20px'
           }}>
             STR
           </div>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937' }}>MAX STREICHER</h1>
-          <p style={{ color: '#6b7280', marginTop: '8px' }}>Materials Manager</p>
+          <p style={{ color: '#6b7280', marginTop: '4px' }}>Materials Manager V26.1</p>
         </div>
 
-        <form onSubmit={handleLogin}>
-          {error && (
-            <div style={{
-              backgroundColor: '#FEE2E2',
-              color: '#DC2626',
-              padding: '12px',
-              borderRadius: '6px',
-              marginBottom: '16px',
-              fontSize: '14px'
-            }}>
-              {error}
-            </div>
-          )}
-
-          <div style={{ marginBottom: '16px' }}>
-            <label style={styles.label}>Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              style={styles.input}
-              placeholder="Enter username"
-              required
-            />
+        {error && (
+          <div style={{
+            padding: '12px',
+            backgroundColor: '#FEE2E2',
+            color: '#DC2626',
+            borderRadius: '6px',
+            marginBottom: '16px',
+            fontSize: '14px'
+          }}>
+            {error}
           </div>
+        )}
 
-          <div style={{ marginBottom: '24px' }}>
-            <label style={styles.label}>Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              style={styles.input}
-              placeholder="Enter password"
-              required
-            />
-          </div>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Username</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            style={styles.input}
+            placeholder="Enter username"
+            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+          />
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              ...styles.button,
-              ...styles.buttonPrimary,
-              width: '100%',
-              justifyContent: 'center',
-              padding: '12px',
-              opacity: loading ? 0.7 : 1
-            }}
-          >
-            {loading ? 'Loading...' : 'Login'}
-          </button>
-        </form>
+        <div style={{ marginBottom: '24px' }}>
+          <label style={styles.label}>Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={styles.input}
+            placeholder="Enter password"
+            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+          />
+        </div>
+
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          style={{
+            ...styles.button,
+            ...styles.buttonPrimary,
+            width: '100%',
+            justifyContent: 'center',
+            padding: '12px',
+            fontSize: '16px'
+          }}
+        >
+          {loading ? 'Loading...' : 'Login'}
+        </button>
       </div>
     </div>
   );
 }
 
 // ============================================================
-// SIDEBAR CON BADGE
+// SIDEBAR NAVIGATION
 // ============================================================
 function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, badges }) {
   const menuItems = [
-    { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+    { id: 'dashboard', icon: '📊', label: 'Dashboard', perm: null },
     { id: 'requests', icon: '📋', label: 'Requests', perm: 'perm_requests' },
     { id: 'mir', icon: '📦', label: 'MIR', perm: 'perm_mir' },
-    { id: 'materialIn', icon: '📥', label: 'Material In', perm: 'perm_material_in', badge: 'materialIn' },
-    { id: 'siteIn', icon: '🏗️', label: 'Site IN', perm: 'perm_site_in', badge: 'siteIn' },
-    { id: 'whSite', icon: '🏭', label: 'WH Site', perm: 'perm_wh_site', badge: 'whSite' },
-    { id: 'whYard', icon: '🏢', label: 'WH Yard', perm: 'perm_wh_yard', badge: 'whYard' },
-    { id: 'engineering', icon: '⚙️', label: 'Engineering', perm: 'perm_engineering', badge: 'engineering' },
-    { id: 'spareParts', icon: '🔧', label: 'Spare Parts', perm: 'perm_spare_parts', badge: 'spareParts' },
-    { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders', badge: 'orders' },
-    { id: 'management', icon: '💼', label: 'Management', perm: 'perm_management', badge: 'management' },
-    { id: 'log', icon: '📜', label: 'Log', perm: 'perm_log' },
+    { id: 'materialIn', icon: '📥', label: 'Material In', perm: 'perm_material_in' },
+    { id: 'siteIn', icon: '🏗️', label: 'Site IN', perm: 'perm_site_in' },
+    { id: 'whSite', icon: '🏭', label: 'WH Site', perm: 'perm_wh_site' },
+    { id: 'whYard', icon: '🏢', label: 'WH Yard', perm: 'perm_wh_yard' },
+    { id: 'engineering', icon: '⚙️', label: 'Engineering', perm: 'perm_engineering' },
+    { id: 'spareParts', icon: '🔧', label: 'Spare Parts', perm: 'perm_spare_parts' },
+    { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders' },
+    { id: 'log', icon: '📄', label: 'Log', perm: 'perm_movements' },
+    { id: 'management', icon: '💼', label: 'Management', perm: 'perm_management' },
     { id: 'database', icon: '💾', label: 'Database', perm: 'perm_database' }
   ];
 
-  const canAccess = (item) => {
-    if (user.role === 'admin') return true;
+  const visibleItems = menuItems.filter(item => {
     if (!item.perm) return true;
+    if (user.role === 'admin') return true;
     return user[item.perm] && user[item.perm] !== 'none';
-  };
+  });
 
   return (
     <div style={{ ...styles.sidebar, ...(collapsed ? styles.sidebarCollapsed : {}) }}>
@@ -498,16 +461,16 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
             <p style={{ color: '#9ca3af', fontSize: '12px' }}>Materials Manager</p>
           </div>
         )}
-        <button 
+        <button
           onClick={() => setCollapsed(!collapsed)}
           style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '18px' }}
         >
           {collapsed ? '→' : '←'}
         </button>
       </div>
-
+      
       <nav style={styles.nav}>
-        {menuItems.filter(canAccess).map(item => (
+        {visibleItems.map(item => (
           <div
             key={item.id}
             onClick={() => setCurrentPage(item.id)}
@@ -517,16 +480,29 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
             }}
           >
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            {!collapsed && <span style={{ fontSize: '14px' }}>{item.label}</span>}
-            {!collapsed && item.badge && badges[item.badge] > 0 && (
-              <span style={styles.badge}>{badges[item.badge]}</span>
+            {!collapsed && (
+              <span style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {item.label}
+                {badges[item.id] > 0 && (
+                  <span style={{
+                    backgroundColor: COLORS.primary,
+                    color: 'white',
+                    padding: '2px 6px',
+                    borderRadius: '10px',
+                    fontSize: '10px',
+                    fontWeight: 'bold'
+                  }}>
+                    {badges[item.id]}
+                  </span>
+                )}
+              </span>
             )}
           </div>
         ))}
       </nav>
-
+      
       <div style={{ padding: '16px', borderTop: '1px solid #374151' }}>
-        <div style={{ ...styles.navItem, padding: '8px 0' }}>
+        <div style={{ ...styles.navItem, padding: '8px 16px' }}>
           <span>🚪</span>
           {!collapsed && <span style={{ fontSize: '14px' }}>Logout</span>}
         </div>
@@ -536,124 +512,99 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
 }
 
 // ============================================================
-// PAGINA DASHBOARD
+// DASHBOARD
 // ============================================================
-function DashboardPage({ user }) {
+function Dashboard({ user }) {
   const [stats, setStats] = useState({
-    yardQty: 0, siteQty: 0, lostQty: 0, brokenQty: 0,
-    yardItems: 0, siteItems: 0, lostItems: 0, brokenItems: 0,
-    activeRequests: 0, waitingEng: 0, toOrder: 0
+    yard: 0, site: 0, lost: 0, broken: 0,
+    activeRequests: 0, pendingEng: 0, toOrder: 0
   });
-  const [recentMovements, setRecentMovements] = useState([]);
+  const [movements, setMovements] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadDashboardData();
+    loadDashboard();
   }, []);
 
-  const loadDashboardData = async () => {
-    // Load inventory stats
-    const { data: inventory } = await supabase
-      .from('project_database')
-      .select('qty_yard, qty_site, qty_lost, qty_broken');
-
-    if (inventory) {
-      let yard = 0, site = 0, lost = 0, broken = 0;
-      let yardI = 0, siteI = 0, lostI = 0, brokenI = 0;
-      
-      inventory.forEach(item => {
-        if (item.qty_yard > 0) { yard += item.qty_yard; yardI++; }
-        if (item.qty_site > 0) { site += item.qty_site; siteI++; }
-        if (item.qty_lost > 0) { lost += item.qty_lost; lostI++; }
-        if (item.qty_broken > 0) { broken += item.qty_broken; brokenI++; }
-      });
-
+  const loadDashboard = async () => {
+    // Load inventory totals
+    const { data: invData } = await supabase
+      .from('inventory')
+      .select('yard_qty, site_qty, lost_qty, broken_qty');
+    
+    if (invData) {
       setStats(prev => ({
         ...prev,
-        yardQty: yard, siteQty: site, lostQty: lost, brokenQty: broken,
-        yardItems: yardI, siteItems: siteI, lostItems: lostI, brokenItems: brokenI
+        yard: invData.reduce((sum, i) => sum + (i.yard_qty || 0), 0),
+        site: invData.reduce((sum, i) => sum + (i.site_qty || 0), 0),
+        lost: invData.reduce((sum, i) => sum + (i.lost_qty || 0), 0),
+        broken: invData.reduce((sum, i) => sum + (i.broken_qty || 0), 0)
       }));
     }
 
     // Load request counts
-    const { data: components } = await supabase
+    const { data: siteData } = await supabase
       .from('request_components')
-      .select('status');
+      .select('id')
+      .eq('status', 'Site');
+    
+    const { data: engData } = await supabase
+      .from('request_components')
+      .select('id')
+      .eq('status', 'Eng');
 
-    if (components) {
-      const active = components.filter(c => !['Done', 'ToCollect'].includes(c.status)).length;
-      const waiting = components.filter(c => c.status === 'Eng').length;
-      const toOrder = components.filter(c => c.status === 'Order').length;
+    const { data: orderData } = await supabase
+      .from('request_components')
+      .select('id')
+      .eq('status', 'Order');
 
-      setStats(prev => ({
-        ...prev,
-        activeRequests: active,
-        waitingEng: waiting,
-        toOrder: toOrder
-      }));
-    }
+    setStats(prev => ({
+      ...prev,
+      activeRequests: siteData?.length || 0,
+      pendingEng: engData?.length || 0,
+      toOrder: orderData?.length || 0
+    }));
 
     // Load recent movements
-    const { data: movements } = await supabase
+    const { data: movData } = await supabase
       .from('movements')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(10);
-
-    if (movements) setRecentMovements(movements);
+      .limit(5);
+    
+    if (movData) setMovements(movData);
+    setLoading(false);
   };
+
+  if (loading) return <div>Loading...</div>;
 
   return (
     <div>
-      {/* Inventory Boxes - 4 columns equal size */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ ...styles.statsBox, backgroundColor: COLORS.secondary }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>YARD</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.yardQty.toLocaleString()}</p>
-          <p style={{ fontSize: '14px', opacity: 0.75 }}>{stats.yardItems} items</p>
-        </div>
-        <div style={{ ...styles.statsBox, backgroundColor: COLORS.info }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>SITE</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.siteQty.toLocaleString()}</p>
-          <p style={{ fontSize: '14px', opacity: 0.75 }}>{stats.siteItems} items</p>
-        </div>
-        <div style={{ ...styles.statsBox, backgroundColor: COLORS.orange }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>LOST</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.lostQty.toLocaleString()}</p>
-          <p style={{ fontSize: '14px', opacity: 0.75 }}>{stats.lostItems} items</p>
-        </div>
-        <div style={{ ...styles.statsBox, backgroundColor: COLORS.purple }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px' }}>BROKEN</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{stats.brokenQty.toLocaleString()}</p>
-          <p style={{ fontSize: '14px', opacity: 0.75 }}>{stats.brokenItems} items</p>
-        </div>
+        <StatBox title="YARD" value={stats.yard.toLocaleString()} color={COLORS.secondary} />
+        <StatBox title="SITE" value={stats.site.toLocaleString()} color={COLORS.info} />
+        <StatBox title="LOST" value={stats.lost.toLocaleString()} color={COLORS.orange} />
+        <StatBox title="BROKEN" value={stats.broken.toLocaleString()} color={COLORS.purple} />
       </div>
 
-      {/* Stats - 3 columns equal size */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={styles.card}>
-          <div style={{ padding: '24px' }}>
-            <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Active Requests</h3>
-            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.primary }}>{stats.activeRequests}</p>
-          </div>
+        <div style={{ ...styles.card, padding: '24px' }}>
+          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Active Requests</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.primary }}>{stats.activeRequests}</p>
         </div>
-        <div style={styles.card}>
-          <div style={{ padding: '24px' }}>
-            <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Waiting Engineering</h3>
-            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.purple }}>{stats.waitingEng}</p>
-          </div>
+        <div style={{ ...styles.card, padding: '24px' }}>
+          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Pending Engineering</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.purple }}>{stats.pendingEng}</p>
         </div>
-        <div style={styles.card}>
-          <div style={{ padding: '24px' }}>
-            <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>To Order</h3>
-            <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.warning }}>{stats.toOrder}</p>
-          </div>
+        <div style={{ ...styles.card, padding: '24px' }}>
+          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>To Order</h3>
+          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.warning }}>{stats.toOrder}</p>
         </div>
       </div>
 
-      {/* Recent Movements */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontSize: '16px', fontWeight: '600' }}>Recent Movements</h3>
+          <h3 style={{ fontWeight: '600' }}>Recent Movements</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -662,38 +613,28 @@ function DashboardPage({ user }) {
               <th style={styles.th}>Type</th>
               <th style={styles.th}>Code</th>
               <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Location</th>
-              <th style={styles.th}>Note</th>
+              <th style={styles.th}>From → To</th>
             </tr>
           </thead>
           <tbody>
-            {recentMovements.map((mov, idx) => (
+            {movements.map((mov, idx) => (
               <tr key={idx}>
-                <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
+                <td style={styles.td}>{new Date(mov.created_at).toLocaleDateString()}</td>
                 <td style={styles.td}>
                   <span style={{
                     ...styles.statusBadge,
                     backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
                                     mov.movement_type === 'OUT' ? COLORS.primary :
-                                    mov.movement_type === 'LOST' ? COLORS.orange :
-                                    mov.movement_type === 'BROKEN' ? COLORS.purple : COLORS.gray
+                                    mov.movement_type === 'LOST' ? COLORS.orange : COLORS.purple
                   }}>
                     {mov.movement_type}
                   </span>
                 </td>
-                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{mov.ident_code}</td>
-                <td style={styles.td}>{mov.quantity > 0 ? '+' : ''}{mov.quantity}</td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
+                <td style={styles.td}>{mov.quantity}</td>
                 <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
-                <td style={{ ...styles.td, color: '#6b7280', fontSize: '12px' }}>{mov.note}</td>
               </tr>
             ))}
-            {recentMovements.length === 0 && (
-              <tr>
-                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No movements recorded
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
@@ -702,7 +643,7 @@ function DashboardPage({ user }) {
 }
 
 // ============================================================
-// PAGINA NUOVA RICHIESTA - V26 with Project Materials
+// PAGINA NUOVA RICHIESTA - V26.1 con HF Check e Secondary Collector
 // ============================================================
 function RequestsPage({ user }) {
   const [requestType, setRequestType] = useState('Piping');
@@ -723,11 +664,16 @@ function RequestsPage({ user }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [overQuantityWarning, setOverQuantityWarning] = useState(null);
+  const [hfError, setHfError] = useState('');
+  // NEW: Secondary Collector for TestPack
+  const [secondaryCollector, setSecondaryCollector] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
 
   useEffect(() => {
     loadIsoOptions();
     loadNextNumber();
     loadTagOptions();
+    loadUsers();
   }, []);
 
   const loadNextNumber = async () => {
@@ -761,6 +707,16 @@ function RequestsPage({ user }) {
     }
   };
 
+  // NEW: Load all users for autocomplete
+  const loadUsers = async () => {
+    const { data } = await supabase
+      .from('users')
+      .select('id, username, full_name, badge_number')
+      .eq('is_active', true)
+      .order('full_name');
+    if (data) setAllUsers(data);
+  };
+
   const loadSpoolOptions = async (iso) => {
     const { data } = await supabase
       .from('project_materials')
@@ -779,7 +735,6 @@ function RequestsPage({ user }) {
       .select('ident_code, tag_number, description, pos_qty, uom')
       .eq('full_spool_number', spool);
     if (data) {
-      // Map to expected format
       const mapped = data.map(d => ({
         ident_code: d.ident_code,
         tag: d.tag_number || '',
@@ -807,11 +762,41 @@ function RequestsPage({ user }) {
     if (value) loadIdentOptions(value);
   };
 
+  // NEW: Check HF duplicate when user enters HF number
+  const checkHfDuplicate = async (hf) => {
+    if (!hf) {
+      setHfError('');
+      return false;
+    }
+    
+    const { data } = await supabase
+      .from('requests')
+      .select('id, request_number')
+      .eq('hf_number', hf)
+      .neq('status', 'Cancelled');
+    
+    if (data && data.length > 0) {
+      const existingReq = String(data[0].request_number).padStart(5, '0');
+      setHfError(`⚠️ HF "${hf}" already exists in request ${existingReq}`);
+      return true;
+    }
+    setHfError('');
+    return false;
+  };
+
+  const handleHfChange = async (value) => {
+    setHfNumber(value);
+    if (value.length >= 3) {
+      await checkHfDuplicate(value);
+    } else {
+      setHfError('');
+    }
+  };
+
   // Check over-quantity when adding material
   const checkOverQuantity = async (identCode, qty) => {
     if (!spoolNumber || !identCode) return false;
     
-    // Get project quantity for this spool+code
     const { data: projectData } = await supabase
       .from('project_materials')
       .select('pos_qty')
@@ -820,7 +805,6 @@ function RequestsPage({ user }) {
     
     const projectQty = projectData?.reduce((sum, d) => sum + (d.pos_qty || 0), 0) || 0;
     
-    // Get already requested quantity (excluding Done and Cancelled)
     const { data: requestedData } = await supabase
       .from('request_components')
       .select('quantity')
@@ -847,34 +831,33 @@ function RequestsPage({ user }) {
 
   const handleRequestTypeChange = (type) => {
     setRequestType(type);
-    // Reset fields when changing type
     setIsoNumber('');
     setSpoolNumber('');
     setSpoolOptions([]);
     setHfNumber('');
-    setTestPackNumber('');
+    setHfError('');
     setDescription('');
+    setTestPackNumber('');
     setMaterials([]);
     setOverQuantityWarning(null);
+    setSecondaryCollector('');
   };
 
   const addMaterial = async () => {
     if (!currentMaterial.ident_code || !currentMaterial.qty) return;
     
-    // Check over-quantity for Piping
-    if (requestType === 'Piping') {
+    // Check over-quantity
+    if (requestType === 'Piping' && spoolNumber) {
       await checkOverQuantity(currentMaterial.ident_code, currentMaterial.qty);
     }
     
-    const selectedMat = identOptions.find(o => 
-      o.ident_code === currentMaterial.ident_code && 
-      (o.tag || '') === (currentMaterial.tag || '')
-    );
-
+    const selected = identOptions.find(o => o.ident_code === currentMaterial.ident_code);
     setMaterials([...materials, {
-      ...currentMaterial,
-      description: selectedMat?.description || '',
-      pos_qty: selectedMat?.pos_qty || 0
+      ident_code: currentMaterial.ident_code,
+      tag: currentMaterial.tag,
+      description: selected?.description || '',
+      qty: currentMaterial.qty,
+      pos_qty: selected?.pos_qty || 0
     }]);
     setCurrentMaterial({ ident_code: '', tag: '', qty: '' });
   };
@@ -888,15 +871,16 @@ function RequestsPage({ user }) {
     setMessage({ type: '', text: '' });
 
     try {
-      // Validation
+      // Validations
       if (requestType === 'Piping') {
-        if (!isoNumber) throw new Error('ISO Number is required for Piping');
-        if (!spoolNumber) throw new Error('Full Spool Number is required for Piping');
+        if (!isoNumber) throw new Error('ISO Number is required');
+        if (!spoolNumber) throw new Error('Full Spool Number is required');
         if (subCategory === 'Erection' && !hfNumber) throw new Error('HF Number is required for Erection');
+        if (subCategory === 'Erection' && hfError) throw new Error('Cannot create request with duplicate HF Number');
         if (materials.length === 0) throw new Error('Add at least one material');
       }
-      if (requestType === 'Mechanical' && !description) {
-        throw new Error('Description is required for Mechanical');
+      if (requestType === 'Mechanical') {
+        if (!description) throw new Error('Description is required');
       }
       if (requestType === 'TestPack') {
         if (!testPackNumber) throw new Error('Test Pack Number is required');
@@ -923,6 +907,7 @@ function RequestsPage({ user }) {
           hf_number: (requestType === 'Piping' && subCategory === 'Erection') ? (hfNumber || null) : null,
           test_pack_number: requestType === 'TestPack' ? testPackNumber : null,
           missing_type: requestType === 'TestPack' ? missingType : null,
+          secondary_collector: requestType === 'TestPack' ? (secondaryCollector || null) : null,
           description: description || null
         })
         .select()
@@ -931,15 +916,10 @@ function RequestsPage({ user }) {
       if (reqError) throw reqError;
 
       // Create components
-      const statusMap = {
-        'site': 'Site',
-        'yard': 'Yard',
-        'engineering': 'Eng'
-      };
+      const statusMap = { 'site': 'Site', 'yard': 'Yard', 'engineering': 'Eng' };
       const status = statusMap[destination];
 
       if (requestType === 'Mechanical') {
-        // For Mechanical, create one component with just description
         await supabase
           .from('request_components')
           .insert({
@@ -951,7 +931,6 @@ function RequestsPage({ user }) {
             current_location: destination === 'yard' ? 'YARD' : 'SITE'
           });
       } else {
-        // For Piping and TestPack, create components from materials list
         for (const mat of materials) {
           const { error: compError } = await supabase
             .from('request_components')
@@ -988,10 +967,12 @@ function RequestsPage({ user }) {
       setSpoolNumber('');
       setSpoolOptions([]);
       setHfNumber('');
+      setHfError('');
       setDescription('');
       setTestPackNumber('');
       setMaterials([]);
       setOverQuantityWarning(null);
+      setSecondaryCollector('');
       loadNextNumber();
 
     } catch (error) {
@@ -1002,6 +983,7 @@ function RequestsPage({ user }) {
   };
 
   const canModify = user.role === 'admin' || user.perm_requests === 'modify';
+  const hasOverQuantity = overQuantityWarning !== null;
 
   return (
     <div>
@@ -1070,7 +1052,7 @@ function RequestsPage({ user }) {
                 </select>
               </div>
 
-              {/* ISO Number & Full Spool Number - Equal columns */}
+              {/* ISO Number & Full Spool Number */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                 <div>
                   <label style={styles.label}>ISO Number *</label>
@@ -1084,7 +1066,7 @@ function RequestsPage({ user }) {
                     disabled={!canModify}
                   />
                   <datalist id="iso-options">
-                    {isoOptions.map(iso => (
+                    {isoOptions.slice(0, 100).map(iso => (
                       <option key={iso} value={iso} />
                     ))}
                   </datalist>
@@ -1120,29 +1102,35 @@ function RequestsPage({ user }) {
                 </div>
               </div>
 
-              {/* HF Number - Only visible for Erection */}
+              {/* HF Number - Only for Erection with duplicate check */}
               {subCategory === 'Erection' && (
                 <div style={{ 
                   marginBottom: '20px', 
                   padding: '16px', 
-                  backgroundColor: '#FEF3C7', 
+                  backgroundColor: hfError ? '#FEE2E2' : '#FEF3C7', 
                   borderRadius: '8px',
-                  border: '1px solid #F59E0B'
+                  border: `1px solid ${hfError ? '#EF4444' : '#F59E0B'}`
                 }}>
-                  <label style={{ ...styles.label, color: '#92400E' }}>
+                  <label style={{ ...styles.label, color: hfError ? '#DC2626' : '#92400E' }}>
                     🔩 HF Number (Flanged Joint) *
                   </label>
                   <input
                     type="text"
                     value={hfNumber}
-                    onChange={(e) => setHfNumber(e.target.value)}
-                    style={{ ...styles.input, backgroundColor: 'white' }}
+                    onChange={(e) => handleHfChange(e.target.value)}
+                    style={{ ...styles.input, backgroundColor: 'white', borderColor: hfError ? '#EF4444' : '#d1d5db' }}
                     placeholder="Enter HF Number"
                     disabled={!canModify}
                   />
-                  <p style={{ fontSize: '12px', color: '#92400E', marginTop: '6px' }}>
-                    Required for Erection materials - identifies the flanged joint
-                  </p>
+                  {hfError ? (
+                    <p style={{ fontSize: '13px', color: '#DC2626', marginTop: '8px', fontWeight: '500' }}>
+                      {hfError}
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: '12px', color: '#92400E', marginTop: '6px' }}>
+                      Required for Erection materials - identifies the flanged joint
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -1180,7 +1168,7 @@ function RequestsPage({ user }) {
           {/* =============== TESTPACK FORM =============== */}
           {requestType === 'TestPack' && (
             <>
-              {/* Test Pack Number - Prominent */}
+              {/* Test Pack Number */}
               <div style={{ 
                 marginBottom: '20px', 
                 padding: '16px', 
@@ -1201,28 +1189,26 @@ function RequestsPage({ user }) {
                 />
               </div>
 
-              {/* ISO & Spool - DISABLED for TestPack */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
-                <div style={{ opacity: 0.5 }}>
-                  <label style={styles.label}>ISO Number (disabled)</label>
-                  <input
-                    type="text"
-                    value=""
-                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
-                    disabled={true}
-                    placeholder="Not used for TestPack"
-                  />
-                </div>
-                <div style={{ opacity: 0.5 }}>
-                  <label style={styles.label}>Full Spool Number (disabled)</label>
-                  <input
-                    type="text"
-                    value=""
-                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
-                    disabled={true}
-                    placeholder="Not used for TestPack"
-                  />
-                </div>
+              {/* NEW: Secondary Collector with autocomplete */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={styles.label}>Secondary Collector (optional)</label>
+                <input
+                  type="text"
+                  list="users-list"
+                  value={secondaryCollector}
+                  onChange={(e) => setSecondaryCollector(e.target.value)}
+                  style={styles.input}
+                  placeholder="Search user name..."
+                  disabled={!canModify}
+                />
+                <datalist id="users-list">
+                  {allUsers.map(u => (
+                    <option key={u.id} value={u.full_name}>{u.full_name} ({u.badge_number})</option>
+                  ))}
+                </datalist>
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+                  Optional: Another person authorized to collect this TestPack
+                </p>
               </div>
 
               {/* Missing Type */}
@@ -1282,7 +1268,7 @@ function RequestsPage({ user }) {
                 📦 Add Materials
               </h4>
               
-              {/* Material Input Row - Fixed equal columns */}
+              {/* Material Input Row */}
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 100px 80px', gap: '12px', alignItems: 'end' }}>
                 <div>
                   <label style={styles.label}>Ident Code</label>
@@ -1290,9 +1276,9 @@ function RequestsPage({ user }) {
                     value={currentMaterial.ident_code}
                     onChange={(e) => setCurrentMaterial({ ...currentMaterial, ident_code: e.target.value })}
                     style={styles.select}
-                    disabled={!canModify}
+                    disabled={!canModify || (requestType === 'Piping' && !spoolNumber)}
                   >
-                    <option value="">Select code...</option>
+                    <option value="">{requestType === 'Piping' && !spoolNumber ? 'Select spool first' : 'Select code...'}</option>
                     {[...new Set(identOptions.map(o => o.ident_code))].map(code => (
                       <option key={code} value={code}>{code}</option>
                     ))}
@@ -1332,6 +1318,30 @@ function RequestsPage({ user }) {
                 </button>
               </div>
 
+              {/* Over-Quantity Warning */}
+              {overQuantityWarning && (
+                <div style={{
+                  marginTop: '16px',
+                  padding: '12px 16px',
+                  backgroundColor: '#FEE2E2',
+                  border: '2px solid #EF4444',
+                  borderRadius: '8px',
+                  color: '#DC2626'
+                }}>
+                  <div style={{ fontWeight: '600', marginBottom: '4px' }}>
+                    ⚠️ Over-Quantity Warning for {overQuantityWarning.ident_code}
+                  </div>
+                  <div style={{ fontSize: '13px' }}>
+                    Project Qty: <strong>{overQuantityWarning.projectQty}</strong> | 
+                    Already Requested: <strong>{overQuantityWarning.alreadyRequested}</strong> | 
+                    Total Would Be: <strong style={{ color: '#B91C1C' }}>{overQuantityWarning.totalRequested}</strong>
+                  </div>
+                  <div style={{ fontSize: '12px', marginTop: '8px' }}>
+                    Site/Yard buttons disabled. Send to Engineering for review.
+                  </div>
+                </div>
+              )}
+
               {/* Materials List */}
               {materials.length > 0 && (
                 <table style={{ ...styles.table, marginTop: '16px' }}>
@@ -1348,17 +1358,17 @@ function RequestsPage({ user }) {
                   <tbody>
                     {materials.map((mat, idx) => (
                       <tr key={idx}>
-                        <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{mat.ident_code}</td>
+                        <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mat.ident_code}</td>
                         <td style={styles.td}>{mat.description}</td>
                         <td style={styles.td}>{mat.tag || '-'}</td>
                         <td style={styles.td}>{mat.qty}</td>
-                        <td style={{ ...styles.td, fontWeight: '600' }}>{mat.pos_qty}</td>
+                        <td style={{ ...styles.td, backgroundColor: '#F3E8FF' }}>{mat.pos_qty}</td>
                         <td style={styles.td}>
                           <button
                             onClick={() => removeMaterial(idx)}
-                            style={{ ...styles.actionBtn, backgroundColor: COLORS.primary }}
+                            style={{ ...styles.actionButton, backgroundColor: COLORS.primary }}
                           >
-                            🗑️
+                            ×
                           </button>
                         </td>
                       </tr>
@@ -1366,84 +1376,53 @@ function RequestsPage({ user }) {
                   </tbody>
                 </table>
               )}
-
-              {/* Over-Quantity Warning */}
-              {overQuantityWarning && (
-                <div style={{
-                  marginTop: '16px',
-                  padding: '16px',
-                  backgroundColor: '#FEE2E2',
-                  border: '2px solid #DC2626',
-                  borderRadius: '8px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600', color: '#DC2626', marginBottom: '8px' }}>
-                    ⚠️ Over-Quantity Warning
-                  </div>
-                  <p style={{ fontSize: '14px', color: '#7F1D1D' }}>
-                    <strong>{overQuantityWarning.ident_code}</strong>: Requesting more than project quantity.
-                  </p>
-                  <div style={{ fontSize: '13px', color: '#991B1B', marginTop: '8px' }}>
-                    <div>Project Qty: <strong>{overQuantityWarning.projectQty}</strong></div>
-                    <div>Already Requested: <strong>{overQuantityWarning.alreadyRequested}</strong></div>
-                    <div>Total Would Be: <strong style={{ color: '#DC2626' }}>{overQuantityWarning.totalRequested}</strong></div>
-                  </div>
-                  <p style={{ fontSize: '12px', color: '#7F1D1D', marginTop: '12px' }}>
-                    Site and Yard are disabled. Send to Engineering for verification.
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
           {/* =============== SUBMIT BUTTONS =============== */}
-          <div style={{
-            marginTop: '24px',
-            paddingTop: '24px',
+          <div style={{ 
+            marginTop: '24px', 
+            paddingTop: '24px', 
             borderTop: '1px solid #e5e7eb',
             display: 'flex',
-            gap: '12px'
+            gap: '12px',
+            justifyContent: 'flex-end'
           }}>
             <button
               onClick={() => submitRequest('site')}
-              disabled={loading || !canModify || overQuantityWarning}
+              disabled={!canModify || loading || hasOverQuantity || hfError}
               style={{
                 ...styles.button,
-                backgroundColor: overQuantityWarning ? '#9CA3AF' : COLORS.info,
+                backgroundColor: (hasOverQuantity || hfError) ? '#d1d5db' : COLORS.info,
                 color: 'white',
-                padding: '12px 24px',
-                opacity: loading ? 0.7 : 1,
-                cursor: overQuantityWarning ? 'not-allowed' : 'pointer'
+                cursor: (hasOverQuantity || hfError) ? 'not-allowed' : 'pointer'
               }}
             >
-              🏭 Send to Site
+              📤 Send to WH Site
             </button>
             <button
               onClick={() => submitRequest('yard')}
-              disabled={loading || !canModify || overQuantityWarning}
+              disabled={!canModify || loading || hasOverQuantity || hfError}
               style={{
                 ...styles.button,
-                backgroundColor: overQuantityWarning ? '#9CA3AF' : COLORS.secondary,
+                backgroundColor: (hasOverQuantity || hfError) ? '#d1d5db' : COLORS.secondary,
                 color: 'white',
-                padding: '12px 24px',
-                opacity: loading ? 0.7 : 1,
-                cursor: overQuantityWarning ? 'not-allowed' : 'pointer'
+                cursor: (hasOverQuantity || hfError) ? 'not-allowed' : 'pointer'
               }}
             >
-              🏢 Send to Yard
+              📤 Send to WH Yard
             </button>
             <button
               onClick={() => submitRequest('engineering')}
-              disabled={loading || !canModify}
+              disabled={!canModify || loading}
               style={{
                 ...styles.button,
                 backgroundColor: COLORS.purple,
                 color: 'white',
-                padding: '12px 24px',
-                opacity: loading ? 0.7 : 1,
-                border: overQuantityWarning ? '3px solid #DC2626' : 'none'
+                border: hasOverQuantity ? '3px solid #7C3AED' : 'none'
               }}
             >
-              ⚙️ Send to Engineering {overQuantityWarning && '(Required)'}
+              ⚙️ Send to Engineering {hasOverQuantity && '(Required)'}
             </button>
           </div>
         </div>
@@ -1453,19 +1432,16 @@ function RequestsPage({ user }) {
 }
 
 // ============================================================
-// PAGINA WH SITE
+// WH SITE PAGE
 // ============================================================
 function WHSitePage({ user }) {
   const [components, setComponents] = useState([]);
-  const [toCollect, setToCollect] = useState([]);
-  const [checkRequests, setCheckRequests] = useState([]);
+  const [readyOut, setReadyOut] = useState([]);
+  const [engNotes, setEngNotes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showPartialModal, setShowPartialModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
-  const [showPTModal, setShowPTModal] = useState(false);
-  const [ptQty, setPtQty] = useState('');
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [passageNote, setPassageNote] = useState('');
-  const [passageDestination, setPassageDestination] = useState('');
+  const [partialQty, setPartialQty] = useState('');
 
   useEffect(() => {
     loadComponents();
@@ -1474,54 +1450,25 @@ function WHSitePage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     
-    // Load components in Site status
-    const { data: siteComponents } = await supabase
+    const { data: siteData } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type,
-          iso_number
-        )
-      `)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
       .eq('status', 'Site');
 
-    if (siteComponents) setComponents(siteComponents);
-
-    // Load ToCollect items
-    const { data: collectComponents } = await supabase
+    const { data: toCollectData } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type,
-          iso_number
-        )
-      `)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
       .eq('status', 'ToCollect');
 
-    if (collectComponents) setToCollect(collectComponents);
-
-    // Load Check requests from Engineering
-    const { data: checks } = await supabase
+    const { data: notesData } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number
-        )
-      `)
+      .select(`*, requests (request_number, sub_number)`)
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'Site')
-      .is('eng_check_site_response', null);
+      .eq('eng_check_sent_to', 'Site');
 
-    if (checks) setCheckRequests(checks);
-
+    if (siteData) setComponents(siteData);
+    if (toCollectData) setReadyOut(toCollectData);
+    if (notesData) setEngNotes(notesData);
     setLoading(false);
   };
 
@@ -1529,32 +1476,60 @@ function WHSitePage({ user }) {
     try {
       switch (action) {
         case 'ready':
-          await supabase
-            .from('request_components')
+          await supabase.from('request_components')
             .update({ status: 'ToCollect' })
             .eq('id', component.id);
           break;
-        case 'toYard':
-          setSelectedComponent(component);
-          setPassageDestination('Yard');
-          setShowNoteModal(true);
-          return;
-        case 'toEng':
-          setSelectedComponent(component);
-          setPassageDestination('Eng');
-          setShowNoteModal(true);
-          return;
         case 'pt':
           setSelectedComponent(component);
-          setShowPTModal(true);
+          setShowPartialModal(true);
           return;
+        case 'yard':
+          await supabase.from('request_components')
+            .update({ status: 'Yard', current_location: 'YARD' })
+            .eq('id', component.id);
+          break;
+        case 'eng':
+          await supabase.from('request_components')
+            .update({ status: 'Eng' })
+            .eq('id', component.id);
+          break;
+        case 'return':
+          await supabase.from('request_components')
+            .update({ status: 'Site' })
+            .eq('id', component.id);
+          break;
+        case 'deliver':
+          await supabase.from('request_components')
+            .update({ status: 'Done' })
+            .eq('id', component.id);
+          // Update inventory
+          await supabase.rpc('decrement_site_qty', { 
+            p_ident_code: component.ident_code, 
+            p_qty: component.quantity 
+          });
+          // Record movement
+          await supabase.from('movements').insert({
+            ident_code: component.ident_code,
+            movement_type: 'OUT',
+            quantity: component.quantity,
+            from_location: 'SITE',
+            to_location: 'DELIVERED',
+            performed_by: user.full_name,
+            note: `Request ${component.requests?.request_number}-${component.requests?.sub_number}`
+          });
+          break;
         case 'delete':
-          if (window.confirm('Are you sure you want to delete this component?')) {
-            await supabase
-              .from('request_components')
-              .delete()
+          if (confirm('Delete this component?')) {
+            await supabase.from('request_components')
+              .update({ status: 'Cancelled' })
               .eq('id', component.id);
           }
+          return;
+        case 'ack':
+          await supabase.from('request_components')
+            .update({ has_eng_check: false, eng_check_message: null, eng_check_sent_to: null })
+            .eq('id', component.id);
           break;
       }
       loadComponents();
@@ -1563,130 +1538,53 @@ function WHSitePage({ user }) {
     }
   };
 
-  const handleCheckResponse = async (component, response) => {
-    try {
-      if (response === 'found') {
-        await supabase
-          .from('request_components')
-          .update({ 
-            eng_check_site_response: 'Found',
-            status: 'ToCollect',
-            has_eng_check: false
-          })
-          .eq('id', component.id);
-      } else if (response === 'notfound') {
-        await supabase
-          .from('request_components')
-          .update({ 
-            eng_check_site_response: 'Not Found',
-            status: 'Eng',
-            has_eng_check: false
-          })
-          .eq('id', component.id);
-      } else if (response === 'partial') {
-        setSelectedComponent(component);
-        setShowPTModal(true);
-      }
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const submitPassage = async () => {
-    if (!selectedComponent) return;
-    try {
-      await supabase
-        .from('request_components')
-        .update({ 
-          status: passageDestination,
-          passage_note: passageNote,
-          current_location: passageDestination === 'Yard' ? 'YARD' : selectedComponent.current_location
-        })
-        .eq('id', selectedComponent.id);
-      
-      setShowNoteModal(false);
-      setPassageNote('');
-      setSelectedComponent(null);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const submitPT = async () => {
-    if (!selectedComponent || !ptQty) return;
-    const foundQty = parseInt(ptQty);
-    const remainingQty = selectedComponent.quantity - foundQty;
-    
-    if (foundQty <= 0 || foundQty >= selectedComponent.quantity) {
-      alert('Quantity must be between 1 and ' + (selectedComponent.quantity - 1));
+  const submitPartial = async () => {
+    if (!partialQty || parseInt(partialQty) >= selectedComponent.quantity) {
+      alert('Partial quantity must be less than total');
       return;
     }
+    
+    const remainingQty = selectedComponent.quantity - parseInt(partialQty);
+    
+    // Update original to partial qty and mark ready
+    await supabase.from('request_components')
+      .update({ quantity: parseInt(partialQty), status: 'ToCollect' })
+      .eq('id', selectedComponent.id);
+    
+    // Get next sub_number
+    const { data: subData } = await supabase
+      .from('requests')
+      .select('sub_number')
+      .eq('request_number', selectedComponent.requests.request_number)
+      .order('sub_number', { ascending: false })
+      .limit(1);
+    
+    const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+    
+    // Create new request for remaining
+    const { data: newReq } = await supabase.from('requests')
+      .insert({
+        request_number: selectedComponent.requests.request_number,
+        sub_number: nextSub,
+        request_type: selectedComponent.requests.request_type,
+        sub_category: selectedComponent.requests.sub_category
+      })
+      .select()
+      .single();
+    
+    // Create component for remaining qty
+    await supabase.from('request_components').insert({
+      request_id: newReq.id,
+      ident_code: selectedComponent.ident_code,
+      description: selectedComponent.description,
+      quantity: remainingQty,
+      status: 'Site',
+      current_location: 'SITE'
+    });
 
-    try {
-      // Update original to ToCollect with found qty
-      await supabase
-        .from('request_components')
-        .update({ 
-          quantity: foundQty,
-          status: 'ToCollect',
-          has_eng_check: false,
-          eng_check_site_response: 'Partial'
-        })
-        .eq('id', selectedComponent.id);
-
-      // Create new component for remaining
-      const { data: reqData } = await supabase
-        .from('requests')
-        .select('*')
-        .eq('id', selectedComponent.request_id)
-        .single();
-
-      if (reqData) {
-        // Get next sub_number
-        const { data: existingReqs } = await supabase
-          .from('requests')
-          .select('sub_number')
-          .eq('request_number', reqData.request_number)
-          .order('sub_number', { ascending: false })
-          .limit(1);
-
-        const nextSubNumber = existingReqs && existingReqs.length > 0 ? existingReqs[0].sub_number + 1 : 1;
-
-        // Create new request with sub_number
-        const { data: newReq } = await supabase
-          .from('requests')
-          .insert({
-            ...reqData,
-            id: undefined,
-            sub_number: nextSubNumber,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (newReq) {
-          await supabase
-            .from('request_components')
-            .insert({
-              request_id: newReq.id,
-              ident_code: selectedComponent.ident_code,
-              tag: selectedComponent.tag,
-              description: selectedComponent.description,
-              quantity: remainingQty,
-              status: selectedComponent.has_eng_check ? 'Eng' : 'Site'
-            });
-        }
-      }
-
-      setShowPTModal(false);
-      setPtQty('');
-      setSelectedComponent(null);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
+    setShowPartialModal(false);
+    setPartialQty('');
+    loadComponents();
   };
 
   const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
@@ -1695,61 +1593,45 @@ function WHSitePage({ user }) {
 
   return (
     <div>
-      {/* Check Requests from Engineering */}
-      {checkRequests.length > 0 && (
-        <div style={{ 
-          backgroundColor: '#F3E8FF', 
-          border: '1px solid #A855F7', 
-          borderRadius: '8px', 
-          padding: '16px', 
-          marginBottom: '24px' 
+      {/* Engineering Notes Alert */}
+      {engNotes.length > 0 && (
+        <div style={{
+          backgroundColor: '#F3E8FF',
+          border: '1px solid #A855F7',
+          borderRadius: '8px',
+          padding: '16px',
+          marginBottom: '24px'
         }}>
-          <h4 style={{ fontWeight: '600', color: '#7C3AED', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🔍 Check Requests from Engineering
+          <h4 style={{ fontWeight: '600', color: '#7C3AED', marginBottom: '12px' }}>
+            📝 Notes from Engineering ({engNotes.length})
           </h4>
-          {checkRequests.map(comp => (
-            <div key={comp.id} style={{ 
-              backgroundColor: 'white', 
-              padding: '12px', 
-              borderRadius: '6px', 
+          {engNotes.map(note => (
+            <div key={note.id} style={{
+              backgroundColor: 'white',
+              padding: '12px',
+              borderRadius: '6px',
               marginBottom: '8px',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
               <div>
-                <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
-                  {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
-                </span>
-                <span style={{ marginLeft: '12px' }}>{comp.ident_code}</span>
-                <span style={{ marginLeft: '12px', color: '#6b7280' }}>Qty: {comp.quantity}</span>
-                {comp.eng_check_message && (
-                  <p style={{ fontSize: '12px', color: '#7C3AED', marginTop: '4px' }}>
-                    📝 {comp.eng_check_message}
-                  </p>
-                )}
+                <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{note.ident_code}</span>
+                <span style={{ marginLeft: '12px', color: '#6b7280' }}>{note.eng_check_message}</span>
               </div>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <ActionButton color={COLORS.success} onClick={() => handleCheckResponse(comp, 'found')} title="Found">
-                  ✓
-                </ActionButton>
-                <ActionButton color={COLORS.warning} onClick={() => handleCheckResponse(comp, 'partial')} title="Partial Found">
-                  PT
-                </ActionButton>
-                <ActionButton color={COLORS.primary} onClick={() => handleCheckResponse(comp, 'notfound')} title="Not Found">
-                  ✗
-                </ActionButton>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <ActionButton color={COLORS.success} onClick={() => handleAction(note, 'ack')} disabled={!canModify} title="Acknowledge">✓</ActionButton>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Ready OUT - To Collect */}
-      {toCollect.length > 0 && (
-        <div style={styles.card}>
-          <div style={{ ...styles.cardHeader, backgroundColor: '#DCFCE7' }}>
-            <h3 style={{ fontWeight: '600', color: '#166534' }}>Ready OUT - To Collect</h3>
+      {/* Ready OUT / To Collect Section */}
+      {readyOut.length > 0 && (
+        <div style={{ ...styles.card, marginBottom: '24px' }}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#D1FAE5' }}>
+            <h3 style={{ fontWeight: '600', color: '#065F46' }}>Ready OUT - To Collect ({readyOut.length})</h3>
           </div>
           <table style={styles.table}>
             <thead>
@@ -1762,7 +1644,7 @@ function WHSitePage({ user }) {
               </tr>
             </thead>
             <tbody>
-              {toCollect.map(comp => (
+              {readyOut.map(comp => (
                 <tr key={comp.id}>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                     {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
@@ -1772,8 +1654,8 @@ function WHSitePage({ user }) {
                   <td style={styles.td}>{comp.quantity}</td>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', gap: '4px' }}>
-                      <ActionButton color={COLORS.success} title="Deliver">📤</ActionButton>
-                      <ActionButton color={COLORS.primary} title="Create MIR">📋</ActionButton>
+                      <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'deliver')} disabled={!canModify} title="Deliver">📤</ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} disabled={!canModify} title="Return to Site">↩</ActionButton>
                     </div>
                   </td>
                 </tr>
@@ -1786,7 +1668,7 @@ function WHSitePage({ user }) {
       {/* Site Components */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Warehouse Site - Components</h3>
+          <h3 style={{ fontWeight: '600' }}>Warehouse Site - Components ({components.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -1808,24 +1690,14 @@ function WHSitePage({ user }) {
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
                 <td style={styles.td}>{comp.description}</td>
                 <td style={styles.td}>{comp.quantity}</td>
-                <td style={styles.td}>{comp.requests?.request_type}</td>
+                <td style={styles.td}>{comp.requests?.sub_category || comp.requests?.request_type}</td>
                 <td style={styles.td}>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'ready')} disabled={!canModify} title="Ready">
-                      ✓
-                    </ActionButton>
-                    <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} disabled={!canModify} title="Partial">
-                      PT
-                    </ActionButton>
-                    <ActionButton color={COLORS.secondary} onClick={() => handleAction(comp, 'toYard')} disabled={!canModify} title="To Yard">
-                      Y
-                    </ActionButton>
-                    <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'toEng')} disabled={!canModify} title="To Engineering">
-                      UT
-                    </ActionButton>
-                    <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Delete">
-                      🗑️
-                    </ActionButton>
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'ready')} disabled={!canModify} title="Ready for pickup">✓</ActionButton>
+                    <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} disabled={!canModify} title="Partial">PT</ActionButton>
+                    <ActionButton color={COLORS.secondary} onClick={() => handleAction(comp, 'yard')} disabled={!canModify} title="Send to Yard">Y</ActionButton>
+                    <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'eng')} disabled={!canModify} title="Send to Engineering">UT</ActionButton>
+                    <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Cancel">🗑️</ActionButton>
                   </div>
                 </td>
               </tr>
@@ -1833,7 +1705,7 @@ function WHSitePage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No components in Site
+                  No components in Site warehouse
                 </td>
               </tr>
             )}
@@ -1841,54 +1713,28 @@ function WHSitePage({ user }) {
         </table>
       </div>
 
-      {/* Note Modal */}
-      <Modal isOpen={showNoteModal} onClose={() => setShowNoteModal(false)} title={`Send to ${passageDestination}`}>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Note (optional)</label>
-          <textarea
-            value={passageNote}
-            onChange={(e) => setPassageNote(e.target.value)}
-            style={{ ...styles.input, minHeight: '80px' }}
-            placeholder="Add a note..."
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowNoteModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitPassage} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Send
-          </button>
-        </div>
-      </Modal>
-
-      {/* PT Modal */}
-      <Modal isOpen={showPTModal} onClose={() => setShowPTModal(false)} title="Partial - Split Quantity">
-        <p style={{ marginBottom: '16px', color: '#6b7280' }}>
-          Total quantity: <strong>{selectedComponent?.quantity}</strong>
+      {/* Partial Modal */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Split Partial Quantity">
+        <p style={{ marginBottom: '16px' }}>
+          <strong>{selectedComponent?.ident_code}</strong> - Total Qty: {selectedComponent?.quantity}
         </p>
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Found Quantity</label>
+          <label style={styles.label}>Available Quantity (to mark ready)</label>
           <input
             type="number"
-            value={ptQty}
-            onChange={(e) => setPtQty(e.target.value)}
+            value={partialQty}
+            onChange={(e) => setPartialQty(e.target.value)}
             style={styles.input}
             min="1"
             max={selectedComponent?.quantity - 1}
-            placeholder={`Enter quantity found (1-${selectedComponent?.quantity - 1})`}
           />
+          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+            Remaining {selectedComponent?.quantity - (parseInt(partialQty) || 0)} will stay in queue
+          </p>
         </div>
-        <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '16px' }}>
-          Found quantity will be marked as ready. Remaining ({selectedComponent?.quantity - parseInt(ptQty || 0)}) will continue in the workflow.
-        </p>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPTModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitPT} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Split
-          </button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Split</button>
         </div>
       </Modal>
     </div>
@@ -1896,16 +1742,15 @@ function WHSitePage({ user }) {
 }
 
 // ============================================================
-// PAGINA WH YARD
+// WH YARD PAGE
 // ============================================================
 function WHYardPage({ user }) {
   const [components, setComponents] = useState([]);
-  const [checkRequests, setCheckRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [showPTModal, setShowPTModal] = useState(false);
-  const [ptQty, setPtQty] = useState('');
   const [inventory, setInventory] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [showPartialModal, setShowPartialModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [partialQty, setPartialQty] = useState('');
 
   useEffect(() => {
     loadComponents();
@@ -1914,57 +1759,25 @@ function WHYardPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     
-    // Load components in Yard status
-    const { data: yardComponents } = await supabase
+    const { data: yardData } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type,
-          iso_number
-        )
-      `)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
       .eq('status', 'Yard');
 
-    if (yardComponents) {
-      setComponents(yardComponents);
+    if (yardData) {
+      setComponents(yardData);
+      // Load inventory for each code
+      const codes = [...new Set(yardData.map(c => c.ident_code))];
+      const { data: invData } = await supabase
+        .from('inventory')
+        .select('ident_code, yard_qty')
+        .in('ident_code', codes);
       
-      // Load inventory for these components
-      const identCodes = [...new Set(yardComponents.map(c => c.ident_code))];
-      if (identCodes.length > 0) {
-        const { data: invData } = await supabase
-          .from('project_database')
-          .select('ident_code, qty_yard')
-          .in('ident_code', identCodes);
-        
-        if (invData) {
-          const invMap = {};
-          invData.forEach(item => {
-            invMap[item.ident_code] = item.qty_yard || 0;
-          });
-          setInventory(invMap);
-        }
-      }
+      const invMap = {};
+      invData?.forEach(i => { invMap[i.ident_code] = i.yard_qty || 0; });
+      setInventory(invMap);
     }
-
-    // Load Check requests from Engineering
-    const { data: checks } = await supabase
-      .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number
-        )
-      `)
-      .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'Yard')
-      .is('eng_check_yard_response', null);
-
-    if (checks) setCheckRequests(checks);
-
+    
     setLoading(false);
   };
 
@@ -1975,43 +1788,47 @@ function WHYardPage({ user }) {
       switch (action) {
         case 'found':
           if (available < component.quantity) {
-            alert(`Insufficient quantity! Available: ${available}, Required: ${component.quantity}`);
+            alert(`Only ${available} available in YARD!`);
             return;
           }
-          // Decrease inventory and send to Trans
+          await supabase.from('request_components')
+            .update({ status: 'Trans' })
+            .eq('id', component.id);
+          // Decrement yard, will add to site on arrival
           await supabase.rpc('decrement_yard_qty', { 
             p_ident_code: component.ident_code, 
             p_qty: component.quantity 
           });
-          await supabase
-            .from('request_components')
-            .update({ status: 'Trans', current_location: 'TRANSIT' })
-            .eq('id', component.id);
+          await supabase.from('movements').insert({
+            ident_code: component.ident_code,
+            movement_type: 'TRANSFER',
+            quantity: component.quantity,
+            from_location: 'YARD',
+            to_location: 'SITE (Transit)',
+            performed_by: user.full_name
+          });
           break;
         case 'pt':
           setSelectedComponent(component);
-          setShowPTModal(true);
+          setShowPartialModal(true);
           return;
-        case 'toEng':
-          await supabase
-            .from('request_components')
+        case 'eng':
+          await supabase.from('request_components')
             .update({ status: 'Eng' })
             .eq('id', component.id);
           break;
-        case 'toSite':
-          await supabase
-            .from('request_components')
+        case 'return':
+          await supabase.from('request_components')
             .update({ status: 'Site', current_location: 'SITE' })
             .eq('id', component.id);
           break;
         case 'delete':
-          if (window.confirm('Delete this component?')) {
-            await supabase
-              .from('request_components')
-              .delete()
+          if (confirm('Delete this component?')) {
+            await supabase.from('request_components')
+              .update({ status: 'Cancelled' })
               .eq('id', component.id);
           }
-          break;
+          return;
       }
       loadComponents();
     } catch (error) {
@@ -2019,120 +1836,71 @@ function WHYardPage({ user }) {
     }
   };
 
-  const handleCheckResponse = async (component, response) => {
-    try {
-      if (response === 'found') {
-        // Decrease inventory and mark as ready
-        await supabase.rpc('decrement_yard_qty', { 
-          p_ident_code: component.ident_code, 
-          p_qty: component.quantity 
-        });
-        await supabase
-          .from('request_components')
-          .update({ 
-            eng_check_yard_response: 'Found',
-            status: 'Trans',
-            has_eng_check: false
-          })
-          .eq('id', component.id);
-      } else if (response === 'notfound') {
-        await supabase
-          .from('request_components')
-          .update({ 
-            eng_check_yard_response: 'Not Found',
-            status: 'Eng',
-            has_eng_check: false
-          })
-          .eq('id', component.id);
-      } else if (response === 'partial') {
-        setSelectedComponent(component);
-        setShowPTModal(true);
-      }
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const submitPT = async () => {
-    if (!selectedComponent || !ptQty) return;
-    const foundQty = parseInt(ptQty);
+  const submitPartial = async () => {
     const available = inventory[selectedComponent.ident_code] || 0;
-    
-    if (foundQty <= 0 || foundQty > available) {
-      alert(`Invalid quantity. Available: ${available}`);
+    if (!partialQty || parseInt(partialQty) > available) {
+      alert(`Max available: ${available}`);
       return;
     }
+    
+    const sendQty = parseInt(partialQty);
+    const remainingQty = selectedComponent.quantity - sendQty;
+    
+    // Update original quantity
+    await supabase.from('request_components')
+      .update({ quantity: sendQty, status: 'Trans' })
+      .eq('id', selectedComponent.id);
+    
+    // Decrement inventory
+    await supabase.rpc('decrement_yard_qty', { 
+      p_ident_code: selectedComponent.ident_code, 
+      p_qty: sendQty 
+    });
 
-    try {
-      // Decrease inventory by found amount
-      await supabase.rpc('decrement_yard_qty', { 
-        p_ident_code: selectedComponent.ident_code, 
-        p_qty: foundQty 
-      });
+    // Get next sub_number
+    const { data: subData } = await supabase
+      .from('requests')
+      .select('sub_number')
+      .eq('request_number', selectedComponent.requests.request_number)
+      .order('sub_number', { ascending: false })
+      .limit(1);
+    
+    const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+    
+    // Create new request for remaining
+    const { data: newReq } = await supabase.from('requests')
+      .insert({
+        request_number: selectedComponent.requests.request_number,
+        sub_number: nextSub,
+        request_type: selectedComponent.requests.request_type,
+        sub_category: selectedComponent.requests.sub_category
+      })
+      .select()
+      .single();
+    
+    // Create component - remaining goes to Order
+    await supabase.from('request_components').insert({
+      request_id: newReq.id,
+      ident_code: selectedComponent.ident_code,
+      description: selectedComponent.description,
+      quantity: remainingQty,
+      status: 'Order',
+      current_location: 'YARD'
+    });
 
-      // Update original to Trans with found qty
-      await supabase
-        .from('request_components')
-        .update({ 
-          quantity: foundQty,
-          status: 'Trans',
-          has_eng_check: false,
-          eng_check_yard_response: 'Partial'
-        })
-        .eq('id', selectedComponent.id);
+    await supabase.from('movements').insert({
+      ident_code: selectedComponent.ident_code,
+      movement_type: 'TRANSFER',
+      quantity: sendQty,
+      from_location: 'YARD',
+      to_location: 'SITE (Transit)',
+      performed_by: user.full_name,
+      note: `Partial - ${remainingQty} remaining to order`
+    });
 
-      // Create new component for remaining qty
-      const remainingQty = selectedComponent.quantity - foundQty;
-      
-      const { data: reqData } = await supabase
-        .from('requests')
-        .select('*')
-        .eq('id', selectedComponent.request_id)
-        .single();
-
-      if (reqData) {
-        const { data: existingReqs } = await supabase
-          .from('requests')
-          .select('sub_number')
-          .eq('request_number', reqData.request_number)
-          .order('sub_number', { ascending: false })
-          .limit(1);
-
-        const nextSubNumber = existingReqs?.length > 0 ? existingReqs[0].sub_number + 1 : 1;
-
-        const { data: newReq } = await supabase
-          .from('requests')
-          .insert({
-            ...reqData,
-            id: undefined,
-            sub_number: nextSubNumber,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (newReq) {
-          await supabase
-            .from('request_components')
-            .insert({
-              request_id: newReq.id,
-              ident_code: selectedComponent.ident_code,
-              tag: selectedComponent.tag,
-              description: selectedComponent.description,
-              quantity: remainingQty,
-              status: 'Eng'
-            });
-        }
-      }
-
-      setShowPTModal(false);
-      setPtQty('');
-      setSelectedComponent(null);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
+    setShowPartialModal(false);
+    setPartialQty('');
+    loadComponents();
   };
 
   const canModify = user.role === 'admin' || user.perm_wh_yard === 'modify';
@@ -2141,84 +1909,9 @@ function WHYardPage({ user }) {
 
   return (
     <div>
-      {/* Check Requests from Engineering */}
-      {checkRequests.length > 0 && (
-        <div style={{ 
-          backgroundColor: '#F3E8FF', 
-          border: '1px solid #A855F7', 
-          borderRadius: '8px', 
-          padding: '16px', 
-          marginBottom: '24px' 
-        }}>
-          <h4 style={{ fontWeight: '600', color: '#7C3AED', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            🔍 Check Requests from Engineering
-          </h4>
-          {checkRequests.map(comp => {
-            const available = inventory[comp.ident_code] || 0;
-            return (
-              <div key={comp.id} style={{ 
-                backgroundColor: 'white', 
-                padding: '12px', 
-                borderRadius: '6px', 
-                marginBottom: '8px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div>
-                  <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
-                    {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
-                  </span>
-                  <span style={{ marginLeft: '12px' }}>{comp.ident_code}</span>
-                  <span style={{ marginLeft: '12px', color: '#6b7280' }}>Need: {comp.quantity}</span>
-                  <span style={{ 
-                    marginLeft: '12px', 
-                    color: available >= comp.quantity ? COLORS.success : COLORS.primary,
-                    fontWeight: '600'
-                  }}>
-                    Available: {available}
-                  </span>
-                  {comp.eng_check_message && (
-                    <p style={{ fontSize: '12px', color: '#7C3AED', marginTop: '4px' }}>
-                      📝 {comp.eng_check_message}
-                    </p>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <ActionButton 
-                    color={COLORS.success} 
-                    onClick={() => handleCheckResponse(comp, 'found')} 
-                    disabled={available < comp.quantity}
-                    title="Found"
-                  >
-                    ✓
-                  </ActionButton>
-                  <ActionButton 
-                    color={COLORS.warning} 
-                    onClick={() => handleCheckResponse(comp, 'partial')} 
-                    disabled={available === 0}
-                    title="Partial Found"
-                  >
-                    PT
-                  </ActionButton>
-                  <ActionButton 
-                    color={COLORS.primary} 
-                    onClick={() => handleCheckResponse(comp, 'notfound')} 
-                    title="Not Found"
-                  >
-                    ✗
-                  </ActionButton>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Yard Components */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Warehouse Yard - Components</h3>
+          <h3 style={{ fontWeight: '600' }}>Warehouse Yard - Components ({components.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -2226,7 +1919,7 @@ function WHYardPage({ user }) {
               <th style={styles.th}>Request #</th>
               <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
-              <th style={styles.th}>Qty Requested</th>
+              <th style={styles.th}>Requested</th>
               <th style={styles.th}>Available</th>
               <th style={styles.th}>Actions</th>
             </tr>
@@ -2234,8 +1927,7 @@ function WHYardPage({ user }) {
           <tbody>
             {components.map(comp => {
               const available = inventory[comp.ident_code] || 0;
-              const hasEnough = available >= comp.quantity;
-              
+              const canFulfill = available >= comp.quantity;
               return (
                 <tr key={comp.id}>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -2244,55 +1936,28 @@ function WHYardPage({ user }) {
                   <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
                   <td style={styles.td}>{comp.description}</td>
                   <td style={styles.td}>{comp.quantity}</td>
-                  <td style={{ 
-                    ...styles.td, 
-                    fontWeight: '600',
-                    color: hasEnough ? COLORS.success : COLORS.primary
-                  }}>
-                    {available}
+                  <td style={styles.td}>
+                    <span style={{ 
+                      fontWeight: '600', 
+                      color: canFulfill ? COLORS.success : COLORS.primary 
+                    }}>
+                      {available}
+                    </span>
                   </td>
                   <td style={styles.td}>
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                       <ActionButton 
-                        color={COLORS.success} 
+                        color={canFulfill ? COLORS.success : COLORS.gray} 
                         onClick={() => handleAction(comp, 'found')} 
-                        disabled={!canModify || !hasEnough} 
-                        title={hasEnough ? "Found/Transfer" : "Insufficient qty"}
+                        disabled={!canModify || !canFulfill} 
+                        title={canFulfill ? "Found - Transfer to Site" : "Insufficient quantity"}
                       >
                         ✓
                       </ActionButton>
-                      <ActionButton 
-                        color={COLORS.warning} 
-                        onClick={() => handleAction(comp, 'pt')} 
-                        disabled={!canModify || available === 0} 
-                        title="Partial"
-                      >
-                        PT
-                      </ActionButton>
-                      <ActionButton 
-                        color={COLORS.purple} 
-                        onClick={() => handleAction(comp, 'toEng')} 
-                        disabled={!canModify} 
-                        title="To Engineering"
-                      >
-                        UT
-                      </ActionButton>
-                      <ActionButton 
-                        color={COLORS.gray} 
-                        onClick={() => handleAction(comp, 'toSite')} 
-                        disabled={!canModify} 
-                        title="Return to Site"
-                      >
-                        ↩
-                      </ActionButton>
-                      <ActionButton 
-                        color={COLORS.primary} 
-                        onClick={() => handleAction(comp, 'delete')} 
-                        disabled={!canModify} 
-                        title="Delete"
-                      >
-                        🗑️
-                      </ActionButton>
+                      <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} disabled={!canModify || available === 0} title="Partial">PT</ActionButton>
+                      <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'eng')} disabled={!canModify} title="Send to Engineering">UT</ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} disabled={!canModify} title="Return to Site">↩</ActionButton>
+                      <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Cancel">🗑️</ActionButton>
                     </div>
                   </td>
                 </tr>
@@ -2301,7 +1966,7 @@ function WHYardPage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No components in Yard
+                  No components in Yard warehouse
                 </td>
               </tr>
             )}
@@ -2309,33 +1974,29 @@ function WHYardPage({ user }) {
         </table>
       </div>
 
-      {/* PT Modal */}
-      <Modal isOpen={showPTModal} onClose={() => setShowPTModal(false)} title="Partial - Split Quantity">
-        <p style={{ marginBottom: '8px', color: '#6b7280' }}>
-          Requested: <strong>{selectedComponent?.quantity}</strong>
-        </p>
-        <p style={{ marginBottom: '16px', color: '#6b7280' }}>
-          Available in Yard: <strong>{inventory[selectedComponent?.ident_code] || 0}</strong>
+      {/* Partial Modal */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Send Partial Quantity">
+        <p style={{ marginBottom: '16px' }}>
+          <strong>{selectedComponent?.ident_code}</strong><br />
+          Requested: {selectedComponent?.quantity} | Available: {inventory[selectedComponent?.ident_code] || 0}
         </p>
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantity to Transfer</label>
+          <label style={styles.label}>Quantity to send now</label>
           <input
             type="number"
-            value={ptQty}
-            onChange={(e) => setPtQty(e.target.value)}
+            value={partialQty}
+            onChange={(e) => setPartialQty(e.target.value)}
             style={styles.input}
             min="1"
-            max={Math.min(selectedComponent?.quantity - 1, inventory[selectedComponent?.ident_code] || 0)}
-            placeholder="Enter quantity found"
+            max={inventory[selectedComponent?.ident_code] || 0}
           />
+          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+            Remaining will be sent to Orders
+          </p>
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPTModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitPT} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Split & Transfer
-          </button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Send Partial</button>
         </div>
       </Modal>
     </div>
@@ -2343,20 +2004,11 @@ function WHYardPage({ user }) {
 }
 
 // ============================================================
-// PAGINA ENGINEERING
+// SITE IN PAGE - Transit from Yard to Site
 // ============================================================
-function EngineeringPage({ user }) {
+function SiteInPage({ user }) {
   const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [showCheckModal, setShowCheckModal] = useState(false);
-  const [checkDestination, setCheckDestination] = useState('Site');
-  const [checkMessage, setCheckMessage] = useState('');
-  const [showPTModal, setShowPTModal] = useState(false);
-  const [ptQty, setPtQty] = useState('');
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [noteText, setNoteText] = useState('');
-  const [noteDestination, setNoteDestination] = useState('');
 
   useEffect(() => {
     loadComponents();
@@ -2364,21 +2016,118 @@ function EngineeringPage({ user }) {
 
   const loadComponents = async () => {
     setLoading(true);
-    
     const { data } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type,
-          sub_category,
-          iso_number
-        )
-      `)
-      .eq('status', 'Eng');
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
+      .eq('status', 'Trans');
+    if (data) setComponents(data);
+    setLoading(false);
+  };
 
+  const handleReceive = async (component) => {
+    try {
+      await supabase.from('request_components')
+        .update({ status: 'Site', current_location: 'SITE' })
+        .eq('id', component.id);
+      
+      // Add to site inventory
+      await supabase.rpc('increment_site_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+
+      await supabase.from('movements').insert({
+        ident_code: component.ident_code,
+        movement_type: 'IN',
+        quantity: component.quantity,
+        from_location: 'YARD',
+        to_location: 'SITE',
+        performed_by: user.full_name
+      });
+
+      loadComponents();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const canModify = user.role === 'admin' || user.perm_site_in === 'modify';
+
+  if (loading) return <div>Loading...</div>;
+
+  return (
+    <div>
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: '600' }}>Site IN - Material in Transit ({components.length})</h3>
+        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Request #</th>
+              <th style={styles.th}>Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {components.map(comp => (
+              <tr key={comp.id}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
+                  {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                <td style={styles.td}>{comp.description}</td>
+                <td style={styles.td}>{comp.quantity}</td>
+                <td style={styles.td}>
+                  <button
+                    onClick={() => handleReceive(comp)}
+                    disabled={!canModify}
+                    style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                  >
+                    📥 Receive at Site
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {components.length === 0 && (
+              <tr>
+                <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No material in transit
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// ENGINEERING PAGE
+// ============================================================
+function EngineeringPage({ user }) {
+  const [components, setComponents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCheckModal, setShowCheckModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [checkDestination, setCheckDestination] = useState('Site');
+  const [checkMessage, setCheckMessage] = useState('');
+  const [showPartialModal, setShowPartialModal] = useState(false);
+  const [partialQty, setPartialQty] = useState('');
+
+  useEffect(() => {
+    loadComponents();
+  }, []);
+
+  const loadComponents = async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from('request_components')
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
+      .eq('status', 'Eng');
     if (data) setComponents(data);
     setLoading(false);
   };
@@ -2387,9 +2136,8 @@ function EngineeringPage({ user }) {
     try {
       switch (action) {
         case 'resolved':
-          await supabase
-            .from('request_components')
-            .update({ status: 'ToCollect' })
+          await supabase.from('request_components')
+            .update({ status: 'Site' })
             .eq('id', component.id);
           break;
         case 'check':
@@ -2398,33 +2146,30 @@ function EngineeringPage({ user }) {
           return;
         case 'pt':
           setSelectedComponent(component);
-          setShowPTModal(true);
+          setShowPartialModal(true);
           return;
         case 'spare':
-          await supabase
-            .from('request_components')
-            .update({ status: 'Spare', spare_request_date: new Date().toISOString() })
+          await supabase.from('request_components')
+            .update({ status: 'Spare' })
             .eq('id', component.id);
           break;
         case 'mng':
-          setSelectedComponent(component);
-          setNoteDestination('Mng');
-          setShowNoteModal(true);
-          return;
+          await supabase.from('request_components')
+            .update({ status: 'Mng' })
+            .eq('id', component.id);
+          break;
         case 'return':
-          await supabase
-            .from('request_components')
+          await supabase.from('request_components')
             .update({ status: 'Site' })
             .eq('id', component.id);
           break;
         case 'delete':
-          if (window.confirm('Delete this component?')) {
-            await supabase
-              .from('request_components')
-              .delete()
+          if (confirm('Delete this component?')) {
+            await supabase.from('request_components')
+              .update({ status: 'Cancelled' })
               .eq('id', component.id);
           }
-          break;
+          return;
       }
       loadComponents();
     } catch (error) {
@@ -2432,116 +2177,59 @@ function EngineeringPage({ user }) {
     }
   };
 
-  const submitCheck = async () => {
-    if (!selectedComponent) return;
-    try {
-      await supabase
-        .from('request_components')
-        .update({ 
-          has_eng_check: true,
-          eng_check_sent_to: checkDestination,
-          eng_check_message: checkMessage,
-          eng_check_site_response: null,
-          eng_check_yard_response: null
-        })
-        .eq('id', selectedComponent.id);
-      
-      setShowCheckModal(false);
-      setCheckMessage('');
-      setSelectedComponent(null);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const submitNote = async () => {
-    if (!selectedComponent) return;
-    try {
-      await supabase
-        .from('request_components')
-        .update({ 
-          status: noteDestination,
-          eng_note: noteText
-        })
-        .eq('id', selectedComponent.id);
-      
-      setShowNoteModal(false);
-      setNoteText('');
-      setSelectedComponent(null);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const submitPT = async () => {
-    if (!selectedComponent || !ptQty) return;
-    const resolvedQty = parseInt(ptQty);
-    const remainingQty = selectedComponent.quantity - resolvedQty;
+  const sendCheck = async () => {
+    await supabase.from('request_components')
+      .update({ 
+        has_eng_check: true, 
+        eng_check_message: checkMessage,
+        eng_check_sent_to: checkDestination
+      })
+      .eq('id', selectedComponent.id);
     
-    if (resolvedQty <= 0 || resolvedQty >= selectedComponent.quantity) {
-      alert('Invalid quantity');
-      return;
-    }
+    setShowCheckModal(false);
+    setCheckMessage('');
+    loadComponents();
+  };
 
-    try {
-      await supabase
-        .from('request_components')
-        .update({ 
-          quantity: resolvedQty,
-          status: 'ToCollect'
-        })
-        .eq('id', selectedComponent.id);
+  const submitPartial = async () => {
+    // Similar logic to WH Site partial
+    const sendQty = parseInt(partialQty);
+    const remainingQty = selectedComponent.quantity - sendQty;
+    
+    await supabase.from('request_components')
+      .update({ quantity: sendQty, status: 'Spare' })
+      .eq('id', selectedComponent.id);
 
-      const { data: reqData } = await supabase
-        .from('requests')
-        .select('*')
-        .eq('id', selectedComponent.request_id)
-        .single();
+    const { data: subData } = await supabase
+      .from('requests')
+      .select('sub_number')
+      .eq('request_number', selectedComponent.requests.request_number)
+      .order('sub_number', { ascending: false })
+      .limit(1);
+    
+    const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+    
+    const { data: newReq } = await supabase.from('requests')
+      .insert({
+        request_number: selectedComponent.requests.request_number,
+        sub_number: nextSub,
+        request_type: selectedComponent.requests.request_type,
+        sub_category: selectedComponent.requests.sub_category
+      })
+      .select()
+      .single();
+    
+    await supabase.from('request_components').insert({
+      request_id: newReq.id,
+      ident_code: selectedComponent.ident_code,
+      description: selectedComponent.description,
+      quantity: remainingQty,
+      status: 'Order'
+    });
 
-      if (reqData) {
-        const { data: existingReqs } = await supabase
-          .from('requests')
-          .select('sub_number')
-          .eq('request_number', reqData.request_number)
-          .order('sub_number', { ascending: false })
-          .limit(1);
-
-        const nextSubNumber = existingReqs?.length > 0 ? existingReqs[0].sub_number + 1 : 1;
-
-        const { data: newReq } = await supabase
-          .from('requests')
-          .insert({
-            ...reqData,
-            id: undefined,
-            sub_number: nextSubNumber,
-            created_at: new Date().toISOString()
-          })
-          .select()
-          .single();
-
-        if (newReq) {
-          await supabase
-            .from('request_components')
-            .insert({
-              request_id: newReq.id,
-              ident_code: selectedComponent.ident_code,
-              tag: selectedComponent.tag,
-              description: selectedComponent.description,
-              quantity: remainingQty,
-              status: 'Eng'
-            });
-        }
-      }
-
-      setShowPTModal(false);
-      setPtQty('');
-      setSelectedComponent(null);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
+    setShowPartialModal(false);
+    setPartialQty('');
+    loadComponents();
   };
 
   const canModify = user.role === 'admin' || user.perm_engineering === 'modify';
@@ -2552,7 +2240,7 @@ function EngineeringPage({ user }) {
     <div>
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Engineering (UT) - Components Under Review</h3>
+          <h3 style={{ fontWeight: '600' }}>Engineering (UT) - Components Under Review ({components.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -2587,62 +2275,13 @@ function EngineeringPage({ user }) {
                 </td>
                 <td style={styles.td}>
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                    <ActionButton 
-                      color={COLORS.success} 
-                      onClick={() => handleAction(comp, 'resolved')} 
-                      disabled={!canModify || comp.has_eng_check} 
-                      title="Resolved"
-                    >
-                      ✓
-                    </ActionButton>
-                    <ActionButton 
-                      color={COLORS.purple} 
-                      onClick={() => handleAction(comp, 'check')} 
-                      disabled={!canModify || comp.has_eng_check} 
-                      title="Send Check"
-                    >
-                      🔍
-                    </ActionButton>
-                    <ActionButton 
-                      color={COLORS.warning} 
-                      onClick={() => handleAction(comp, 'pt')} 
-                      disabled={!canModify} 
-                      title="Partial"
-                    >
-                      PT
-                    </ActionButton>
-                    <ActionButton 
-                      color={COLORS.pink} 
-                      onClick={() => handleAction(comp, 'spare')} 
-                      disabled={!canModify} 
-                      title="Spare Parts"
-                    >
-                      Sp
-                    </ActionButton>
-                    <ActionButton 
-                      color={COLORS.yellow} 
-                      onClick={() => handleAction(comp, 'mng')} 
-                      disabled={!canModify} 
-                      title="Management"
-                    >
-                      Mng
-                    </ActionButton>
-                    <ActionButton 
-                      color={COLORS.gray} 
-                      onClick={() => handleAction(comp, 'return')} 
-                      disabled={!canModify} 
-                      title="Return"
-                    >
-                      ↩
-                    </ActionButton>
-                    <ActionButton 
-                      color={COLORS.primary} 
-                      onClick={() => handleAction(comp, 'delete')} 
-                      disabled={!canModify} 
-                      title="Delete"
-                    >
-                      🗑️
-                    </ActionButton>
+                    <ActionButton color={COLORS.success} onClick={() => handleAction(comp, 'resolved')} disabled={!canModify || comp.has_eng_check} title="Resolved">✓</ActionButton>
+                    <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'check')} disabled={!canModify || comp.has_eng_check} title="Send Check">🔍</ActionButton>
+                    <ActionButton color={COLORS.warning} onClick={() => handleAction(comp, 'pt')} disabled={!canModify} title="Partial">PT</ActionButton>
+                    <ActionButton color={COLORS.pink} onClick={() => handleAction(comp, 'spare')} disabled={!canModify} title="Spare Parts">Sp</ActionButton>
+                    <ActionButton color={COLORS.yellow} onClick={() => handleAction(comp, 'mng')} disabled={!canModify} title="Management">Mng</ActionButton>
+                    <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} disabled={!canModify} title="Return">↩</ActionButton>
+                    <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Delete">🗑️</ActionButton>
                   </div>
                 </td>
               </tr>
@@ -2664,23 +2303,11 @@ function EngineeringPage({ user }) {
           <label style={styles.label}>Send to</label>
           <div style={{ display: 'flex', gap: '16px' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input
-                type="radio"
-                name="checkDest"
-                value="Site"
-                checked={checkDestination === 'Site'}
-                onChange={(e) => setCheckDestination(e.target.value)}
-              />
+              <input type="radio" name="checkDest" value="Site" checked={checkDestination === 'Site'} onChange={(e) => setCheckDestination(e.target.value)} />
               WH Site
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input
-                type="radio"
-                name="checkDest"
-                value="Yard"
-                checked={checkDestination === 'Yard'}
-                onChange={(e) => setCheckDestination(e.target.value)}
-              />
+              <input type="radio" name="checkDest" value="Yard" checked={checkDestination === 'Yard'} onChange={(e) => setCheckDestination(e.target.value)} />
               WH Yard
             </label>
           </div>
@@ -2695,59 +2322,33 @@ function EngineeringPage({ user }) {
           />
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowCheckModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitCheck} style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}>
-            Send Check 🔍
-          </button>
+          <button onClick={() => setShowCheckModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={sendCheck} style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}>Send</button>
         </div>
       </Modal>
 
-      {/* Note Modal for Management */}
-      <Modal isOpen={showNoteModal} onClose={() => setShowNoteModal(false)} title="Send to Management">
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Note / Reason</label>
-          <textarea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            style={{ ...styles.input, minHeight: '80px' }}
-            placeholder="Explain why this needs management decision..."
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowNoteModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitNote} style={{ ...styles.button, backgroundColor: COLORS.yellow, color: 'white' }}>
-            Send to Management
-          </button>
-        </div>
-      </Modal>
-
-      {/* PT Modal */}
-      <Modal isOpen={showPTModal} onClose={() => setShowPTModal(false)} title="Partial - Split Quantity">
-        <p style={{ marginBottom: '16px', color: '#6b7280' }}>
-          Total quantity: <strong>{selectedComponent?.quantity}</strong>
+      {/* Partial Modal */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Split - Part to Spare">
+        <p style={{ marginBottom: '16px' }}>
+          <strong>{selectedComponent?.ident_code}</strong> - Total: {selectedComponent?.quantity}
         </p>
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Resolved Quantity</label>
+          <label style={styles.label}>Qty to Spare Parts</label>
           <input
             type="number"
-            value={ptQty}
-            onChange={(e) => setPtQty(e.target.value)}
+            value={partialQty}
+            onChange={(e) => setPartialQty(e.target.value)}
             style={styles.input}
             min="1"
             max={selectedComponent?.quantity - 1}
           />
+          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
+            Remaining will go to Orders
+          </p>
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPTModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitPT} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Split
-          </button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Split</button>
         </div>
       </Modal>
     </div>
@@ -2755,78 +2356,201 @@ function EngineeringPage({ user }) {
 }
 
 // ============================================================
-// PAGINA SITE IN
+// MATERIAL IN PAGE - REDESIGNED con selezione MIR
 // ============================================================
-function SiteInPage({ user }) {
-  const [components, setComponents] = useState([]);
+function MaterialInPage({ user }) {
+  const [orderedComponents, setOrderedComponents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showReceiveModal, setShowReceiveModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [receiveData, setReceiveData] = useState({
+    destination: 'YARD',
+    tag_number: '',
+    note: ''
+  });
+  const [allTags, setAllTags] = useState([]);
+  const [allIdents, setAllIdents] = useState([]);
+  // Bulk receive from MIR
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [selectedMir, setSelectedMir] = useState('');
+  const [mirOptions, setMirOptions] = useState([]);
+  const [mirComponents, setMirComponents] = useState([]);
+  const [bulkDestination, setBulkDestination] = useState('YARD');
 
   useEffect(() => {
-    loadComponents();
+    loadData();
   }, []);
 
-  const loadComponents = async () => {
+  const loadData = async () => {
     setLoading(true);
     
-    const { data } = await supabase
+    // Load ordered components
+    const { data: ordData } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type
-        )
-      `)
-      .eq('status', 'Trans');
+      .select(`*, requests (request_number, sub_number)`)
+      .eq('status', 'Ordered');
+    if (ordData) setOrderedComponents(ordData);
 
-    if (data) setComponents(data);
+    // Load tags for autocomplete
+    const { data: tagData } = await supabase
+      .from('project_materials')
+      .select('tag_number')
+      .not('tag_number', 'is', null);
+    if (tagData) {
+      const unique = [...new Set(tagData.map(t => t.tag_number).filter(Boolean))];
+      setAllTags(unique);
+    }
+
+    // Load all idents for autocomplete
+    const { data: identData } = await supabase
+      .from('inventory')
+      .select('ident_code, description');
+    if (identData) setAllIdents(identData);
+
+    // Load MIR options (open MIRs with ordered components)
+    const { data: mirData } = await supabase
+      .from('mirs')
+      .select('id, mir_number, category')
+      .eq('status', 'Open');
+    if (mirData) setMirOptions(mirData);
+
     setLoading(false);
   };
 
-  const handleConfirm = async (component) => {
+  const openReceiveModal = (component) => {
+    setSelectedComponent(component);
+    setReceiveData({ destination: 'YARD', tag_number: '', note: '' });
+    setShowReceiveModal(true);
+  };
+
+  const receiveComponent = async () => {
     try {
-      // Increment site inventory
-      await supabase.rpc('increment_site_qty', { 
-        p_ident_code: component.ident_code, 
-        p_qty: component.quantity 
-      });
-
-      // Update status to Site (ready for collection)
-      await supabase
-        .from('request_components')
+      const dest = receiveData.destination;
+      
+      // Update component status
+      await supabase.from('request_components')
         .update({ 
-          status: 'Site',
-          current_location: 'SITE'
+          status: dest === 'YARD' ? 'Yard' : 'Site',
+          current_location: dest,
+          tag_number: receiveData.tag_number || null
         })
-        .eq('id', component.id);
+        .eq('id', selectedComponent.id);
+      
+      // Update inventory
+      if (dest === 'YARD') {
+        await supabase.rpc('increment_yard_qty', { 
+          p_ident_code: selectedComponent.ident_code, 
+          p_qty: selectedComponent.quantity 
+        });
+      } else {
+        await supabase.rpc('increment_site_qty', { 
+          p_ident_code: selectedComponent.ident_code, 
+          p_qty: selectedComponent.quantity 
+        });
+      }
 
-      // Log movement
+      // Record movement
       await supabase.from('movements').insert({
-        ident_code: component.ident_code,
+        ident_code: selectedComponent.ident_code,
         movement_type: 'IN',
-        quantity: component.quantity,
-        from_location: 'YARD',
-        to_location: 'SITE',
-        note: `Transfer from Yard - Request ${component.requests?.request_number}`,
-        performed_by: user.full_name
+        quantity: selectedComponent.quantity,
+        from_location: 'SUPPLIER',
+        to_location: dest,
+        performed_by: user.full_name,
+        note: receiveData.note || `Order received - Tag: ${receiveData.tag_number || 'N/A'}`
       });
 
-      loadComponents();
+      setShowReceiveModal(false);
+      loadData();
     } catch (error) {
       alert('Error: ' + error.message);
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_site_in === 'modify';
+  // Load components for selected MIR
+  const loadMirComponents = async (mirId) => {
+    const { data } = await supabase
+      .from('request_components')
+      .select(`*, requests (request_number, sub_number)`)
+      .eq('mir_id', mirId)
+      .eq('status', 'Ordered');
+    if (data) setMirComponents(data);
+  };
+
+  const handleMirChange = (mirId) => {
+    setSelectedMir(mirId);
+    if (mirId) {
+      loadMirComponents(mirId);
+    } else {
+      setMirComponents([]);
+    }
+  };
+
+  const receiveBulk = async () => {
+    try {
+      for (const comp of mirComponents) {
+        const dest = bulkDestination;
+        
+        await supabase.from('request_components')
+          .update({ 
+            status: dest === 'YARD' ? 'Yard' : 'Site',
+            current_location: dest
+          })
+          .eq('id', comp.id);
+        
+        if (dest === 'YARD') {
+          await supabase.rpc('increment_yard_qty', { 
+            p_ident_code: comp.ident_code, 
+            p_qty: comp.quantity 
+          });
+        } else {
+          await supabase.rpc('increment_site_qty', { 
+            p_ident_code: comp.ident_code, 
+            p_qty: comp.quantity 
+          });
+        }
+
+        await supabase.from('movements').insert({
+          ident_code: comp.ident_code,
+          movement_type: 'IN',
+          quantity: comp.quantity,
+          from_location: 'SUPPLIER',
+          to_location: dest,
+          performed_by: user.full_name,
+          note: `MIR bulk receive`
+        });
+      }
+
+      setShowBulkModal(false);
+      setSelectedMir('');
+      setMirComponents([]);
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const canModify = user.role === 'admin' || user.perm_material_in === 'modify';
 
   if (loading) return <div>Loading...</div>;
 
   return (
     <div>
+      {/* Header with bulk receive button */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px', gap: '12px' }}>
+        <button
+          onClick={() => setShowBulkModal(true)}
+          disabled={!canModify}
+          style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+        >
+          📦 Receive from MIR
+        </button>
+      </div>
+
+      {/* Ordered Components waiting for arrival */}
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Site IN - Materials in Transit from Yard</h3>
+          <h3 style={{ fontWeight: '600' }}>Material IN - Ordered Components Awaiting ({orderedComponents.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -2835,11 +2559,13 @@ function SiteInPage({ user }) {
               <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
+              <th style={styles.th}>Order Date</th>
+              <th style={styles.th}>Expected</th>
               <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {components.map(comp => (
+            {orderedComponents.map(comp => (
               <tr key={comp.id}>
                 <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                   {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
@@ -2847,40 +2573,183 @@ function SiteInPage({ user }) {
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
                 <td style={styles.td}>{comp.description}</td>
                 <td style={styles.td}>{comp.quantity}</td>
+                <td style={styles.td}>{comp.order_date ? new Date(comp.order_date).toLocaleDateString() : '-'}</td>
+                <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}</td>
                 <td style={styles.td}>
                   <button
-                    onClick={() => handleConfirm(comp)}
+                    onClick={() => openReceiveModal(comp)}
                     disabled={!canModify}
                     style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
                   >
-                    ✓ Confirm Arrival
+                    📥 Receive
                   </button>
                 </td>
               </tr>
             ))}
-            {components.length === 0 && (
+            {orderedComponents.length === 0 && (
               <tr>
-                <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No materials in transit
+                <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No ordered components awaiting delivery
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Single Receive Modal */}
+      <Modal isOpen={showReceiveModal} onClose={() => setShowReceiveModal(false)} title="Receive Material">
+        <div style={{ marginBottom: '16px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Description:</strong> {selectedComponent?.description}</p>
+          <p><strong>Quantity:</strong> {selectedComponent?.quantity}</p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Destination Warehouse</label>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="radio" 
+                value="YARD" 
+                checked={receiveData.destination === 'YARD'} 
+                onChange={(e) => setReceiveData({...receiveData, destination: e.target.value})} 
+              />
+              WH Yard
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="radio" 
+                value="SITE" 
+                checked={receiveData.destination === 'SITE'} 
+                onChange={(e) => setReceiveData({...receiveData, destination: e.target.value})} 
+              />
+              WH Site
+            </label>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Tag Number (optional)</label>
+          <input
+            type="text"
+            list="tag-options"
+            value={receiveData.tag_number}
+            onChange={(e) => setReceiveData({...receiveData, tag_number: e.target.value})}
+            style={styles.input}
+            placeholder="Select or enter tag..."
+          />
+          <datalist id="tag-options">
+            {allTags.map(t => <option key={t} value={t} />)}
+          </datalist>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Note (optional)</label>
+          <textarea
+            value={receiveData.note}
+            onChange={(e) => setReceiveData({...receiveData, note: e.target.value})}
+            style={{ ...styles.input, minHeight: '60px' }}
+            placeholder="Delivery note, tracking number..."
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowReceiveModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={receiveComponent} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
+            Confirm Receive
+          </button>
+        </div>
+      </Modal>
+
+      {/* Bulk Receive Modal */}
+      <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="Receive from MIR" wide>
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Select MIR</label>
+          <select
+            value={selectedMir}
+            onChange={(e) => handleMirChange(e.target.value)}
+            style={styles.select}
+          >
+            <option value="">-- Select MIR --</option>
+            {mirOptions.map(mir => (
+              <option key={mir.id} value={mir.id}>
+                MIR-{String(mir.mir_number || mir.id).slice(-6)} - {mir.category}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {mirComponents.length > 0 && (
+          <>
+            <div style={{ marginBottom: '16px' }}>
+              <label style={styles.label}>Destination for all materials</label>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input 
+                    type="radio" 
+                    value="YARD" 
+                    checked={bulkDestination === 'YARD'} 
+                    onChange={(e) => setBulkDestination(e.target.value)} 
+                  />
+                  WH Yard
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input 
+                    type="radio" 
+                    value="SITE" 
+                    checked={bulkDestination === 'SITE'} 
+                    onChange={(e) => setBulkDestination(e.target.value)} 
+                  />
+                  WH Site
+                </label>
+              </div>
+            </div>
+
+            <table style={{ ...styles.table, marginBottom: '16px' }}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Code</th>
+                  <th style={styles.th}>Description</th>
+                  <th style={styles.th}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mirComponents.map(comp => (
+                  <tr key={comp.id}>
+                    <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
+                    <td style={styles.td}>{comp.description}</td>
+                    <td style={styles.td}>{comp.quantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowBulkModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+              <button onClick={receiveBulk} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
+                Receive All ({mirComponents.length} items)
+              </button>
+            </div>
+          </>
+        )}
+
+        {selectedMir && mirComponents.length === 0 && (
+          <p style={{ color: '#6b7280', textAlign: 'center', padding: '20px' }}>
+            No ordered components in this MIR
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }
 
 // ============================================================
-// PAGINA SPARE PARTS
+// SPARE PARTS PAGE
 // ============================================================
 function SparePartsPage({ user }) {
   const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [showMngModal, setShowMngModal] = useState(false);
-  const [mngNote, setMngNote] = useState('');
 
   useEffect(() => {
     loadComponents();
@@ -2888,54 +2757,38 @@ function SparePartsPage({ user }) {
 
   const loadComponents = async () => {
     setLoading(true);
-    
     const { data } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type
-        )
-      `)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
       .eq('status', 'Spare');
-
     if (data) setComponents(data);
     setLoading(false);
   };
 
-  const handleClientHas = async (component) => {
+  const handleAction = async (component, action) => {
     try {
-      await supabase
-        .from('request_components')
-        .update({ status: 'ToCollect' })
-        .eq('id', component.id);
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const handleNoSpare = (component) => {
-    setSelectedComponent(component);
-    setShowMngModal(true);
-  };
-
-  const submitToMng = async () => {
-    if (!selectedComponent) return;
-    try {
-      await supabase
-        .from('request_components')
-        .update({ 
-          status: 'Mng',
-          mng_note: mngNote || 'Client does not have spare parts - needs purchase'
-        })
-        .eq('id', selectedComponent.id);
-      
-      setShowMngModal(false);
-      setMngNote('');
-      setSelectedComponent(null);
+      switch (action) {
+        case 'client':
+          await supabase.from('request_components')
+            .update({ status: 'Order', order_type: 'Client' })
+            .eq('id', component.id);
+          break;
+        case 'internal':
+          await supabase.from('request_components')
+            .update({ status: 'Order', order_type: 'Internal' })
+            .eq('id', component.id);
+          break;
+        case 'mng':
+          await supabase.from('request_components')
+            .update({ status: 'Mng' })
+            .eq('id', component.id);
+          break;
+        case 'return':
+          await supabase.from('request_components')
+            .update({ status: 'Eng' })
+            .eq('id', component.id);
+          break;
+      }
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -2950,7 +2803,7 @@ function SparePartsPage({ user }) {
     <div>
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Spare Parts - Client Request</h3>
+          <h3 style={{ fontWeight: '600' }}>Spare Parts - Client Coordination ({components.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -2959,7 +2812,6 @@ function SparePartsPage({ user }) {
               <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Request Date</th>
               <th style={styles.th}>Actions</th>
             </tr>
           </thead>
@@ -2973,138 +2825,118 @@ function SparePartsPage({ user }) {
                 <td style={styles.td}>{comp.description}</td>
                 <td style={styles.td}>{comp.quantity}</td>
                 <td style={styles.td}>
-                  {comp.spare_request_date ? new Date(comp.spare_request_date).toLocaleDateString() : '-'}
-                </td>
-                <td style={styles.td}>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => handleClientHas(comp)}
-                      disabled={!canModify}
-                      style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
-                    >
-                      ✓ Client Has It
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button onClick={() => handleAction(comp, 'client')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white' }}>
+                      👤 Client Order
                     </button>
-                    <button
-                      onClick={() => handleNoSpare(comp)}
-                      disabled={!canModify}
-                      style={{ ...styles.button, backgroundColor: COLORS.yellow, color: 'white' }}
-                    >
-                      ✗ No Spare → Mng
+                    <button onClick={() => handleAction(comp, 'internal')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>
+                      🏢 Internal Order
                     </button>
+                    <button onClick={() => handleAction(comp, 'mng')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.yellow, color: 'white' }}>
+                      💼 Management
+                    </button>
+                    <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} disabled={!canModify} title="Return to Engineering">↩</ActionButton>
                   </div>
                 </td>
               </tr>
             ))}
             {components.length === 0 && (
               <tr>
-                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No spare parts requests
+                <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No components in Spare Parts
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
-
-      {/* Management Modal */}
-      <Modal isOpen={showMngModal} onClose={() => setShowMngModal(false)} title="Send to Management">
-        <p style={{ marginBottom: '16px', color: '#6b7280' }}>
-          Client does not have this spare part. This will be sent to Management for purchase decision.
-        </p>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Additional Note (optional)</label>
-          <textarea
-            value={mngNote}
-            onChange={(e) => setMngNote(e.target.value)}
-            style={{ ...styles.input, minHeight: '80px' }}
-            placeholder="Add any additional information..."
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowMngModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={submitToMng} style={{ ...styles.button, backgroundColor: COLORS.yellow, color: 'white' }}>
-            Send to Management
-          </button>
-        </div>
-      </Modal>
     </div>
   );
 }
 
 // ============================================================
-// PAGINA ORDERS
+// ORDERS PAGE - con popup migliorato per data ordine + forecast
 // ============================================================
 function OrdersPage({ user }) {
-  const [activeTab, setActiveTab] = useState('toOrder');
+  const [activeTab, setActiveTab] = useState('daOrdinare');
   const [toOrderComponents, setToOrderComponents] = useState([]);
   const [orderedComponents, setOrderedComponents] = useState([]);
   const [orderLog, setOrderLog] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedComponent, setSelectedComponent] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  // NEW: Order date and forecast
+  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [expectedDate, setExpectedDate] = useState('');
 
   useEffect(() => {
     loadData();
-  }, [activeTab]);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
     
-    if (activeTab === 'toOrder') {
-      const { data } = await supabase
-        .from('request_components')
-        .select(`*, requests (request_number, sub_number)`)
-        .eq('status', 'Order');
-      if (data) setToOrderComponents(data);
-    } else if (activeTab === 'ordered') {
-      const { data } = await supabase
-        .from('request_components')
-        .select(`*, requests (request_number, sub_number)`)
-        .eq('status', 'Ordered');
-      if (data) setOrderedComponents(data);
-    } else {
-      const { data } = await supabase
-        .from('order_log')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (data) setOrderLog(data);
-    }
-    
+    const { data: toOrder } = await supabase
+      .from('request_components')
+      .select(`*, requests (request_number, sub_number)`)
+      .eq('status', 'Order');
+    if (toOrder) setToOrderComponents(toOrder);
+
+    const { data: ordered } = await supabase
+      .from('request_components')
+      .select(`*, requests (request_number, sub_number)`)
+      .eq('status', 'Ordered');
+    if (ordered) setOrderedComponents(ordered);
+
+    const { data: log } = await supabase
+      .from('order_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (log) setOrderLog(log);
+
     setLoading(false);
   };
 
-  const handleOrder = (component) => {
+  const openOrderModal = (component) => {
     setSelectedComponent(component);
+    setOrderDate(new Date().toISOString().split('T')[0]);
+    setExpectedDate('');
     setShowOrderModal(true);
   };
 
   const submitOrder = async () => {
-    if (!selectedComponent || !expectedDate) return;
     try {
-      await supabase
-        .from('request_components')
+      await supabase.from('request_components')
         .update({ 
           status: 'Ordered',
-          order_date: new Date().toISOString(),
-          order_forecast: expectedDate
+          order_date: orderDate,
+          order_forecast: expectedDate || null
         })
         .eq('id', selectedComponent.id);
 
+      // Log the order
       await supabase.from('order_log').insert({
-        component_id: selectedComponent.id,
         ident_code: selectedComponent.ident_code,
         quantity: selectedComponent.quantity,
-        order_type: selectedComponent.order_type,
-        expected_date: expectedDate,
+        order_type: selectedComponent.order_type || 'Internal',
+        order_date: orderDate,
+        expected_date: expectedDate || null,
         ordered_by: user.full_name
       });
 
+      // Record movement
+      await supabase.from('movements').insert({
+        ident_code: selectedComponent.ident_code,
+        movement_type: 'ORDER',
+        quantity: selectedComponent.quantity,
+        from_location: 'ORDER',
+        to_location: 'SUPPLIER',
+        performed_by: user.full_name,
+        note: `Order placed - Expected: ${expectedDate || 'TBD'}`
+      });
+
       setShowOrderModal(false);
-      setExpectedDate('');
-      setSelectedComponent(null);
       loadData();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -3118,31 +2950,30 @@ function OrdersPage({ user }) {
   return (
     <div>
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        {['toOrder', 'ordered', 'log'].map(tab => (
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        {[
+          { id: 'daOrdinare', label: `To Order (${toOrderComponents.length})` },
+          { id: 'ordinati', label: `Ordered (${orderedComponents.length})` },
+          { id: 'log', label: 'Log' }
+        ].map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
             style={{
               ...styles.button,
-              backgroundColor: activeTab === tab ? 'white' : '#e5e7eb',
-              color: activeTab === tab ? COLORS.secondary : '#6b7280',
-              boxShadow: activeTab === tab ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+              backgroundColor: activeTab === tab.id ? 'white' : '#e5e7eb',
+              color: activeTab === tab.id ? '#1f2937' : '#6b7280',
+              borderRadius: '8px 8px 0 0',
+              boxShadow: activeTab === tab.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
             }}
           >
-            {tab === 'toOrder' ? 'To Order' : tab === 'ordered' ? 'Ordered' : 'Log'}
+            {tab.label}
           </button>
         ))}
       </div>
 
       <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>
-            {activeTab === 'toOrder' ? 'To Order' : activeTab === 'ordered' ? 'Ordered' : 'Order Log'}
-          </h3>
-        </div>
-
-        {activeTab === 'toOrder' && (
+        {activeTab === 'daOrdinare' && (
           <table style={styles.table}>
             <thead>
               <tr>
@@ -3164,20 +2995,17 @@ function OrdersPage({ user }) {
                   <td style={styles.td}>{comp.description}</td>
                   <td style={styles.td}>{comp.quantity}</td>
                   <td style={styles.td}>
-                    <span style={{ 
-                      ...styles.statusBadge, 
-                      backgroundColor: comp.order_type === 'Internal' ? COLORS.info : COLORS.cyan 
-                    }}>
+                    <span style={{ ...styles.statusBadge, backgroundColor: comp.order_type === 'Client' ? COLORS.cyan : COLORS.info }}>
                       {comp.order_type || 'Internal'}
                     </span>
                   </td>
                   <td style={styles.td}>
                     <button
-                      onClick={() => handleOrder(comp)}
+                      onClick={() => openOrderModal(comp)}
                       disabled={!canModify}
                       style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
                     >
-                      🛒 Order
+                      🛒 Place Order
                     </button>
                   </td>
                 </tr>
@@ -3193,7 +3021,7 @@ function OrdersPage({ user }) {
           </table>
         )}
 
-        {activeTab === 'ordered' && (
+        {activeTab === 'ordinati' && (
           <table style={styles.table}>
             <thead>
               <tr>
@@ -3202,6 +3030,7 @@ function OrdersPage({ user }) {
                 <th style={styles.th}>Qty</th>
                 <th style={styles.th}>Order Date</th>
                 <th style={styles.th}>Expected</th>
+                <th style={styles.th}>Type</th>
               </tr>
             </thead>
             <tbody>
@@ -3214,11 +3043,16 @@ function OrdersPage({ user }) {
                   <td style={styles.td}>{comp.quantity}</td>
                   <td style={styles.td}>{comp.order_date ? new Date(comp.order_date).toLocaleDateString() : '-'}</td>
                   <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}</td>
+                  <td style={styles.td}>
+                    <span style={{ ...styles.statusBadge, backgroundColor: comp.order_type === 'Client' ? COLORS.cyan : COLORS.info }}>
+                      {comp.order_type || 'Internal'}
+                    </span>
+                  </td>
                 </tr>
               ))}
               {orderedComponents.length === 0 && (
                 <tr>
-                  <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                     No ordered items
                   </td>
                 </tr>
@@ -3262,11 +3096,24 @@ function OrdersPage({ user }) {
         )}
       </div>
 
-      {/* Order Modal */}
+      {/* Order Modal with date and forecast */}
       <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="Place Order">
-        <p style={{ marginBottom: '16px' }}>
-          <strong>{selectedComponent?.ident_code}</strong> - Qty: {selectedComponent?.quantity}
-        </p>
+        <div style={{ marginBottom: '16px' }}>
+          <p><strong>Code:</strong> {selectedComponent?.ident_code}</p>
+          <p><strong>Quantity:</strong> {selectedComponent?.quantity}</p>
+          <p><strong>Type:</strong> {selectedComponent?.order_type || 'Internal'}</p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Order Date *</label>
+          <input
+            type="date"
+            value={orderDate}
+            onChange={(e) => setOrderDate(e.target.value)}
+            style={styles.input}
+          />
+        </div>
+
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Expected Delivery Date</label>
           <input
@@ -3276,6 +3123,7 @@ function OrdersPage({ user }) {
             style={styles.input}
           />
         </div>
+
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowOrderModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
             Cancel
@@ -3290,7 +3138,7 @@ function OrdersPage({ user }) {
 }
 
 // ============================================================
-// PAGINA MANAGEMENT
+// MANAGEMENT PAGE
 // ============================================================
 function ManagementPage({ user }) {
   const [components, setComponents] = useState([]);
@@ -3302,31 +3150,18 @@ function ManagementPage({ user }) {
 
   const loadComponents = async () => {
     setLoading(true);
-    
     const { data } = await supabase
       .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number,
-          request_type
-        )
-      `)
+      .select(`*, requests (request_number, sub_number, request_type)`)
       .eq('status', 'Mng');
-
     if (data) setComponents(data);
     setLoading(false);
   };
 
   const handleDecision = async (component, orderType) => {
     try {
-      await supabase
-        .from('request_components')
-        .update({ 
-          status: 'Order',
-          order_type: orderType
-        })
+      await supabase.from('request_components')
+        .update({ status: 'Order', order_type: orderType })
         .eq('id', component.id);
       loadComponents();
     } catch (error) {
@@ -3342,7 +3177,7 @@ function ManagementPage({ user }) {
     <div>
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Management - Purchase Decisions</h3>
+          <h3 style={{ fontWeight: '600' }}>Management - Purchase Decisions ({components.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -3367,18 +3202,10 @@ function ManagementPage({ user }) {
                 <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280' }}>{comp.mng_note || comp.eng_note || '-'}</td>
                 <td style={styles.td}>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => handleDecision(comp, 'Internal')}
-                      disabled={!canModify}
-                      style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
-                    >
+                    <button onClick={() => handleDecision(comp, 'Internal')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>
                       🏢 Internal Order
                     </button>
-                    <button
-                      onClick={() => handleDecision(comp, 'Client')}
-                      disabled={!canModify}
-                      style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white' }}
-                    >
+                    <button onClick={() => handleDecision(comp, 'Client')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white' }}>
                       👤 Client Order
                     </button>
                   </div>
@@ -3400,7 +3227,7 @@ function ManagementPage({ user }) {
 }
 
 // ============================================================
-// PAGINA MIR
+// MIR PAGE
 // ============================================================
 function MIRPage({ user }) {
   const [mirs, setMirs] = useState([]);
@@ -3444,18 +3271,14 @@ function MIRPage({ user }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          disabled={!canModify}
-          style={{ ...styles.button, ...styles.buttonPrimary }}
-        >
+        <button onClick={() => setShowCreateModal(true)} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>
           + New MIR
         </button>
       </div>
 
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Material Issue Reports</h3>
+          <h3 style={{ fontWeight: '600' }}>Material Issue Reports ({mirs.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -3472,7 +3295,7 @@ function MIRPage({ user }) {
             {mirs.map(mir => (
               <tr key={mir.id}>
                 <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                  MIR-{String(mir.id).slice(-6)}
+                  MIR-{String(mir.mir_number || mir.id).slice(-6)}
                 </td>
                 <td style={styles.td}>{mir.category}</td>
                 <td style={styles.td}>
@@ -3508,27 +3331,16 @@ function MIRPage({ user }) {
         </table>
       </div>
 
-      {/* Create MIR Modal */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New MIR">
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Category</label>
-          <select
-            value={newMir.category}
-            onChange={(e) => setNewMir({ ...newMir, category: e.target.value })}
-            style={styles.select}
-          >
-            {MIR_CATEGORIES.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
+          <select value={newMir.category} onChange={(e) => setNewMir({ ...newMir, category: e.target.value })} style={styles.select}>
+            {MIR_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </div>
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Priority</label>
-          <select
-            value={newMir.priority}
-            onChange={(e) => setNewMir({ ...newMir, priority: e.target.value })}
-            style={styles.select}
-          >
+          <select value={newMir.priority} onChange={(e) => setNewMir({ ...newMir, priority: e.target.value })} style={styles.select}>
             <option value="Normal">Normal</option>
             <option value="High">High</option>
             <option value="Urgent">Urgent</option>
@@ -3536,20 +3348,11 @@ function MIRPage({ user }) {
         </div>
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Expected Date</label>
-          <input
-            type="date"
-            value={newMir.expected_date}
-            onChange={(e) => setNewMir({ ...newMir, expected_date: e.target.value })}
-            style={styles.input}
-          />
+          <input type="date" value={newMir.expected_date} onChange={(e) => setNewMir({ ...newMir, expected_date: e.target.value })} style={styles.input} />
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={createMir} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Create MIR
-          </button>
+          <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={createMir} style={{ ...styles.button, ...styles.buttonPrimary }}>Create MIR</button>
         </div>
       </Modal>
     </div>
@@ -3557,132 +3360,26 @@ function MIRPage({ user }) {
 }
 
 // ============================================================
-// PAGINA MATERIAL IN
-// ============================================================
-function MaterialInPage({ user }) {
-  const [components, setComponents] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadComponents();
-  }, []);
-
-  const loadComponents = async () => {
-    setLoading(true);
-    
-    const { data } = await supabase
-      .from('request_components')
-      .select(`
-        *,
-        requests (
-          request_number,
-          sub_number
-        )
-      `)
-      .eq('status', 'Ordered');
-
-    if (data) setComponents(data);
-    setLoading(false);
-  };
-
-  const handleReceive = async (component) => {
-    try {
-      // Increment yard inventory
-      await supabase.rpc('increment_yard_qty', { 
-        p_ident_code: component.ident_code, 
-        p_qty: component.quantity 
-      });
-
-      // Update status to Trans (will go to Site)
-      await supabase
-        .from('request_components')
-        .update({ status: 'Trans' })
-        .eq('id', component.id);
-
-      // Log movement
-      await supabase.from('movements').insert({
-        ident_code: component.ident_code,
-        movement_type: 'IN',
-        quantity: component.quantity,
-        from_location: 'SUPPLIER',
-        to_location: 'YARD',
-        note: `Order received - Request ${component.requests?.request_number}`,
-        performed_by: user.full_name
-      });
-
-      loadComponents();
-    } catch (error) {
-      alert('Error: ' + error.message);
-    }
-  };
-
-  const canModify = user.role === 'admin' || user.perm_material_in === 'modify';
-
-  if (loading) return <div>Loading...</div>;
-
-  return (
-    <div>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Material In - Ordered Items</h3>
-        </div>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Request #</th>
-              <th style={styles.th}>Code</th>
-              <th style={styles.th}>Description</th>
-              <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Expected</th>
-              <th style={styles.th}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {components.map(comp => (
-              <tr key={comp.id}>
-                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                  {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
-                </td>
-                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
-                <td style={styles.td}>{comp.description}</td>
-                <td style={styles.td}>{comp.quantity}</td>
-                <td style={styles.td}>
-                  {comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}
-                </td>
-                <td style={styles.td}>
-                  <button
-                    onClick={() => handleReceive(comp)}
-                    disabled={!canModify}
-                    style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
-                  >
-                    📥 Receive
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {components.length === 0 && (
-              <tr>
-                <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No ordered materials waiting
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// PAGINA LOG
+// LOG PAGE - con + Add Movement e filtri avanzati
 // ============================================================
 function LogPage({ user }) {
   const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState({ type: '', code: '', request: '' });
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newMovement, setNewMovement] = useState({
+    movement_type: 'IN',
+    ident_code: '',
+    quantity: '',
+    from_location: '',
+    to_location: '',
+    note: ''
+  });
+  const [allIdents, setAllIdents] = useState([]);
 
   useEffect(() => {
     loadMovements();
+    loadIdents();
   }, []);
 
   const loadMovements = async () => {
@@ -3691,18 +3388,134 @@ function LogPage({ user }) {
       .from('movements')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(200);
     if (data) setMovements(data);
     setLoading(false);
   };
+
+  const loadIdents = async () => {
+    const { data } = await supabase
+      .from('inventory')
+      .select('ident_code')
+      .order('ident_code');
+    if (data) setAllIdents(data.map(d => d.ident_code));
+  };
+
+  const filteredMovements = movements.filter(mov => {
+    if (filter.type && mov.movement_type !== filter.type) return false;
+    if (filter.code && !mov.ident_code?.toLowerCase().includes(filter.code.toLowerCase())) return false;
+    if (filter.request && !mov.note?.toLowerCase().includes(filter.request.toLowerCase())) return false;
+    return true;
+  });
+
+  const addMovement = async () => {
+    if (!newMovement.ident_code || !newMovement.quantity) {
+      alert('Code and quantity are required');
+      return;
+    }
+
+    try {
+      // Insert movement
+      await supabase.from('movements').insert({
+        ident_code: newMovement.ident_code,
+        movement_type: newMovement.movement_type,
+        quantity: parseInt(newMovement.quantity),
+        from_location: newMovement.from_location || newMovement.movement_type,
+        to_location: newMovement.to_location || newMovement.movement_type,
+        performed_by: user.full_name,
+        note: newMovement.note
+      });
+
+      // Update inventory based on movement type
+      const qty = parseInt(newMovement.quantity);
+      switch (newMovement.movement_type) {
+        case 'IN':
+          if (newMovement.to_location === 'YARD') {
+            await supabase.rpc('increment_yard_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+          } else {
+            await supabase.rpc('increment_site_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+          }
+          break;
+        case 'OUT':
+          if (newMovement.from_location === 'YARD') {
+            await supabase.rpc('decrement_yard_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+          } else {
+            await supabase.rpc('decrement_site_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+          }
+          break;
+        case 'LOST':
+          await supabase.from('inventory')
+            .update({ lost_qty: supabase.raw('lost_qty + ' + qty) })
+            .eq('ident_code', newMovement.ident_code);
+          break;
+        case 'BROKEN':
+          await supabase.from('inventory')
+            .update({ broken_qty: supabase.raw('broken_qty + ' + qty) })
+            .eq('ident_code', newMovement.ident_code);
+          break;
+        case 'TRANSFER':
+          if (newMovement.from_location === 'YARD' && newMovement.to_location === 'SITE') {
+            await supabase.rpc('decrement_yard_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+            await supabase.rpc('increment_site_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+          } else if (newMovement.from_location === 'SITE' && newMovement.to_location === 'YARD') {
+            await supabase.rpc('decrement_site_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+            await supabase.rpc('increment_yard_qty', { p_ident_code: newMovement.ident_code, p_qty: qty });
+          }
+          break;
+      }
+
+      setShowAddModal(false);
+      setNewMovement({ movement_type: 'IN', ident_code: '', quantity: '', from_location: '', to_location: '', note: '' });
+      loadMovements();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const canModify = user.role === 'admin' || user.perm_movements === 'modify';
 
   if (loading) return <div>Loading...</div>;
 
   return (
     <div>
+      {/* Header with Add button and filters */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <select 
+            value={filter.type} 
+            onChange={(e) => setFilter({...filter, type: e.target.value})} 
+            style={{ ...styles.select, width: '120px' }}
+          >
+            <option value="">All Types</option>
+            {MOVEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <input
+            type="text"
+            placeholder="Filter by code..."
+            value={filter.code}
+            onChange={(e) => setFilter({...filter, code: e.target.value})}
+            style={{ ...styles.input, width: '150px' }}
+          />
+          <input
+            type="text"
+            placeholder="Filter by request/IB..."
+            value={filter.request}
+            onChange={(e) => setFilter({...filter, request: e.target.value})}
+            style={{ ...styles.input, width: '180px' }}
+          />
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          disabled={!canModify}
+          style={{ ...styles.button, ...styles.buttonPrimary }}
+        >
+          + Add Movement
+        </button>
+      </div>
+
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Movement Log</h3>
+          <h3 style={{ fontWeight: '600' }}>Movement Log ({filteredMovements.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
@@ -3717,7 +3530,7 @@ function LogPage({ user }) {
             </tr>
           </thead>
           <tbody>
-            {movements.map((mov, idx) => (
+            {filteredMovements.map((mov, idx) => (
               <tr key={idx}>
                 <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
                 <td style={styles.td}>
@@ -3726,7 +3539,8 @@ function LogPage({ user }) {
                     backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
                                     mov.movement_type === 'OUT' ? COLORS.primary :
                                     mov.movement_type === 'LOST' ? COLORS.orange :
-                                    mov.movement_type === 'BROKEN' ? COLORS.purple : COLORS.yellow
+                                    mov.movement_type === 'BROKEN' ? COLORS.purple :
+                                    mov.movement_type === 'TRANSFER' ? COLORS.info : COLORS.yellow
                   }}>
                     {mov.movement_type}
                   </span>
@@ -3734,207 +3548,250 @@ function LogPage({ user }) {
                 <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
                 <td style={styles.td}>{mov.quantity}</td>
                 <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
-                <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280' }}>{mov.note}</td>
+                <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {mov.note}
+                </td>
                 <td style={styles.td}>{mov.performed_by}</td>
               </tr>
             ))}
-            {movements.length === 0 && (
+            {filteredMovements.length === 0 && (
               <tr>
                 <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No movements recorded
+                  No movements found
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Add Movement Modal */}
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="+ Add Movement">
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Movement Type *</label>
+          <select 
+            value={newMovement.movement_type} 
+            onChange={(e) => setNewMovement({...newMovement, movement_type: e.target.value})} 
+            style={styles.select}
+          >
+            {MOVEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Ident Code *</label>
+          <input
+            type="text"
+            list="ident-options"
+            value={newMovement.ident_code}
+            onChange={(e) => setNewMovement({...newMovement, ident_code: e.target.value})}
+            style={styles.input}
+            placeholder="Select or type code..."
+          />
+          <datalist id="ident-options">
+            {allIdents.map(code => <option key={code} value={code} />)}
+          </datalist>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Quantity *</label>
+          <input
+            type="number"
+            value={newMovement.quantity}
+            onChange={(e) => setNewMovement({...newMovement, quantity: e.target.value})}
+            style={styles.input}
+            min="1"
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+          <div>
+            <label style={styles.label}>From Location</label>
+            <select 
+              value={newMovement.from_location} 
+              onChange={(e) => setNewMovement({...newMovement, from_location: e.target.value})} 
+              style={styles.select}
+            >
+              <option value="">Select...</option>
+              <option value="YARD">YARD</option>
+              <option value="SITE">SITE</option>
+              <option value="SUPPLIER">SUPPLIER</option>
+              <option value="EXTERNAL">EXTERNAL</option>
+            </select>
+          </div>
+          <div>
+            <label style={styles.label}>To Location</label>
+            <select 
+              value={newMovement.to_location} 
+              onChange={(e) => setNewMovement({...newMovement, to_location: e.target.value})} 
+              style={styles.select}
+            >
+              <option value="">Select...</option>
+              <option value="YARD">YARD</option>
+              <option value="SITE">SITE</option>
+              <option value="DELIVERED">DELIVERED</option>
+              <option value="LOST">LOST</option>
+              <option value="BROKEN">BROKEN</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Note / Reference</label>
+          <textarea
+            value={newMovement.note}
+            onChange={(e) => setNewMovement({...newMovement, note: e.target.value})}
+            style={{ ...styles.input, minHeight: '60px' }}
+            placeholder="Request number, IB number, reason..."
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowAddModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={addMovement} style={{ ...styles.button, ...styles.buttonPrimary }}>Add Movement</button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 // ============================================================
-// PAGINA DATABASE
+// DATABASE PAGE
 // ============================================================
 function DatabasePage({ user }) {
   const [inventory, setInventory] = useState([]);
-  const [projectMaterials, setProjectMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [tagFilter, setTagFilter] = useState('');
-  const [allTags, setAllTags] = useState([]);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editItem, setEditItem] = useState(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newItem, setNewItem] = useState({
-    ident_code: '', description: '', yard_qty: 0, site_qty: 0,
-    lost_qty: 0, broken_qty: 0, collected_ten_wh: 0, record_out: 0, tag_number: '', uom: 'EA'
-  });
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [editData, setEditData] = useState({ yard_qty: 0, site_qty: 0, lost_qty: 0, broken_qty: 0 });
+  const [allTags, setAllTags] = useState([]);
 
   useEffect(() => {
-    loadData();
+    loadInventory();
+    loadTags();
   }, []);
 
-  const loadData = async () => {
+  const loadInventory = async () => {
     setLoading(true);
     
-    // Load inventory
+    // Load inventory with project data
     const { data: invData } = await supabase
       .from('inventory')
       .select('*')
       .order('ident_code');
-    if (invData) setInventory(invData);
-    
-    // Load project materials for As Per Project calculation
-    const { data: pmData } = await supabase
-      .from('project_materials')
-      .select('ident_code, tag_number, description, pos_qty');
-    if (pmData) {
-      setProjectMaterials(pmData);
-      // Extract unique tags
-      const tags = [...new Set(pmData.map(p => p.tag_number).filter(Boolean))].sort();
-      setAllTags(tags);
+
+    if (invData) {
+      // Get project quantities
+      const codes = invData.map(i => i.ident_code);
+      const { data: projData } = await supabase
+        .from('project_materials')
+        .select('ident_code, pos_qty')
+        .in('ident_code', codes);
+
+      const projMap = {};
+      projData?.forEach(p => {
+        projMap[p.ident_code] = (projMap[p.ident_code] || 0) + (p.pos_qty || 0);
+      });
+
+      const combined = invData.map(inv => ({
+        ...inv,
+        as_per_project: projMap[inv.ident_code] || 0,
+        total: (inv.yard_qty || 0) + (inv.site_qty || 0) + (inv.lost_qty || 0) + (inv.broken_qty || 0)
+      }));
+
+      setInventory(combined);
     }
-    
     setLoading(false);
   };
 
-  // Combine project_materials with inventory for display
-  const getCombinedData = () => {
-    // Group project materials by ident_code + tag_number
-    const grouped = {};
-    projectMaterials.forEach(pm => {
-      const key = `${pm.ident_code}|${pm.tag_number || ''}`;
-      if (!grouped[key]) {
-        grouped[key] = {
-          ident_code: pm.ident_code,
-          tag_number: pm.tag_number || '',
-          description: pm.description,
-          as_per_project: 0
-        };
-      }
-      grouped[key].as_per_project += pm.pos_qty || 0;
-    });
-
-    // Add inventory quantities (aggregated by ident_code only)
-    const invByCode = {};
-    inventory.forEach(inv => {
-      invByCode[inv.ident_code] = inv;
-    });
-
-    // Build final list
-    const result = Object.values(grouped).map(item => {
-      const inv = invByCode[item.ident_code] || {};
-      return {
-        ...item,
-        yard_qty: inv.yard_qty || 0,
-        site_qty: inv.site_qty || 0,
-        lost_qty: inv.lost_qty || 0,
-        broken_qty: inv.broken_qty || 0,
-        collected_ten_wh: inv.collected_ten_wh || 0,
-        record_out: inv.record_out || 0,
-        uom: inv.uom || 'EA',
-        inv_id: inv.id
-      };
-    });
-
-    return result.sort((a, b) => a.ident_code.localeCompare(b.ident_code));
+  const loadTags = async () => {
+    const { data } = await supabase
+      .from('inventory')
+      .select('tag_number')
+      .not('tag_number', 'is', null);
+    if (data) {
+      const unique = [...new Set(data.map(d => d.tag_number).filter(Boolean))];
+      setAllTags(unique);
+    }
   };
 
-  const combinedData = getCombinedData();
-
-  const filtered = combinedData.filter(item => {
-    const matchesSearch = !search || 
-      item.ident_code?.toLowerCase().includes(search.toLowerCase()) ||
-      item.description?.toLowerCase().includes(search.toLowerCase()) ||
-      item.tag_number?.toLowerCase().includes(search.toLowerCase());
-    const matchesTag = !tagFilter || item.tag_number === tagFilter;
-    return matchesSearch && matchesTag;
+  const filteredInventory = inventory.filter(item => {
+    if (search && !item.ident_code?.toLowerCase().includes(search.toLowerCase()) && 
+        !item.description?.toLowerCase().includes(search.toLowerCase())) return false;
+    if (tagFilter && item.tag_number !== tagFilter) return false;
+    return true;
   });
 
-  // Calculate totals for filtered items
-  const filteredTotals = filtered.reduce((acc, item) => ({
-    asPerProject: acc.asPerProject + (item.as_per_project || 0),
-    totalStock: acc.totalStock + (item.yard_qty || 0) + (item.site_qty || 0)
-  }), { asPerProject: 0, totalStock: 0 });
+  const totals = filteredInventory.reduce((acc, item) => ({
+    yard: acc.yard + (item.yard_qty || 0),
+    site: acc.site + (item.site_qty || 0),
+    lost: acc.lost + (item.lost_qty || 0),
+    broken: acc.broken + (item.broken_qty || 0),
+    project: acc.project + (item.as_per_project || 0)
+  }), { yard: 0, site: 0, lost: 0, broken: 0, project: 0 });
 
-  const handleEdit = (item) => {
-    setEditItem({ ...item });
+  const openEditModal = (item) => {
+    setSelectedItem(item);
+    setEditData({
+      yard_qty: item.yard_qty || 0,
+      site_qty: item.site_qty || 0,
+      lost_qty: item.lost_qty || 0,
+      broken_qty: item.broken_qty || 0
+    });
     setShowEditModal(true);
   };
 
   const saveEdit = async () => {
-    if (!editItem.inv_id) {
-      // Need to create inventory record first
-      const { data, error } = await supabase.from('inventory').insert({
-        ident_code: editItem.ident_code,
-        description: editItem.description,
-        yard_qty: editItem.yard_qty || 0,
-        site_qty: editItem.site_qty || 0,
-        lost_qty: editItem.lost_qty || 0,
-        broken_qty: editItem.broken_qty || 0,
-        collected_ten_wh: editItem.collected_ten_wh || 0,
-        record_out: editItem.record_out || 0,
-        tag_number: editItem.tag_number || null,
-        uom: editItem.uom || 'EA'
-      }).select().single();
-      
-      if (error) {
-        alert('Error creating inventory record: ' + error.message);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from('inventory').update({
-        description: editItem.description,
-        yard_qty: editItem.yard_qty || 0,
-        site_qty: editItem.site_qty || 0,
-        lost_qty: editItem.lost_qty || 0,
-        broken_qty: editItem.broken_qty || 0,
-        collected_ten_wh: editItem.collected_ten_wh || 0,
-        record_out: editItem.record_out || 0,
-        tag_number: editItem.tag_number || null,
-        uom: editItem.uom || 'EA'
-      }).eq('id', editItem.inv_id);
-      
-      if (error) {
-        alert('Error updating: ' + error.message);
-        return;
-      }
+    try {
+      await supabase.from('inventory')
+        .update({
+          yard_qty: parseInt(editData.yard_qty) || 0,
+          site_qty: parseInt(editData.site_qty) || 0,
+          lost_qty: parseInt(editData.lost_qty) || 0,
+          broken_qty: parseInt(editData.broken_qty) || 0
+        })
+        .eq('ident_code', selectedItem.ident_code);
+
+      // Log the balance
+      await supabase.from('movements').insert({
+        ident_code: selectedItem.ident_code,
+        movement_type: 'BAL',
+        quantity: 0,
+        from_location: 'BALANCE',
+        to_location: 'BALANCE',
+        performed_by: user.full_name,
+        note: `Manual balance adjustment`
+      });
+
+      setShowEditModal(false);
+      loadInventory();
+    } catch (error) {
+      alert('Error: ' + error.message);
     }
-    
-    setShowEditModal(false);
-    loadData();
   };
 
-  const saveNew = async () => {
-    if (!newItem.ident_code) {
-      alert('Ident Code is required');
-      return;
-    }
+  const exportCSV = () => {
+    const headers = ['Ident Code', 'Description', 'Yard', 'Site', 'Lost', 'Broken', 'Total', 'As Per Project'];
+    const rows = filteredInventory.map(item => [
+      item.ident_code,
+      item.description,
+      item.yard_qty,
+      item.site_qty,
+      item.lost_qty,
+      item.broken_qty,
+      item.total,
+      item.as_per_project
+    ]);
     
-    const { error } = await supabase.from('inventory').upsert({
-      ident_code: newItem.ident_code,
-      description: newItem.description,
-      yard_qty: newItem.yard_qty || 0,
-      site_qty: newItem.site_qty || 0,
-      lost_qty: newItem.lost_qty || 0,
-      broken_qty: newItem.broken_qty || 0,
-      collected_ten_wh: newItem.collected_ten_wh || 0,
-      record_out: newItem.record_out || 0,
-      tag_number: newItem.tag_number || null,
-      uom: newItem.uom || 'EA'
-    }, { onConflict: 'ident_code' });
-    
-    if (error) {
-      alert('Error: ' + error.message);
-      return;
-    }
-    
-    setShowAddModal(false);
-    setNewItem({
-      ident_code: '', description: '', yard_qty: 0, site_qty: 0,
-      lost_qty: 0, broken_qty: 0, collected_ten_wh: 0, record_out: 0, tag_number: '', uom: 'EA'
-    });
-    loadData();
+    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `inventory_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
   };
 
   const canModify = user.role === 'admin' || user.perm_database === 'modify';
@@ -3943,283 +3800,129 @@ function DatabasePage({ user }) {
 
   return (
     <div>
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', alignItems: 'center' }}>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by code, description, or tag..."
-          style={{ ...styles.input, maxWidth: '400px' }}
-        />
-        <select
-          value={tagFilter}
-          onChange={(e) => setTagFilter(e.target.value)}
-          style={{ ...styles.select, maxWidth: '200px' }}
-        >
-          <option value="">All Tags</option>
-          {allTags.map(tag => (
-            <option key={tag} value={tag}>{tag}</option>
-          ))}
-        </select>
-        <button onClick={loadData} style={{ ...styles.button, ...styles.buttonSecondary }}>
-          🔄 Refresh
-        </button>
-        {canModify && (
-          <button 
-            onClick={() => setShowAddModal(true)} 
-            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+      {/* Filters and Actions */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Search code or description..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ ...styles.input, width: '250px' }}
+          />
+          <select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            style={{ ...styles.select, width: '150px' }}
           >
-            + Add Manual
+            <option value="">All Tags</option>
+            {allTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+          </select>
+          <span style={{ fontSize: '14px', color: '#6b7280' }}>
+            Showing {filteredInventory.length} of {inventory.length}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button onClick={exportCSV} style={{ ...styles.button, ...styles.buttonSecondary }}>
+            📥 Export CSV
           </button>
-        )}
+          <button onClick={() => openEditModal({ ident_code: '', description: '' })} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>
+            + Manual Balance
+          </button>
+        </div>
       </div>
 
-      {/* Dynamic Counter - only when filtering */}
-      {(search || tagFilter) && (
-        <div style={{
-          display: 'flex',
-          gap: '24px',
-          marginBottom: '16px',
-          padding: '16px',
-          backgroundColor: '#EFF6FF',
-          borderRadius: '8px',
-          border: '1px solid #BFDBFE'
-        }}>
-          <div>
-            <span style={{ fontSize: '12px', color: '#1E40AF' }}>Filtered Items</span>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1E40AF' }}>{filtered.length}</div>
-          </div>
-          <div>
-            <span style={{ fontSize: '12px', color: '#1E40AF' }}>Σ As Per Project</span>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1E40AF' }}>{filteredTotals.asPerProject}</div>
-          </div>
-          <div>
-            <span style={{ fontSize: '12px', color: '#1E40AF' }}>Σ Total Stock (YARD+SITE)</span>
-            <div style={{ fontSize: '20px', fontWeight: 'bold', color: '#1E40AF' }}>{filteredTotals.totalStock}</div>
-          </div>
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '16px' }}>
+        <div style={{ padding: '16px', backgroundColor: COLORS.secondary, borderRadius: '8px', color: 'white', textAlign: 'center' }}>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>YARD</div>
+          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{totals.yard.toLocaleString()}</div>
         </div>
-      )}
+        <div style={{ padding: '16px', backgroundColor: COLORS.info, borderRadius: '8px', color: 'white', textAlign: 'center' }}>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>SITE</div>
+          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{totals.site.toLocaleString()}</div>
+        </div>
+        <div style={{ padding: '16px', backgroundColor: COLORS.orange, borderRadius: '8px', color: 'white', textAlign: 'center' }}>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>LOST</div>
+          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{totals.lost.toLocaleString()}</div>
+        </div>
+        <div style={{ padding: '16px', backgroundColor: COLORS.purple, borderRadius: '8px', color: 'white', textAlign: 'center' }}>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>BROKEN</div>
+          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{totals.broken.toLocaleString()}</div>
+        </div>
+        <div style={{ padding: '16px', backgroundColor: '#059669', borderRadius: '8px', color: 'white', textAlign: 'center' }}>
+          <div style={{ fontSize: '12px', opacity: 0.8 }}>AS PER PROJECT</div>
+          <div style={{ fontSize: '24px', fontWeight: 'bold' }}>{totals.project.toLocaleString()}</div>
+        </div>
+      </div>
 
+      {/* Inventory Table */}
       <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Inventory Database</h3>
-          <span style={{ color: '#6b7280', fontSize: '14px' }}>{filtered.length} items</span>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Code</th>
-                <th style={styles.th}>Description</th>
-                <th style={styles.th}>Tag</th>
-                <th style={{ ...styles.th, backgroundColor: COLORS.purple, color: 'white', textAlign: 'center' }}>As Per Project</th>
-                <th style={{ ...styles.th, backgroundColor: '#059669', color: 'white', textAlign: 'center' }}>Col. TEN</th>
-                <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>YARD</th>
-                <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>SITE</th>
-                <th style={{ ...styles.th, textAlign: 'center' }}>TOT</th>
-                <th style={{ ...styles.th, backgroundColor: COLORS.orange, color: 'white', textAlign: 'center' }}>Record OUT</th>
-                <th style={styles.th}></th>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Ident Code</th>
+              <th style={styles.th}>Description</th>
+              <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>YARD</th>
+              <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>SITE</th>
+              <th style={{ ...styles.th, backgroundColor: COLORS.orange, color: 'white', textAlign: 'center' }}>LOST</th>
+              <th style={{ ...styles.th, backgroundColor: COLORS.purple, color: 'white', textAlign: 'center' }}>BROKEN</th>
+              <th style={{ ...styles.th, textAlign: 'center' }}>TOTAL</th>
+              <th style={{ ...styles.th, backgroundColor: '#059669', color: 'white', textAlign: 'center' }}>PROJECT</th>
+              <th style={styles.th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredInventory.slice(0, 100).map(item => (
+              <tr key={item.ident_code}>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
+                <td style={{ ...styles.td, maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.description}</td>
+                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.yard_qty || 0}</td>
+                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.site_qty || 0}</td>
+                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.lost_qty || 0}</td>
+                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.broken_qty || 0}</td>
+                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.primary }}>{item.total}</td>
+                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', backgroundColor: '#D1FAE5' }}>{item.as_per_project}</td>
+                <td style={styles.td}>
+                  <ActionButton color={COLORS.info} onClick={() => openEditModal(item)} disabled={!canModify} title="Edit">✏️</ActionButton>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.slice(0, 200).map((item, idx) => {
-                const total = (item.yard_qty || 0) + (item.site_qty || 0);
-                return (
-                  <tr key={idx}>
-                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.description}
-                    </td>
-                    <td style={styles.td}>{item.tag_number || '-'}</td>
-                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.as_per_project}</td>
-                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.collected_ten_wh}</td>
-                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.yard_qty}</td>
-                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.site_qty}</td>
-                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.primary }}>{total}</td>
-                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{item.record_out}</td>
-                    <td style={styles.td}>
-                      {canModify && (
-                        <button
-                          onClick={() => handleEdit(item)}
-                          style={{ ...styles.actionBtn, backgroundColor: COLORS.info }}
-                          title="Edit"
-                        >
-                          ✏️
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                    No items found
-                  </td>
-                </tr>
-              )}
-              {filtered.length > 200 && (
-                <tr>
-                  <td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#D97706', backgroundColor: '#FEF3C7' }}>
-                    Showing first 200 of {filtered.length} results. Use filters to narrow down.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
+        {filteredInventory.length > 100 && (
+          <div style={{ padding: '16px', textAlign: 'center', color: '#6b7280' }}>
+            Showing first 100 of {filteredInventory.length} results. Use search to filter.
+          </div>
+        )}
       </div>
 
       {/* Edit Modal */}
-      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Inventory">
-        {editItem && (
-          <>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Ident Code</label>
-              <input
-                type="text"
-                value={editItem.ident_code}
-                style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
-                disabled
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Description</label>
-              <input
-                type="text"
-                value={editItem.description || ''}
-                onChange={(e) => setEditItem({ ...editItem, description: e.target.value })}
-                style={styles.input}
-              />
-            </div>
-            <div style={styles.formGroup}>
-              <label style={styles.label}>Tag Number</label>
-              <input
-                type="text"
-                list="edit-tag-options"
-                value={editItem.tag_number || ''}
-                onChange={(e) => setEditItem({ ...editItem, tag_number: e.target.value })}
-                style={styles.input}
-              />
-              <datalist id="edit-tag-options">
-                {allTags.map(tag => (
-                  <option key={tag} value={tag} />
-                ))}
-              </datalist>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Collected TEN WH</label>
-                <input
-                  type="number"
-                  value={editItem.collected_ten_wh || 0}
-                  onChange={(e) => setEditItem({ ...editItem, collected_ten_wh: parseInt(e.target.value) || 0 })}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>YARD Qty</label>
-                <input
-                  type="number"
-                  value={editItem.yard_qty || 0}
-                  onChange={(e) => setEditItem({ ...editItem, yard_qty: parseInt(e.target.value) || 0 })}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>SITE Qty</label>
-                <input
-                  type="number"
-                  value={editItem.site_qty || 0}
-                  onChange={(e) => setEditItem({ ...editItem, site_qty: parseInt(e.target.value) || 0 })}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Record OUT</label>
-                <input
-                  type="number"
-                  value={editItem.record_out || 0}
-                  onChange={(e) => setEditItem({ ...editItem, record_out: parseInt(e.target.value) || 0 })}
-                  style={styles.input}
-                />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
-              <button onClick={() => setShowEditModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-                Cancel
-              </button>
-              <button onClick={saveEdit} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
-                Save
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
+      <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} title={`Edit: ${selectedItem?.ident_code}`}>
+        <p style={{ marginBottom: '16px', color: '#6b7280' }}>{selectedItem?.description}</p>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+          <div>
+            <label style={styles.label}>Yard Qty</label>
+            <input type="number" value={editData.yard_qty} onChange={(e) => setEditData({...editData, yard_qty: e.target.value})} style={styles.input} min="0" />
+          </div>
+          <div>
+            <label style={styles.label}>Site Qty</label>
+            <input type="number" value={editData.site_qty} onChange={(e) => setEditData({...editData, site_qty: e.target.value})} style={styles.input} min="0" />
+          </div>
+          <div>
+            <label style={styles.label}>Lost Qty</label>
+            <input type="number" value={editData.lost_qty} onChange={(e) => setEditData({...editData, lost_qty: e.target.value})} style={styles.input} min="0" />
+          </div>
+          <div>
+            <label style={styles.label}>Broken Qty</label>
+            <input type="number" value={editData.broken_qty} onChange={(e) => setEditData({...editData, broken_qty: e.target.value})} style={styles.input} min="0" />
+          </div>
+        </div>
 
-      {/* Add Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="Add Inventory Item">
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Ident Code *</label>
-          <input
-            type="text"
-            value={newItem.ident_code}
-            onChange={(e) => setNewItem({ ...newItem, ident_code: e.target.value })}
-            style={styles.input}
-          />
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Description</label>
-          <input
-            type="text"
-            value={newItem.description}
-            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-            style={styles.input}
-          />
-        </div>
-        <div style={styles.formGroup}>
-          <label style={styles.label}>Tag Number</label>
-          <input
-            type="text"
-            list="new-tag-options"
-            value={newItem.tag_number}
-            onChange={(e) => setNewItem({ ...newItem, tag_number: e.target.value })}
-            style={styles.input}
-          />
-          <datalist id="new-tag-options">
-            {allTags.map(tag => (
-              <option key={tag} value={tag} />
-            ))}
-          </datalist>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>YARD Qty</label>
-            <input
-              type="number"
-              value={newItem.yard_qty}
-              onChange={(e) => setNewItem({ ...newItem, yard_qty: parseInt(e.target.value) || 0 })}
-              style={styles.input}
-            />
-          </div>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>SITE Qty</label>
-            <input
-              type="number"
-              value={newItem.site_qty}
-              onChange={(e) => setNewItem({ ...newItem, site_qty: parseInt(e.target.value) || 0 })}
-              style={styles.input}
-            />
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button onClick={() => setShowAddModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
-            Cancel
-          </button>
-          <button onClick={saveNew} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
-            Save
-          </button>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowEditModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={saveEdit} style={{ ...styles.button, ...styles.buttonPrimary }}>Save</button>
         </div>
       </Modal>
     </div>
@@ -4233,16 +3936,7 @@ function App() {
   const [user, setUser] = useState(null);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [badges, setBadges] = useState({
-    whSite: 0,
-    whYard: 0,
-    engineering: 0,
-    spareParts: 0,
-    orders: 0,
-    management: 0,
-    siteIn: 0,
-    materialIn: 0
-  });
+  const [badges, setBadges] = useState({});
 
   useEffect(() => {
     if (user) {
@@ -4253,24 +3947,37 @@ function App() {
   }, [user]);
 
   const loadBadges = async () => {
-    const { data: components } = await supabase
-      .from('request_components')
-      .select('status, has_eng_check, eng_check_sent_to');
+    const counts = {};
+    
+    const { data: siteData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Site');
+    const { data: yardData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Yard');
+    const { data: engData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Eng');
+    const { data: transData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Trans');
+    const { data: orderData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Order');
+    const { data: mngData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Mng');
+    const { data: spareData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Spare');
+    const { data: orderedData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Ordered');
 
-    if (components) {
-      const counts = {
-        whSite: components.filter(c => c.status === 'Site' || (c.has_eng_check && c.eng_check_sent_to === 'Site')).length,
-        whYard: components.filter(c => c.status === 'Yard' || (c.has_eng_check && c.eng_check_sent_to === 'Yard')).length,
-        engineering: components.filter(c => c.status === 'Eng').length,
-        spareParts: components.filter(c => c.status === 'Spare').length,
-        orders: components.filter(c => c.status === 'Order').length,
-        management: components.filter(c => c.status === 'Mng').length,
-        siteIn: components.filter(c => c.status === 'Trans').length,
-        materialIn: components.filter(c => c.status === 'Ordered').length
-      };
-      setBadges(counts);
-    }
+    counts.whSite = siteData?.length || 0;
+    counts.whYard = yardData?.length || 0;
+    counts.engineering = engData?.length || 0;
+    counts.siteIn = transData?.length || 0;
+    counts.orders = orderData?.length || 0;
+    counts.management = mngData?.length || 0;
+    counts.spareParts = spareData?.length || 0;
+    counts.materialIn = orderedData?.length || 0;
+
+    setBadges(counts);
   };
+
+  const handleLogout = () => {
+    setUser(null);
+    setCurrentPage('dashboard');
+  };
+
+  if (!user) {
+    return <LoginScreen onLogin={setUser} />;
+  }
 
   const pageTitles = {
     dashboard: 'Dashboard',
@@ -4283,14 +3990,14 @@ function App() {
     engineering: 'Engineering',
     spareParts: 'Spare Parts',
     orders: 'Orders',
+    log: 'Movement Log',
     management: 'Management',
-    log: 'Log',
     database: 'Database'
   };
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'dashboard': return <DashboardPage user={user} />;
+      case 'dashboard': return <Dashboard user={user} />;
       case 'requests': return <RequestsPage user={user} />;
       case 'mir': return <MIRPage user={user} />;
       case 'materialIn': return <MaterialInPage user={user} />;
@@ -4300,16 +4007,12 @@ function App() {
       case 'engineering': return <EngineeringPage user={user} />;
       case 'spareParts': return <SparePartsPage user={user} />;
       case 'orders': return <OrdersPage user={user} />;
-      case 'management': return <ManagementPage user={user} />;
       case 'log': return <LogPage user={user} />;
+      case 'management': return <ManagementPage user={user} />;
       case 'database': return <DatabasePage user={user} />;
-      default: return <DashboardPage user={user} />;
+      default: return <Dashboard user={user} />;
     }
   };
-
-  if (!user) {
-    return <LoginScreen onLogin={setUser} />;
-  }
 
   return (
     <div style={styles.container}>
@@ -4322,24 +4025,22 @@ function App() {
         badges={badges}
       />
       <div style={styles.main}>
-        <div style={styles.header}>
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>{pageTitles[currentPage]}</h2>
+        <header style={styles.header}>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#1f2937' }}>
+            {pageTitles[currentPage]}
+          </h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span style={{ color: '#6b7280' }}>👤 {user.full_name}</span>
-            <button
-              onClick={() => {
-                setUser(null);
-                setCurrentPage('dashboard');
-              }}
-              style={{ ...styles.button, ...styles.buttonSecondary }}
-            >
-              Logout
+            <span style={{ fontSize: '14px', color: '#6b7280' }}>
+              👤 {user.full_name} ({user.role})
+            </span>
+            <button onClick={handleLogout} style={{ ...styles.button, ...styles.buttonSecondary }}>
+              🚪 Logout
             </button>
           </div>
-        </div>
-        <div style={styles.content}>
+        </header>
+        <main style={styles.content}>
           {renderPage()}
-        </div>
+        </main>
       </div>
     </div>
   );
