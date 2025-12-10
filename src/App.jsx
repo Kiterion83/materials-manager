@@ -672,7 +672,6 @@ function RequestsPage({ user }) {
   useEffect(() => {
     loadIsoOptions();
     loadNextNumber();
-    loadTagOptions();
     loadUsers();
   }, []);
 
@@ -696,14 +695,22 @@ function RequestsPage({ user }) {
     }
   };
 
-  const loadTagOptions = async () => {
+  // Load tags ONLY for selected ident_code
+  const loadTagsForIdent = async (identCode) => {
+    if (!identCode) {
+      setTagOptions([]);
+      return;
+    }
     const { data } = await supabase
       .from('project_materials')
       .select('tag_number')
+      .eq('ident_code', identCode)
       .not('tag_number', 'is', null);
     if (data) {
       const unique = [...new Set(data.map(d => d.tag_number).filter(Boolean))];
       setTagOptions(unique.map(t => ({ tag_code: t, description: t })));
+    } else {
+      setTagOptions([]);
     }
   };
 
@@ -751,6 +758,7 @@ function RequestsPage({ user }) {
     setSpoolNumber('');
     setSpoolOptions([]);
     setIdentOptions([]);
+    setTagOptions([]);
     setOverQuantityWarning(null);
     if (value) loadSpoolOptions(value);
   };
@@ -758,6 +766,7 @@ function RequestsPage({ user }) {
   const handleSpoolChange = (value) => {
     setSpoolNumber(value);
     setIdentOptions([]);
+    setTagOptions([]);
     setOverQuantityWarning(null);
     if (value) loadIdentOptions(value);
   };
@@ -1274,7 +1283,11 @@ function RequestsPage({ user }) {
                   <label style={styles.label}>Ident Code</label>
                   <select
                     value={currentMaterial.ident_code}
-                    onChange={(e) => setCurrentMaterial({ ...currentMaterial, ident_code: e.target.value })}
+                    onChange={(e) => {
+                      const newIdent = e.target.value;
+                      setCurrentMaterial({ ...currentMaterial, ident_code: newIdent, tag: '' });
+                      loadTagsForIdent(newIdent);
+                    }}
                     style={styles.select}
                     disabled={!canModify || (requestType === 'Piping' && !spoolNumber)}
                   >
@@ -1290,9 +1303,9 @@ function RequestsPage({ user }) {
                     value={currentMaterial.tag}
                     onChange={(e) => setCurrentMaterial({ ...currentMaterial, tag: e.target.value })}
                     style={styles.select}
-                    disabled={!canModify}
+                    disabled={!canModify || !currentMaterial.ident_code}
                   >
-                    <option value="">None</option>
+                    <option value="">{currentMaterial.ident_code ? 'None' : 'Select Ident first'}</option>
                     {tagOptions.map(t => (
                       <option key={t.tag_code} value={t.tag_code}>{t.tag_code}</option>
                     ))}
