@@ -1,7 +1,7 @@
 // ============================================================
-// MATERIALS MANAGER V27.7 - APP.JSX COMPLETE
+// MATERIALS MANAGER V27.8 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V27.7: Changed 'Site' to 'WH_Site' to fix CORS issue
+// V27.8: Fix badges, Partial for Eng Checks, uniform buttons
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -2443,6 +2443,12 @@ function WHSitePage({ user }) {
   const [showHistory, setShowHistory] = useState(false);
   const [historyComponentId, setHistoryComponentId] = useState(null);
   const [engChecks, setEngChecks] = useState([]);
+  // Engineering Check Partial state
+  const [showCheckPartialModal, setShowCheckPartialModal] = useState(false);
+  const [selectedCheck, setSelectedCheck] = useState(null);
+  const [checkPartialQty, setCheckPartialQty] = useState('');
+  const [checkFoundDest, setCheckFoundDest] = useState('ToCollect');
+  const [checkNotFoundDest, setCheckNotFoundDest] = useState('Eng');
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -2630,6 +2636,7 @@ function WHSitePage({ user }) {
           })
           .eq('id', check.id);
         await logHistory(check.id, 'Check - Found', 'WH_Site', 'ToCollect', 'Item found after Engineering check');
+        loadComponents();
       } else if (action === 'check_notfound') {
         // Not Found → return to Engineering
         await supabase.from('request_components')
@@ -2641,7 +2648,92 @@ function WHSitePage({ user }) {
           })
           .eq('id', check.id);
         await logHistory(check.id, 'Check - Not Found', 'WH_Site', 'Eng', 'Item not found, returned to Engineering');
+        loadComponents();
+      } else if (action === 'check_partial') {
+        // Open partial modal
+        setSelectedCheck(check);
+        setCheckPartialQty('');
+        setCheckFoundDest('ToCollect');
+        setCheckNotFoundDest('Eng');
+        setShowCheckPartialModal(true);
       }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Handle Engineering Check Partial Submit
+  const handleCheckPartialSubmit = async () => {
+    if (!selectedCheck || !checkPartialQty) return;
+    
+    const foundQty = parseInt(checkPartialQty);
+    const notFoundQty = selectedCheck.quantity - foundQty;
+    
+    if (foundQty <= 0 || foundQty >= selectedCheck.quantity) {
+      alert('Quantity must be between 1 and ' + (selectedCheck.quantity - 1));
+      return;
+    }
+    
+    try {
+      // Get current request info
+      const reqNumber = selectedCheck.requests?.request_number;
+      
+      // Get next sub_number for this request
+      const { data: subData } = await supabase
+        .from('requests')
+        .select('sub_number')
+        .eq('request_number', reqNumber)
+        .order('sub_number', { ascending: false })
+        .limit(1);
+      
+      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+      
+      // Create new sub-request for NOT FOUND items
+      const { data: newReq } = await supabase.from('requests')
+        .insert({
+          request_number: reqNumber,
+          sub_number: nextSub,
+          request_type: selectedCheck.requests?.request_type,
+          sub_category: selectedCheck.requests?.sub_category,
+          iso_number: selectedCheck.requests?.iso_number,
+          full_spool_number: selectedCheck.requests?.full_spool_number,
+          hf_number: selectedCheck.requests?.hf_number
+        })
+        .select()
+        .single();
+      
+      // Create component for NOT FOUND quantity in new sub-request
+      await supabase.from('request_components').insert({
+        request_id: newReq.id,
+        ident_code: selectedCheck.ident_code,
+        description: selectedCheck.description,
+        tag: selectedCheck.tag,
+        dia1: selectedCheck.dia1,
+        quantity: notFoundQty,
+        status: checkNotFoundDest,
+        current_location: checkNotFoundDest === 'Yard' ? 'YARD' : 'SITE',
+        has_eng_check: false,
+        eng_check_message: null,
+        eng_check_sent_to: null
+      });
+      
+      // Update original component with FOUND quantity and new status
+      await supabase.from('request_components')
+        .update({ 
+          quantity: foundQty,
+          status: checkFoundDest,
+          has_eng_check: false,
+          eng_check_message: null,
+          eng_check_sent_to: null
+        })
+        .eq('id', selectedCheck.id);
+      
+      // Log history for original (found)
+      await logHistory(selectedCheck.id, 'Check - Partial Found', 'WH_Site', checkFoundDest, 
+        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${String(reqNumber).padStart(5, '0')}-${nextSub})`);
+      
+      setShowCheckPartialModal(false);
+      setSelectedCheck(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -2744,7 +2836,8 @@ function WHSitePage({ user }) {
                     <td style={styles.td}>
                       <ActionDropdown
                         actions={[
-                          { id: 'check_found', icon: '✓', label: 'Found' },
+                          { id: 'check_found', icon: '✓', label: 'Found (All)' },
+                          { id: 'check_partial', icon: '✂️', label: 'Partial' },
                           { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
                         ]}
                         onExecute={(action) => handleCheckAction(check, action)}
@@ -2865,6 +2958,87 @@ function WHSitePage({ user }) {
         </div>
       </Modal>
 
+      {/* Engineering Check Partial Modal */}
+      <Modal isOpen={showCheckPartialModal} onClose={() => setShowCheckPartialModal(false)} title="🔶 Rilascio Parziale">
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedCheck?.ident_code}</span>
+          </p>
+          <p style={{ marginBottom: '16px' }}>
+            <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
+          </p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Quantità Trovata</label>
+          <input
+            type="number"
+            value={checkPartialQty}
+            onChange={(e) => setCheckPartialQty(e.target.value)}
+            style={styles.input}
+            min="1"
+            max={selectedCheck?.quantity - 1}
+            placeholder="Inserisci quantità trovata"
+          />
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>✅ Trovati ({checkPartialQty || 0} pz) vanno a:</label>
+          <select
+            value={checkFoundDest}
+            onChange={(e) => setCheckFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="ToCollect">→ ToCollect</option>
+            <option value="Yard">→ WH Yard</option>
+            <option value="Eng">→ Engineering</option>
+          </select>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>❌ Non Trovati ({(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz) vanno a:</label>
+          <select
+            value={checkNotFoundDest}
+            onChange={(e) => setCheckNotFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="Eng">→ Engineering</option>
+            <option value="Yard">→ WH Yard</option>
+          </select>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: '#FEF3C7', 
+          border: '1px solid #F59E0B', 
+          borderRadius: '8px', 
+          padding: '12px',
+          marginBottom: '16px'
+        }}>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{checkPartialQty || 0} pz</strong> → {checkFoundDest} (Richiesta originale)
+          </p>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz</strong> → {checkNotFoundDest} (Nuova sub-richiesta)
+          </p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button 
+            onClick={handleCheckPartialSubmit} 
+            disabled={!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: COLORS.warning, 
+              color: 'white',
+              opacity: (!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity) ? 0.5 : 1
+            }}
+          >
+            SPLIT
+          </button>
+        </div>
+      </Modal>
+
       {/* History Popup */}
       <HistoryPopup
         isOpen={showHistory}
@@ -2889,6 +3063,12 @@ function WHYardPage({ user }) {
   const [showHistory, setShowHistory] = useState(false);
   const [historyComponentId, setHistoryComponentId] = useState(null);
   const [engChecks, setEngChecks] = useState([]);
+  // Engineering Check Partial state
+  const [showCheckPartialModal, setShowCheckPartialModal] = useState(false);
+  const [selectedCheck, setSelectedCheck] = useState(null);
+  const [checkPartialQty, setCheckPartialQty] = useState('');
+  const [checkFoundDest, setCheckFoundDest] = useState('Trans');
+  const [checkNotFoundDest, setCheckNotFoundDest] = useState('Eng');
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -3117,6 +3297,7 @@ function WHYardPage({ user }) {
           })
           .eq('id', check.id);
         await logHistory(check.id, 'Check - Found', 'Yard', 'Trans', 'Item found in Yard after Engineering check, sent to Site IN');
+        loadComponents();
       } else if (action === 'check_notfound') {
         // Not Found → return to Engineering
         await supabase.from('request_components')
@@ -3128,7 +3309,106 @@ function WHYardPage({ user }) {
           })
           .eq('id', check.id);
         await logHistory(check.id, 'Check - Not Found', 'Yard', 'Eng', 'Item not found in Yard, returned to Engineering');
+        loadComponents();
+      } else if (action === 'check_partial') {
+        // Open partial modal
+        setSelectedCheck(check);
+        setCheckPartialQty('');
+        setCheckFoundDest('Trans');
+        setCheckNotFoundDest('Eng');
+        setShowCheckPartialModal(true);
       }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // Handle Engineering Check Partial Submit for Yard
+  const handleCheckPartialSubmit = async () => {
+    if (!selectedCheck || !checkPartialQty) return;
+    
+    const foundQty = parseInt(checkPartialQty);
+    const notFoundQty = selectedCheck.quantity - foundQty;
+    const available = inventory[selectedCheck.ident_code] || 0;
+    
+    if (foundQty <= 0 || foundQty >= selectedCheck.quantity) {
+      alert('Quantity must be between 1 and ' + (selectedCheck.quantity - 1));
+      return;
+    }
+    
+    if (foundQty > available) {
+      alert(`Only ${available} available in YARD!`);
+      return;
+    }
+    
+    try {
+      // Get current request info
+      const reqNumber = selectedCheck.requests?.request_number;
+      
+      // Get next sub_number for this request
+      const { data: subData } = await supabase
+        .from('requests')
+        .select('sub_number')
+        .eq('request_number', reqNumber)
+        .order('sub_number', { ascending: false })
+        .limit(1);
+      
+      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+      
+      // Create new sub-request for NOT FOUND items
+      const { data: newReq } = await supabase.from('requests')
+        .insert({
+          request_number: reqNumber,
+          sub_number: nextSub,
+          request_type: selectedCheck.requests?.request_type,
+          sub_category: selectedCheck.requests?.sub_category,
+          iso_number: selectedCheck.requests?.iso_number,
+          full_spool_number: selectedCheck.requests?.full_spool_number,
+          hf_number: selectedCheck.requests?.hf_number
+        })
+        .select()
+        .single();
+      
+      // Create component for NOT FOUND quantity in new sub-request
+      await supabase.from('request_components').insert({
+        request_id: newReq.id,
+        ident_code: selectedCheck.ident_code,
+        description: selectedCheck.description,
+        tag: selectedCheck.tag,
+        dia1: selectedCheck.dia1,
+        quantity: notFoundQty,
+        status: checkNotFoundDest,
+        current_location: checkNotFoundDest === 'WH_Site' ? 'SITE' : (checkNotFoundDest === 'Yard' ? 'YARD' : 'SITE'),
+        has_eng_check: false,
+        eng_check_message: null,
+        eng_check_sent_to: null
+      });
+      
+      // If found items go to Trans (Site IN), decrement yard inventory
+      if (checkFoundDest === 'Trans') {
+        await supabase.rpc('decrement_yard_qty', { 
+          p_ident_code: selectedCheck.ident_code, 
+          p_qty: foundQty 
+        });
+      }
+      
+      // Update original component with FOUND quantity and new status
+      await supabase.from('request_components')
+        .update({ 
+          quantity: foundQty,
+          status: checkFoundDest,
+          has_eng_check: false,
+          eng_check_message: null,
+          eng_check_sent_to: null
+        })
+        .eq('id', selectedCheck.id);
+      
+      // Log history for original (found)
+      await logHistory(selectedCheck.id, 'Check - Partial Found', 'Yard', checkFoundDest, 
+        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${String(reqNumber).padStart(5, '0')}-${nextSub})`);
+      
+      setShowCheckPartialModal(false);
+      setSelectedCheck(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -3208,7 +3488,11 @@ function WHYardPage({ user }) {
                       <td style={styles.td}>
                         <ActionDropdown
                           actions={canFulfill ? [
-                            { id: 'check_found', icon: '✓', label: 'Found → Site IN' },
+                            { id: 'check_found', icon: '✓', label: 'Found (All) → Site IN' },
+                            { id: 'check_partial', icon: '✂️', label: 'Partial' },
+                            { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
+                          ] : available > 0 ? [
+                            { id: 'check_partial', icon: '✂️', label: 'Partial' },
                             { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
                           ] : [
                             { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
@@ -3346,6 +3630,90 @@ function WHYardPage({ user }) {
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Send Partial</button>
+        </div>
+      </Modal>
+
+      {/* Engineering Check Partial Modal */}
+      <Modal isOpen={showCheckPartialModal} onClose={() => setShowCheckPartialModal(false)} title="🔶 Rilascio Parziale">
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedCheck?.ident_code}</span>
+          </p>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
+          </p>
+          <p style={{ marginBottom: '16px' }}>
+            <strong>Disponibile in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventory[selectedCheck?.ident_code] || 0}</span>
+          </p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Quantità Trovata</label>
+          <input
+            type="number"
+            value={checkPartialQty}
+            onChange={(e) => setCheckPartialQty(e.target.value)}
+            style={styles.input}
+            min="1"
+            max={Math.min(selectedCheck?.quantity - 1, inventory[selectedCheck?.ident_code] || 0)}
+            placeholder="Inserisci quantità trovata"
+          />
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>✅ Trovati ({checkPartialQty || 0} pz) vanno a:</label>
+          <select
+            value={checkFoundDest}
+            onChange={(e) => setCheckFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="Trans">→ Site IN (Transit)</option>
+            <option value="WH_Site">→ WH Site</option>
+            <option value="Eng">→ Engineering</option>
+          </select>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>❌ Non Trovati ({(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz) vanno a:</label>
+          <select
+            value={checkNotFoundDest}
+            onChange={(e) => setCheckNotFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="Eng">→ Engineering</option>
+            <option value="WH_Site">→ WH Site</option>
+          </select>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: '#FEF3C7', 
+          border: '1px solid #F59E0B', 
+          borderRadius: '8px', 
+          padding: '12px',
+          marginBottom: '16px'
+        }}>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{checkPartialQty || 0} pz</strong> → {checkFoundDest === 'Trans' ? 'Site IN' : checkFoundDest} (Richiesta originale)
+          </p>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz</strong> → {checkNotFoundDest === 'WH_Site' ? 'WH Site' : checkNotFoundDest} (Nuova sub-richiesta)
+          </p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button 
+            onClick={handleCheckPartialSubmit} 
+            disabled={!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventory[selectedCheck?.ident_code] || 0)}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: COLORS.warning, 
+              color: 'white',
+              opacity: (!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventory[selectedCheck?.ident_code] || 0)) ? 0.5 : 1
+            }}
+          >
+            SPLIT
+          </button>
         </div>
       </Modal>
 
@@ -3694,8 +4062,8 @@ function EngineeringPage({ user }) {
           {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
         </td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-        <td style={{ ...styles.td, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-          {comp.description || '-'}
+        <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+          {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
         </td>
         <td style={styles.td}>{comp.tag || '-'}</td>
         <td style={styles.td}>{comp.dia1 || '-'}</td>
@@ -6457,9 +6825,13 @@ export default function App() {
     const { data: hfData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'HF');
     const { data: tpData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'TP');
     const { data: collectData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'ToCollect');
+    
+    // Engineering Checks counts - these should be added to WH Site and WH Yard badges
+    const { data: engChecksSite } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).eq('eng_check_sent_to', 'WH_Site');
+    const { data: engChecksYard } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).eq('eng_check_sent_to', 'Yard');
 
-    counts.whSite = siteData?.length || 0;
-    counts.whYard = yardData?.length || 0;
+    counts.whSite = (siteData?.length || 0) + (engChecksSite?.length || 0);
+    counts.whYard = (yardData?.length || 0) + (engChecksYard?.length || 0);
     counts.engineering = engData?.length || 0;
     counts.siteIn = transData?.length || 0;
     counts.orders = orderData?.length || 0;
