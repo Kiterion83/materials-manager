@@ -1,7 +1,7 @@
 // ============================================================
-// MATERIALS MANAGER V26.3 - APP.JSX COMPLETE
+// MATERIALS MANAGER V27 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// FIXES: Ident autocomplete, TestPack spool, MIR redesign
+// V27: Async search, Unified Actions Popup, MIR Priority/Close
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -49,8 +49,9 @@ const STATUS_COLORS = {
 };
 
 const MIR_CATEGORIES = ['Erection', 'Bulk', 'Instrument', 'Support'];
+const MIR_PRIORITIES = ['High', 'Medium', 'Low'];
 const REQUEST_TYPES = ['Piping', 'Mechanical', 'TestPack'];
-const SUB_CATEGORIES = ['Bulk', 'Erection', 'Support'];
+const SUB_CATEGORIES = ['Bulk', 'Erection', 'Support', 'Instrument'];
 const MOVEMENT_TYPES = ['IN', 'OUT', 'LOST', 'BROKEN', 'BAL', 'TRANSFER'];
 
 // ============================================================
@@ -296,6 +297,277 @@ function StatBox({ title, value, color, subtitle }) {
       <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{value}</p>
       {subtitle && <p style={{ fontSize: '12px', opacity: 0.75, marginTop: '4px' }}>{subtitle}</p>}
     </div>
+  );
+}
+
+// ============================================================
+// ASYNC SEARCH INPUT - V27 NEW COMPONENT
+// ============================================================
+function AsyncSearchInput({ 
+  placeholder, 
+  value, 
+  onChange, 
+  onSearch, 
+  onSelect,
+  minChars = 3,
+  disabled = false,
+  label = ''
+}) {
+  const [options, setOptions] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [searchTimeout, setSearchTimeout] = useState(null);
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    onChange(val);
+    
+    // Clear previous timeout
+    if (searchTimeout) clearTimeout(searchTimeout);
+    
+    if (val.length >= minChars) {
+      // Debounce search by 300ms
+      const timeout = setTimeout(async () => {
+        setLoading(true);
+        try {
+          const results = await onSearch(val);
+          setOptions(results || []);
+          setShowDropdown(true);
+        } catch (err) {
+          console.error('Search error:', err);
+          setOptions([]);
+        }
+        setLoading(false);
+      }, 300);
+      setSearchTimeout(timeout);
+    } else {
+      setOptions([]);
+      setShowDropdown(false);
+    }
+  };
+
+  const handleSelect = (option) => {
+    const selectedValue = typeof option === 'object' ? option.value : option;
+    onChange(selectedValue);
+    if (onSelect) onSelect(option);
+    setShowDropdown(false);
+    setOptions([]);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {label && <label style={styles.label}>{label}</label>}
+      <div style={{ position: 'relative' }}>
+        <input
+          type="text"
+          value={value}
+          onChange={handleInputChange}
+          onFocus={() => options.length > 0 && setShowDropdown(true)}
+          onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+          placeholder={placeholder || `Type ${minChars}+ chars to search...`}
+          disabled={disabled}
+          style={{
+            ...styles.input,
+            backgroundColor: disabled ? '#f3f4f6' : 'white',
+            paddingRight: loading ? '36px' : '12px'
+          }}
+        />
+        {loading && (
+          <div style={{ 
+            position: 'absolute', 
+            right: '12px', 
+            top: '50%', 
+            transform: 'translateY(-50%)', 
+            color: '#9ca3af',
+            fontSize: '14px'
+          }}>
+            ⏳
+          </div>
+        )}
+      </div>
+      {showDropdown && options.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: label ? 'calc(100% - 6px)' : '100%',
+          left: 0,
+          right: 0,
+          maxHeight: '250px',
+          overflowY: 'auto',
+          backgroundColor: 'white',
+          border: '1px solid #d1d5db',
+          borderRadius: '6px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          zIndex: 100
+        }}>
+          {options.map((option, idx) => (
+            <div
+              key={idx}
+              onClick={() => handleSelect(option)}
+              style={{
+                padding: '10px 12px',
+                cursor: 'pointer',
+                borderBottom: idx < options.length - 1 ? '1px solid #f3f4f6' : 'none',
+                fontSize: '14px',
+                transition: 'background-color 0.15s'
+              }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+            >
+              {typeof option === 'object' ? option.label : option}
+            </div>
+          ))}
+        </div>
+      )}
+      {value.length > 0 && value.length < minChars && (
+        <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+          Type {minChars - value.length} more character{minChars - value.length > 1 ? 's' : ''} to search...
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// UNIFIED ACTIONS POPUP - V27 NEW COMPONENT
+// ============================================================
+function UnifiedActionsPopup({ isOpen, onClose, component, onAction, currentPage, canModify }) {
+  const [note, setNote] = useState('');
+  const [selectedAction, setSelectedAction] = useState(null);
+  const [partialQty, setPartialQty] = useState('');
+  
+  useEffect(() => {
+    if (isOpen) {
+      setNote('');
+      setSelectedAction(null);
+      setPartialQty('');
+    }
+  }, [isOpen]);
+  
+  if (!isOpen || !component) return null;
+
+  const allActions = [
+    { id: 'ready', label: 'Ready', icon: '✅', color: COLORS.success, desc: 'Mark as ready for collection' },
+    { id: 'hf', label: 'HF', icon: '🔩', color: COLORS.teal, desc: 'Send to Flanged Joints page' },
+    { id: 'tp', label: 'TP', icon: '📋', color: COLORS.purple, desc: 'Send to TestPack page' },
+    { id: 'ws', label: 'WS', icon: '🏭', color: COLORS.info, desc: 'Send to Warehouse Site' },
+    { id: 'wy', label: 'WY', icon: '🏢', color: COLORS.secondary, desc: 'Send to Warehouse Yard' },
+    { id: 'ut', label: 'UT', icon: '⚙️', color: COLORS.purple, desc: 'Send to Engineering' },
+    { id: 'pt', label: 'PT', icon: '✂️', color: COLORS.warning, desc: 'Partial split' },
+    { id: 'spare', label: 'Spare', icon: '🔧', color: COLORS.pink, desc: 'Send to Spare Parts', pages: ['engineering'] },
+    { id: 'mng', label: 'Mng', icon: '👔', color: COLORS.yellow, desc: 'Send to Management', pages: ['engineering'] },
+    { id: 'order', label: 'Order', icon: '🛒', color: COLORS.orange, desc: 'Send to Orders', pages: ['engineering', 'whYard'] },
+    { id: 'return', label: 'Return', icon: '↩️', color: COLORS.gray, desc: 'Return to previous' },
+    { id: 'delete', label: 'Delete', icon: '🗑️', color: COLORS.primary, desc: 'Cancel request' }
+  ];
+
+  // Filter by current page
+  const filteredActions = allActions.filter(action => {
+    if (action.pages && !action.pages.includes(currentPage)) return false;
+    if (currentPage === 'whSite' && action.id === 'ws') return false;
+    if (currentPage === 'whYard' && action.id === 'wy') return false;
+    if (currentPage === 'engineering' && action.id === 'ut') return false;
+    return true;
+  });
+
+  const handleConfirm = () => {
+    if (!selectedAction || !canModify) return;
+    
+    if (selectedAction === 'pt') {
+      const qty = parseInt(partialQty);
+      if (!qty || qty >= component.quantity || qty < 1) {
+        alert('Partial quantity must be between 1 and ' + (component.quantity - 1));
+        return;
+      }
+      onAction(component, selectedAction, note, qty);
+    } else {
+      onAction(component, selectedAction, note);
+    }
+    onClose();
+  };
+
+  const reqNum = String(component.requests?.request_number || component.request_number || 0).padStart(5, '0');
+  const subNum = component.requests?.sub_number ?? component.sub_number ?? 0;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="⚡ Select Action" wide>
+      <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f3f4f6', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+          <span><strong>Request:</strong> {reqNum}-{subNum}</span>
+          <span><strong>Code:</strong> {component.ident_code || 'N/A'}</span>
+          <span><strong>Qty:</strong> {component.quantity}</span>
+          <span><strong>Status:</strong> <span style={{ ...styles.statusBadge, backgroundColor: STATUS_COLORS[component.status] || COLORS.gray }}>{component.status}</span></span>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+        {filteredActions.map(action => (
+          <div
+            key={action.id}
+            onClick={() => canModify && setSelectedAction(action.id)}
+            style={{
+              padding: '12px',
+              border: `2px solid ${selectedAction === action.id ? action.color : '#e5e7eb'}`,
+              borderRadius: '8px',
+              cursor: canModify ? 'pointer' : 'not-allowed',
+              backgroundColor: selectedAction === action.id ? `${action.color}20` : 'white',
+              opacity: canModify ? 1 : 0.5,
+              textAlign: 'center',
+              transition: 'all 0.2s'
+            }}
+          >
+            <div style={{ fontSize: '24px', marginBottom: '4px' }}>{action.icon}</div>
+            <div style={{ fontWeight: '600', color: action.color, fontSize: '12px' }}>{action.label}</div>
+            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '2px' }}>{action.desc}</div>
+          </div>
+        ))}
+      </div>
+
+      {selectedAction === 'pt' && (
+        <div style={{ marginBottom: '16px', padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px' }}>
+          <label style={{ ...styles.label, color: COLORS.warning }}>Partial Quantity to deliver now:</label>
+          <input
+            type="number"
+            value={partialQty}
+            onChange={(e) => setPartialQty(e.target.value)}
+            style={{ ...styles.input, maxWidth: '150px' }}
+            min="1"
+            max={component.quantity - 1}
+            placeholder="Qty..."
+          />
+          <p style={{ fontSize: '12px', color: '#92400E', marginTop: '6px' }}>
+            Remaining {component.quantity - (parseInt(partialQty) || 0)} will stay in queue
+          </p>
+        </div>
+      )}
+
+      {selectedAction && selectedAction !== 'pt' && (
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Note (optional)</label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            style={{ ...styles.input, minHeight: '70px', resize: 'vertical' }}
+            placeholder="Add a note..."
+          />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+        <button onClick={onClose} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+        <button 
+          onClick={handleConfirm}
+          disabled={!selectedAction || !canModify}
+          style={{ 
+            ...styles.button, 
+            backgroundColor: selectedAction ? COLORS.success : '#d1d5db', 
+            color: 'white',
+            cursor: selectedAction && canModify ? 'pointer' : 'not-allowed'
+          }}
+        >
+          ✓ Confirm
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -608,7 +880,7 @@ function LoginScreen({ onLogin }) {
             STR
           </div>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937' }}>MAX STREICHER</h1>
-          <p style={{ color: '#6b7280', marginTop: '4px' }}>Materials Manager V26.3</p>
+          <p style={{ color: '#6b7280', marginTop: '4px' }}>Materials Manager V27</p>
         </div>
 
         {error && (
@@ -890,7 +1162,7 @@ function Dashboard({ user }) {
 }
 
 // ============================================================
-// REQUESTS PAGE - V26.2 con controllo qty progetto e record_out
+// REQUESTS PAGE - V27 with async search
 // ============================================================
 function RequestsPage({ user }) {
   const [requestType, setRequestType] = useState('Piping');
@@ -917,7 +1189,6 @@ function RequestsPage({ user }) {
   const [allUsers, setAllUsers] = useState([]);
 
   useEffect(() => {
-    loadIsoOptions();
     loadNextNumber();
     loadUsers();
   }, []);
@@ -931,15 +1202,38 @@ function RequestsPage({ user }) {
     if (data) setNextNumber(data.value + 1);
   };
 
-  const loadIsoOptions = async () => {
+  // V27: Async ISO search (4+ characters)
+  const searchIsoOptions = async (searchTerm) => {
+    if (searchTerm.length < 4) return [];
     const { data } = await supabase
       .from('project_materials')
       .select('iso_number')
-      .order('iso_number');
+      .ilike('iso_number', `%${searchTerm}%`)
+      .order('iso_number')
+      .limit(50);
     if (data) {
       const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
-      setIsoOptions(unique);
+      return unique;
     }
+    return [];
+  };
+
+  // V27: Async Spool search (3+ characters, filtered by ISO, excludes SP000/SPSUP/SPTAG)
+  const searchSpoolOptions = async (searchTerm) => {
+    if (!isoNumber || searchTerm.length < 3) return [];
+    const { data } = await supabase
+      .from('project_materials')
+      .select('full_spool_number')
+      .eq('iso_number', isoNumber)
+      .ilike('full_spool_number', `%${searchTerm}%`)
+      .order('full_spool_number')
+      .limit(50);
+    if (data) {
+      const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))]
+        .filter(s => !s.startsWith('SP000') && !s.startsWith('SPSUP') && !s.startsWith('SPTAG'));
+      return unique;
+    }
+    return [];
   };
 
   const loadUsers = async () => {
@@ -951,14 +1245,17 @@ function RequestsPage({ user }) {
     if (data) setAllUsers(data);
   };
 
+  // Load spools for dropdown (when ISO selected) - used for initial load
   const loadSpoolOptions = async (iso) => {
     const { data } = await supabase
       .from('project_materials')
       .select('full_spool_number')
       .eq('iso_number', iso)
-      .order('full_spool_number');
+      .order('full_spool_number')
+      .limit(100);
     if (data) {
-      const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))];
+      const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))]
+        .filter(s => !s.startsWith('SP000') && !s.startsWith('SPSUP') && !s.startsWith('SPTAG'));
       setSpoolOptions(unique);
     }
   };
@@ -1147,14 +1444,43 @@ function RequestsPage({ user }) {
 
   // Load ALL spools for TestPack (filtered, no SP000/SPSUP/SPTAG)
   const loadAllSpoolsForTestPack = async () => {
+    // V27: No longer preload all spools - use async search instead
+  };
+
+  // V27: Async search for TestPack Material (3+ chars)
+  const searchTestPackMaterial = async (searchTerm) => {
+    if (searchTerm.length < 3) return [];
+    const { data } = await supabase
+      .from('project_materials')
+      .select('ident_code')
+      .ilike('ident_code', `%${searchTerm}%`)
+      .order('ident_code')
+      .limit(50);
+    if (data) {
+      const unique = [...new Set(data.map(d => d.ident_code).filter(Boolean))];
+      return unique;
+    }
+    return [];
+  };
+
+  // V27: Async search for TestPack Spool (6+ chars, filtered)
+  const searchTestPackSpool = async (searchTerm) => {
+    if (searchTerm.length < 6) return [];
     const { data } = await supabase
       .from('project_materials')
       .select('full_spool_number')
-      .order('full_spool_number');
+      .ilike('full_spool_number', `%${searchTerm}%`)
+      .order('full_spool_number')
+      .limit(50);
     if (data) {
-      const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))];
-      setSpoolOptions(unique);
+      const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))]
+        .filter(s => {
+          const upper = s.toUpperCase();
+          return !upper.includes('SP000') && !upper.includes('SPSUP') && !upper.includes('SPTAG');
+        });
+      return unique;
     }
+    return [];
   };
 
   const handleIdentCodeChange = async (identCode) => {
@@ -1385,41 +1711,32 @@ function RequestsPage({ user }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                 <div>
-                  <label style={styles.label}>ISO Number *</label>
-                  <input
-                    type="text"
-                    list="iso-options"
+                  <label style={styles.label}>ISO Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 4+ chars)</span></label>
+                  <AsyncSearchInput
                     value={isoNumber}
-                    onChange={(e) => handleIsoChange(e.target.value)}
-                    style={styles.input}
-                    placeholder="Es: I181C02-DF21065-0-01"
+                    onChange={handleIsoChange}
+                    onSearch={searchIsoOptions}
+                    onSelect={(val) => {
+                      handleIsoChange(val);
+                      loadSpoolOptions(val);
+                    }}
+                    minChars={4}
+                    placeholder="Type ISO number (4+ chars)..."
                     disabled={!canModify}
                   />
-                  <datalist id="iso-options">
-                    {isoOptions.slice(0, 100).map(iso => (
-                      <option key={iso} value={iso} />
-                    ))}
-                  </datalist>
                 </div>
                 <div>
-                  <label style={styles.label}>Full Spool Number *</label>
+                  <label style={styles.label}>Full Spool Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 3+ chars)</span></label>
                   {isoNumber ? (
-                    <>
-                      <input
-                        type="text"
-                        list="spool-options"
-                        value={spoolNumber}
-                        onChange={(e) => handleSpoolChange(e.target.value)}
-                        style={styles.input}
-                        placeholder="Select spool..."
-                        disabled={!canModify}
-                      />
-                      <datalist id="spool-options">
-                        {spoolOptions.map(spool => (
-                          <option key={spool} value={spool} />
-                        ))}
-                      </datalist>
-                    </>
+                    <AsyncSearchInput
+                      value={spoolNumber}
+                      onChange={handleSpoolChange}
+                      onSearch={searchSpoolOptions}
+                      onSelect={(val) => handleSpoolChange(val)}
+                      minChars={3}
+                      placeholder="Type spool number (3+ chars)..."
+                      disabled={!canModify}
+                    />
                   ) : (
                     <input
                       type="text"
@@ -1574,24 +1891,16 @@ function RequestsPage({ user }) {
 
               {missingType === 'Spool' && (
                 <div style={{ marginBottom: '20px' }}>
-                  <label style={styles.label}>Missing Spool Number *</label>
-                  <input
-                    type="text"
-                    list="testpack-spool-options"
+                  <label style={styles.label}>Full Spool Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 6+ chars)</span></label>
+                  <AsyncSearchInput
                     value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    style={styles.input}
-                    placeholder="Type to search spool number..."
+                    onChange={(val) => setDescription(val)}
+                    onSearch={searchTestPackSpool}
+                    onSelect={(val) => setDescription(val)}
+                    minChars={6}
+                    placeholder="Type spool number (6+ chars)..."
                     disabled={!canModify}
                   />
-                  <datalist id="testpack-spool-options">
-                    {spoolOptions.filter(s => {
-                      const upper = s.toUpperCase();
-                      return !upper.includes('SP000') && !upper.includes('SPSUP') && !upper.includes('SPTAG');
-                    }).map(spool => (
-                      <option key={spool} value={spool} />
-                    ))}
-                  </datalist>
                   <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>Excludes SP000, SPSUP, SPTAG</p>
                 </div>
               )}
@@ -1611,21 +1920,38 @@ function RequestsPage({ user }) {
               
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 100px 80px', gap: '12px', alignItems: 'end' }}>
                 <div>
-                  <label style={styles.label}>Ident Code</label>
-                  <input
-                    type="text"
-                    list="ident-options"
-                    value={currentMaterial.ident_code}
-                    onChange={(e) => handleIdentCodeChange(e.target.value)}
-                    style={{ ...styles.input, backgroundColor: (requestType === 'Piping' && !spoolNumber) ? '#f3f4f6' : 'white' }}
-                    placeholder={requestType === 'Piping' && !spoolNumber ? 'Select spool first' : 'Type to search...'}
-                    disabled={!canModify || (requestType === 'Piping' && !spoolNumber)}
-                  />
-                  <datalist id="ident-options">
-                    {[...new Set(identOptions.map(o => o.ident_code))].map(code => (
-                      <option key={code} value={code} />
-                    ))}
-                  </datalist>
+                  <label style={styles.label}>
+                    Ident Code 
+                    {requestType === 'TestPack' && <span style={{ fontSize: '11px', color: '#9ca3af' }}> (type 3+ chars)</span>}
+                  </label>
+                  {requestType === 'TestPack' ? (
+                    <AsyncSearchInput
+                      value={currentMaterial.ident_code}
+                      onChange={(val) => handleIdentCodeChange(val)}
+                      onSearch={searchTestPackMaterial}
+                      onSelect={(val) => handleIdentCodeChange(val)}
+                      minChars={3}
+                      placeholder="Type ident code (3+ chars)..."
+                      disabled={!canModify}
+                    />
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        list="ident-options"
+                        value={currentMaterial.ident_code}
+                        onChange={(e) => handleIdentCodeChange(e.target.value)}
+                        style={{ ...styles.input, backgroundColor: (!spoolNumber) ? '#f3f4f6' : 'white' }}
+                        placeholder={!spoolNumber ? 'Select spool first' : 'Type to search...'}
+                        disabled={!canModify || !spoolNumber}
+                      />
+                      <datalist id="ident-options">
+                        {[...new Set(identOptions.map(o => o.ident_code))].map(code => (
+                          <option key={code} value={code} />
+                        ))}
+                      </datalist>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label style={styles.label}>Tag</label>
@@ -3830,7 +4156,7 @@ function ManagementPage({ user }) {
 }
 
 // ============================================================
-// MIR PAGE - con rk_number
+// MIR PAGE - V27 with Priority, Close functionality, and Tabs
 // ============================================================
 function MIRPage({ user }) {
   const [mirs, setMirs] = useState([]);
@@ -3841,6 +4167,9 @@ function MIRPage({ user }) {
   const [rkNumber, setRkNumber] = useState('');
   const [category, setCategory] = useState('Bulk');
   const [forecastDate, setForecastDate] = useState('');
+  const [priority, setPriority] = useState('Medium');
+  const [activeTab, setActiveTab] = useState('open');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => { loadMirs(); }, []);
 
@@ -3857,6 +4186,7 @@ function MIRPage({ user }) {
     setRkNumber('');
     setCategory('Bulk');
     setForecastDate('');
+    setPriority('Medium');
     setShowCreateModal(true);
   };
 
@@ -3879,6 +4209,7 @@ function MIRPage({ user }) {
       rk_number: rkNumber,
       category: mirType === 'Piping' ? category : null,
       forecast_date: forecastDate || null,
+      priority: priority,
       created_by: user.id,
       status: 'Open'
     });
@@ -3887,21 +4218,92 @@ function MIRPage({ user }) {
     loadMirs();
   };
 
+  // V27: Close MIR
+  const closeMir = async (mir) => {
+    if (!window.confirm(`Close MIR ${mir.mir_number || mir.rk_number}?`)) return;
+    
+    await supabase.from('mirs').update({
+      status: 'Closed',
+      closed_at: new Date().toISOString(),
+      closed_by: user.id
+    }).eq('id', mir.id);
+    
+    loadMirs();
+  };
+
   const canModify = user.role === 'admin' || user.perm_mir === 'modify';
+
+  // Filter MIRs by tab and search
+  const openMirs = mirs.filter(m => m.status === 'Open');
+  const closedMirs = mirs.filter(m => m.status === 'Closed');
+  
+  const filterMirs = (mirList) => {
+    if (!searchTerm) return mirList;
+    const term = searchTerm.toLowerCase();
+    return mirList.filter(m => 
+      (m.mir_number && m.mir_number.includes(term)) ||
+      (m.rk_number && m.rk_number.includes(term)) ||
+      (m.category && m.category.toLowerCase().includes(term))
+    );
+  };
+
+  const displayedMirs = activeTab === 'open' ? filterMirs(openMirs) : filterMirs(closedMirs);
+
+  const getPriorityColor = (p) => {
+    if (p === 'High') return '#DC2626';
+    if (p === 'Low') return '#16a34a';
+    return '#D97706';
+  };
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '16px' }}>
-        <button onClick={openCreateModal} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ New MIR</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            onClick={() => setActiveTab('open')}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: activeTab === 'open' ? COLORS.info : '#e5e7eb',
+              color: activeTab === 'open' ? 'white' : '#374151'
+            }}
+          >
+            📂 Open MIRs ({openMirs.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('closed')}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: activeTab === 'closed' ? COLORS.success : '#e5e7eb',
+              color: activeTab === 'closed' ? 'white' : '#374151'
+            }}
+          >
+            ✅ Closed MIRs ({closedMirs.length})
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search MIR#, RK#, Category..."
+            style={{ ...styles.input, width: '250px' }}
+          />
+          <button onClick={openCreateModal} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ New MIR</button>
+        </div>
       </div>
 
       <div style={styles.card}>
-        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Material Issue Reports ({mirs.length})</h3></div>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: '600' }}>
+            {activeTab === 'open' ? '📂 Open' : '✅ Closed'} Material Issue Reports ({displayedMirs.length})
+          </h3>
+        </div>
         <table style={styles.table}>
           <thead>
             <tr>
+              <th style={styles.th}>Priority</th>
               <th style={styles.th}>Type</th>
               <th style={styles.th}>MIR #</th>
               <th style={styles.th}>RK #</th>
@@ -3909,28 +4311,75 @@ function MIRPage({ user }) {
               <th style={styles.th}>Forecast</th>
               <th style={styles.th}>Status</th>
               <th style={styles.th}>Created</th>
+              {activeTab === 'open' && <th style={styles.th}>Actions</th>}
+              {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
             </tr>
           </thead>
           <tbody>
-            {mirs.map(mir => (
+            {displayedMirs.map(mir => (
               <tr key={mir.id}>
                 <td style={styles.td}>
-                  <span style={{ ...styles.statusBadge, backgroundColor: mir.mir_type === 'Piping' ? COLORS.info : COLORS.purple }}>{mir.mir_type || 'Piping'}</span>
+                  <span style={{ 
+                    ...styles.statusBadge, 
+                    backgroundColor: getPriorityColor(mir.priority || 'Medium')
+                  }}>
+                    {mir.priority || 'Medium'}
+                  </span>
+                </td>
+                <td style={styles.td}>
+                  <span style={{ ...styles.statusBadge, backgroundColor: mir.mir_type === 'Piping' ? COLORS.info : COLORS.purple }}>
+                    {mir.mir_type || 'Piping'}
+                  </span>
                 </td>
                 <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{mir.mir_number || '-'}</td>
                 <td style={{ ...styles.td, fontFamily: 'monospace', color: COLORS.info }}>{mir.rk_number || '-'}</td>
                 <td style={styles.td}>{mir.category || '-'}</td>
                 <td style={styles.td}>{mir.forecast_date ? new Date(mir.forecast_date).toLocaleDateString() : '-'}</td>
-                <td style={styles.td}><span style={{ ...styles.statusBadge, backgroundColor: mir.status === 'Open' ? COLORS.info : mir.status === 'Closed' ? COLORS.success : COLORS.gray }}>{mir.status}</span></td>
+                <td style={styles.td}>
+                  <span style={{ 
+                    ...styles.statusBadge, 
+                    backgroundColor: mir.status === 'Open' ? COLORS.info : COLORS.success 
+                  }}>
+                    {mir.status}
+                  </span>
+                </td>
                 <td style={styles.td}>{new Date(mir.created_at).toLocaleDateString()}</td>
+                {activeTab === 'open' && (
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => closeMir(mir)}
+                      disabled={!canModify}
+                      style={{ 
+                        ...styles.button, 
+                        backgroundColor: COLORS.success, 
+                        color: 'white',
+                        padding: '6px 12px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ✓ Close
+                    </button>
+                  </td>
+                )}
+                {activeTab === 'closed' && (
+                  <td style={styles.td}>
+                    {mir.closed_at ? new Date(mir.closed_at).toLocaleDateString() : '-'}
+                  </td>
+                )}
               </tr>
             ))}
-            {mirs.length === 0 && <tr><td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No MIRs</td></tr>}
+            {displayedMirs.length === 0 && (
+              <tr>
+                <td colSpan={activeTab === 'open' ? 9 : 9} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No {activeTab === 'open' ? 'open' : 'closed'} MIRs
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Create MIR Modal - REDESIGNED */}
+      {/* Create MIR Modal - V27 with Priority */}
       <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New MIR">
         {/* Step 1: Type Selection */}
         <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
@@ -3987,6 +4436,35 @@ function MIRPage({ user }) {
             </select>
           </div>
         )}
+
+        {/* V27: Priority Selection */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Priority *</label>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            {MIR_PRIORITIES.map(p => (
+              <label key={p} style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                padding: '10px 16px',
+                border: `2px solid ${priority === p ? getPriorityColor(p) : '#e5e7eb'}`,
+                borderRadius: '6px',
+                cursor: 'pointer',
+                backgroundColor: priority === p ? `${getPriorityColor(p)}15` : 'white'
+              }}>
+                <input 
+                  type="radio" 
+                  name="priority" 
+                  value={p} 
+                  checked={priority === p}
+                  onChange={(e) => setPriority(e.target.value)}
+                  style={{ width: '16px', height: '16px' }}
+                />
+                <span style={{ fontWeight: priority === p ? '600' : '400', color: getPriorityColor(p) }}>{p}</span>
+              </label>
+            ))}
+          </div>
+        </div>
 
         {/* Forecast Date */}
         <div style={{ marginBottom: '24px' }}>
