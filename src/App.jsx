@@ -631,7 +631,7 @@ function DestinationPopup({ isOpen, onClose, onSelect, title }) {
             />
             <div>
               <div style={{ fontWeight: '600', color: COLORS.info }}>🏗️ Site-IN (Normal)</div>
-              <div style={{ fontSize: '12px', color: '#6b7280' }}>Trasferimento standard al WH Site</div>
+              <div style={{ fontSize: '12px', color: '#6b7280' }}>Standard transfer to WH Site</div>
             </div>
           </label>
           
@@ -703,7 +703,7 @@ function DestinationPopup({ isOpen, onClose, onSelect, title }) {
   );
 }
 
-// Storico Passaggi Popup
+// Component History Popup
 function HistoryPopup({ isOpen, onClose, componentId }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -728,11 +728,11 @@ function HistoryPopup({ isOpen, onClose, componentId }) {
   if (!isOpen) return null;
   
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="📜 Storico Passaggi" wide>
+    <Modal isOpen={isOpen} onClose={onClose} title="📜 Component History" wide>
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Loading...</div>
       ) : history.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>Nessun passaggio registrato</div>
+        <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>No history recorded</div>
       ) : (
         <div style={{ position: 'relative', paddingLeft: '30px' }}>
           {/* Timeline line */}
@@ -821,7 +821,7 @@ function LoginScreen({ onLogin }) {
 
   const handleLogin = async () => {
     if (!username || !password) {
-      setError('Inserire username e password');
+      setError('Enter username and password');
       return;
     }
     setLoading(true);
@@ -842,7 +842,7 @@ function LoginScreen({ onLogin }) {
         onLogin(data);
       }
     } catch (err) {
-      setError('Errore di connessione');
+      setError('Connection error');
     }
     setLoading(false);
   };
@@ -903,7 +903,7 @@ function LoginScreen({ onLogin }) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             style={styles.input}
-            placeholder="Inserire username"
+            placeholder="Enter username"
             onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
           />
         </div>
@@ -915,7 +915,7 @@ function LoginScreen({ onLogin }) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             style={styles.input}
-            placeholder="Inserire password"
+            placeholder="Enter password"
             onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
           />
         </div>
@@ -1123,7 +1123,7 @@ function Dashboard({ user }) {
             <tr>
               <th style={styles.th}>Data</th>
               <th style={styles.th}>Tipo</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Qty</th>
               <th style={styles.th}>Da → A</th>
             </tr>
@@ -1218,7 +1218,7 @@ function RequestsPage({ user }) {
     return [];
   };
 
-  // V27: Async Spool search (3+ characters, filtered by ISO, excludes SP000/SPSUP/SPTAG)
+  // V27: Async Spool search (3+ characters, filtered by ISO, excludes ending with SP000/SPSUP/SPTAG)
   const searchSpoolOptions = async (searchTerm) => {
     if (!isoNumber || searchTerm.length < 3) return [];
     const { data } = await supabase
@@ -1230,7 +1230,11 @@ function RequestsPage({ user }) {
       .limit(50);
     if (data) {
       const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))]
-        .filter(s => !s.startsWith('SP000') && !s.startsWith('SPSUP') && !s.startsWith('SPTAG'));
+        .filter(s => {
+          const upper = s.toUpperCase();
+          return !upper.endsWith('SP000') && !upper.endsWith('SPSUP') && !upper.endsWith('SPTAG') &&
+                 !upper.includes('-SP000') && !upper.includes('-SPSUP') && !upper.includes('-SPTAG');
+        });
       return unique;
     }
     return [];
@@ -1245,7 +1249,7 @@ function RequestsPage({ user }) {
     if (data) setAllUsers(data);
   };
 
-  // Load spools for dropdown (when ISO selected) - used for initial load
+  // Load spools for dropdown (when ISO selected) - excludes ending with SP000/SPSUP/SPTAG
   const loadSpoolOptions = async (iso) => {
     const { data } = await supabase
       .from('project_materials')
@@ -1255,7 +1259,11 @@ function RequestsPage({ user }) {
       .limit(100);
     if (data) {
       const unique = [...new Set(data.map(d => d.full_spool_number).filter(Boolean))]
-        .filter(s => !s.startsWith('SP000') && !s.startsWith('SPSUP') && !s.startsWith('SPTAG'));
+        .filter(s => {
+          const upper = s.toUpperCase();
+          return !upper.endsWith('SP000') && !upper.endsWith('SPSUP') && !upper.endsWith('SPTAG') &&
+                 !upper.includes('-SP000') && !upper.includes('-SPSUP') && !upper.includes('-SPTAG');
+        });
       setSpoolOptions(unique);
     }
   };
@@ -1633,7 +1641,7 @@ function RequestsPage({ user }) {
       loadNextNumber();
 
     } catch (error) {
-      setMessage({ type: 'error', text: `Errore: ${error.message}` });
+      setMessage({ type: 'error', text: `Error: ${error.message}` });
     } finally {
       setLoading(false);
     }
@@ -1766,7 +1774,7 @@ function RequestsPage({ user }) {
                     value={hfNumber}
                     onChange={(e) => handleHfChange(e.target.value)}
                     style={{ ...styles.input, backgroundColor: 'white', borderColor: hfError ? '#EF4444' : '#d1d5db' }}
-                    placeholder="Inserire HF Number"
+                    placeholder="Enter HF Number"
                     disabled={!canModify}
                   />
                   {hfError && (
@@ -1783,13 +1791,13 @@ function RequestsPage({ user }) {
                       <p style={{ fontSize: '13px', color: '#6b7280' }}>
                         <strong>Request:</strong> {hfError.request}<br />
                         <strong>Data:</strong> {hfError.date}<br />
-                        <strong>Richiesto da:</strong> {hfError.person}
+                        <strong>Requested by:</strong> {hfError.person}
                       </p>
                     </div>
                   )}
                   {!hfError && (
                     <p style={{ fontSize: '12px', color: '#92400E', marginTop: '6px' }}>
-                      Obbligatorio per Erection - identifica la giunzione flangiata
+                      Required for Erection - identifies the flanged joint
                     </p>
                   )}
                 </div>
@@ -1816,7 +1824,7 @@ function RequestsPage({ user }) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 style={{ ...styles.input, minHeight: '120px', resize: 'vertical' }}
-                placeholder="Descrivi la richiesta meccanica..."
+                placeholder="Describe the mechanical request..."
                 disabled={!canModify}
               />
             </div>
@@ -1987,7 +1995,7 @@ function RequestsPage({ user }) {
                 </button>
               </div>
 
-              {/* Project Qty Exhausted Warning */}
+              {/* Quantity Exhausted Warning */}
               {projectQtyExhausted && (
                 <div style={{
                   marginTop: '16px',
@@ -1998,12 +2006,11 @@ function RequestsPage({ user }) {
                   color: '#DC2626'
                 }}>
                   <div style={{ fontWeight: '700', marginBottom: '8px', fontSize: '15px' }}>
-                    🚫 PROJECT QUANTITY ALREADY COLLECTED
+                    🚫 QUANTITY ALREADY COLLECTED
                   </div>
                   <div style={{ fontSize: '13px', marginBottom: '8px' }}>
                     For <strong>{overQuantityWarning?.ident_code}</strong>:
-                    <br />• Project Qty: <strong>{overQuantityWarning?.projectQty}</strong>
-                    <br />• Already Collected (record_out): <strong>{overQuantityWarning?.recordOut}</strong>
+                    <br />• Already Collected: <strong>{overQuantityWarning?.recordOut}</strong>
                     <br />• Already Requested: <strong>{overQuantityWarning?.alreadyRequested}</strong>
                   </div>
                   <div style={{ 
@@ -2042,11 +2049,10 @@ function RequestsPage({ user }) {
                 <table style={{ ...styles.table, marginTop: '16px' }}>
                   <thead>
                     <tr>
-                      <th style={styles.th}>Codice</th>
+                      <th style={styles.th}>Code</th>
                       <th style={styles.th}>Description</th>
                       <th style={styles.th}>Tag</th>
                       <th style={styles.th}>Qty</th>
-                      <th style={{ ...styles.th, backgroundColor: COLORS.purple, color: 'white' }}>Progetto</th>
                       <th style={styles.th}></th>
                     </tr>
                   </thead>
@@ -2057,9 +2063,8 @@ function RequestsPage({ user }) {
                         <td style={styles.td}>{mat.description}</td>
                         <td style={styles.td}>{mat.tag || '-'}</td>
                         <td style={styles.td}>{mat.qty}</td>
-                        <td style={{ ...styles.td, backgroundColor: '#F3E8FF' }}>{mat.pos_qty}</td>
                         <td style={styles.td}>
-                          <ActionButton color={COLORS.primary} onClick={() => removeMaterial(idx)} title="Rimuovi">×</ActionButton>
+                          <ActionButton color={COLORS.primary} onClick={() => removeMaterial(idx)} title="Remove">×</ActionButton>
                         </td>
                       </tr>
                     ))}
@@ -2087,7 +2092,7 @@ function RequestsPage({ user }) {
                 color: 'white',
                 cursor: siteYardDisabled ? 'not-allowed' : 'pointer'
               }}
-              title={siteYardDisabled ? 'Disabilitato - usa Engineering' : ''}
+              title={siteYardDisabled ? 'Disabled - use Engineering' : ''}
             >
               📤 Send to WH Site
             </button>
@@ -2100,7 +2105,7 @@ function RequestsPage({ user }) {
                 color: 'white',
                 cursor: siteYardDisabled ? 'not-allowed' : 'pointer'
               }}
-              title={siteYardDisabled ? 'Disabilitato - usa Engineering' : ''}
+              title={siteYardDisabled ? 'Disabled - use Engineering' : ''}
             >
               📤 Send to WH Yard
             </button>
@@ -2212,7 +2217,7 @@ function WHSitePage({ user }) {
       }
       loadComponents();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
@@ -2249,7 +2254,7 @@ function WHSitePage({ user }) {
 
   const submitPartial = async () => {
     if (!partialQty || parseInt(partialQty) >= selectedComponent.quantity) {
-      alert('La quantità parziale deve essere minore del totale');
+      alert('Partial quantity must be less than total');
       return;
     }
     
@@ -2350,11 +2355,11 @@ function WHSitePage({ user }) {
           <thead>
             <tr>
               <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
               <th style={styles.th}>Categoria</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -2374,7 +2379,7 @@ function WHSitePage({ user }) {
                     <ActionButton color={COLORS.secondary} onClick={() => handleAction(comp, 'yard')} disabled={!canModify} title="Yard">Y</ActionButton>
                     <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'eng')} disabled={!canModify} title="Engineering">UT</ActionButton>
                     <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Delete">🗑️</ActionButton>
-                    <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="Storico">ℹ️</ActionButton>
+                    <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                   </div>
                 </td>
               </tr>
@@ -2382,7 +2387,7 @@ function WHSitePage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun componente in WH Site
+                  No components in WH Site
                 </td>
               </tr>
             )}
@@ -2522,7 +2527,7 @@ function WHYardPage({ user }) {
       }
       loadComponents();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
@@ -2659,11 +2664,11 @@ function WHYardPage({ user }) {
           <thead>
             <tr>
               <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
-              <th style={styles.th}>Richiesto</th>
+              <th style={styles.th}>Requested</th>
               <th style={styles.th}>Disponibile</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -2695,7 +2700,7 @@ function WHYardPage({ user }) {
                       <ActionButton color={COLORS.purple} onClick={() => handleAction(comp, 'eng')} disabled={!canModify} title="Engineering">UT</ActionButton>
                       <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} disabled={!canModify} title="Ritorna Site">↩</ActionButton>
                       <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Delete">🗑️</ActionButton>
-                      <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="Storico">ℹ️</ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                     </div>
                   </td>
                 </tr>
@@ -2704,7 +2709,7 @@ function WHYardPage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun componente in WH Yard
+                  No components in WH Yard
                 </td>
               </tr>
             )}
@@ -2724,7 +2729,7 @@ function WHYardPage({ user }) {
       <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Invio Partial">
         <p style={{ marginBottom: '16px' }}>
           <strong>{selectedComponent?.ident_code}</strong><br />
-          Richiesto: {selectedComponent?.quantity} | Disponibile: {inventory[selectedComponent?.ident_code] || 0}
+          Requested: {selectedComponent?.quantity} | Available: {inventory[selectedComponent?.ident_code] || 0}
         </p>
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Quantity to send</label>
@@ -2807,7 +2812,7 @@ function SiteInPage({ user }) {
 
       loadComponents();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
@@ -2825,10 +2830,10 @@ function SiteInPage({ user }) {
           <thead>
             <tr>
               <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -2854,7 +2859,7 @@ function SiteInPage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun materiale in transito
+                  No materials in transit
                 </td>
               </tr>
             )}
@@ -2950,7 +2955,7 @@ function EngineeringPage({ user }) {
       }
       loadComponents();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
@@ -3036,17 +3041,17 @@ function EngineeringPage({ user }) {
     <div>
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Engineering - In Verifica ({components.length})</h3>
+          <h3 style={{ fontWeight: '600' }}>Engineering - Under Review ({components.length})</h3>
         </div>
         <table style={styles.table}>
           <thead>
             <tr>
               <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
               <th style={styles.th}>Check</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -3074,7 +3079,7 @@ function EngineeringPage({ user }) {
                     <ActionButton color={COLORS.yellow} onClick={() => handleAction(comp, 'mng')} disabled={!canModify} title="Management">Mng</ActionButton>
                     <ActionButton color={COLORS.gray} onClick={() => handleAction(comp, 'return')} disabled={!canModify} title="Ritorna">↩</ActionButton>
                     <ActionButton color={COLORS.primary} onClick={() => handleAction(comp, 'delete')} disabled={!canModify} title="Delete">🗑️</ActionButton>
-                    <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="Storico">ℹ️</ActionButton>
+                    <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                   </div>
                 </td>
               </tr>
@@ -3082,7 +3087,7 @@ function EngineeringPage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun componente in Engineering
+                  No components in Engineering
                 </td>
               </tr>
             )}
@@ -3115,7 +3120,7 @@ function EngineeringPage({ user }) {
             value={checkMessage}
             onChange={(e) => setCheckMessage(e.target.value)}
             style={{ ...styles.input, minHeight: '80px' }}
-            placeholder="Verificare posizione, quantità, ecc..."
+            placeholder="Check position, quantity, etc..."
           />
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
@@ -3210,7 +3215,7 @@ function HFPage({ user }) {
   };
 
   const isGroupComplete = (group) => {
-    // Verifica che tutte le sub-richieste siano in HF
+    // Check that all le sub-richieste siano in HF
     return group.components.length > 0;
   };
 
@@ -3277,7 +3282,7 @@ function HFPage({ user }) {
 
       {groupList.length === 0 ? (
         <div style={{ ...styles.card, padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-          Nessun componente HF in attesa
+          No HF components waiting
         </div>
       ) : (
         groupList.map(group => {
@@ -3346,7 +3351,7 @@ function HFPage({ user }) {
                 <thead>
                   <tr>
                     <th style={styles.th}>Sub</th>
-                    <th style={styles.th}>Codice</th>
+                    <th style={styles.th}>Code</th>
                     <th style={styles.th}>Description</th>
                     <th style={styles.th}>Qty</th>
                     <th style={styles.th}>Stato</th>
@@ -3366,7 +3371,7 @@ function HFPage({ user }) {
                         </span>
                       </td>
                       <td style={styles.td}>
-                        <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="Storico">ℹ️</ActionButton>
+                        <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                       </td>
                     </tr>
                   ))}
@@ -3493,7 +3498,7 @@ function TestPackPage({ user }) {
 
       {groupList.length === 0 ? (
         <div style={{ ...styles.card, padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-          Nessun componente TestPack in attesa
+          No TestPack components waiting
         </div>
       ) : (
         groupList.map(group => {
@@ -3547,7 +3552,7 @@ function TestPackPage({ user }) {
                 <thead>
                   <tr>
                     <th style={styles.th}>Sub</th>
-                    <th style={styles.th}>Codice</th>
+                    <th style={styles.th}>Code</th>
                     <th style={styles.th}>Description</th>
                     <th style={styles.th}>Qty</th>
                     <th style={styles.th}>Stato</th>
@@ -3567,7 +3572,7 @@ function TestPackPage({ user }) {
                         </span>
                       </td>
                       <td style={styles.td}>
-                        <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="Storico">ℹ️</ActionButton>
+                        <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                       </td>
                     </tr>
                   ))}
@@ -3661,7 +3666,7 @@ function ToBeCollectedPage({ user }) {
 
       loadComponents();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
@@ -3686,11 +3691,11 @@ function ToBeCollectedPage({ user }) {
           <thead>
             <tr>
               <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
               <th style={styles.th}>Può Ritirare</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -3725,7 +3730,7 @@ function ToBeCollectedPage({ user }) {
                       >
                         📤 Ritira
                       </button>
-                      <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="Storico">ℹ️</ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                     </div>
                   </td>
                 </tr>
@@ -3734,7 +3739,7 @@ function ToBeCollectedPage({ user }) {
             {components.length === 0 && (
               <tr>
                 <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  Nessun materiale da ritirare
+                  No materials to collect
                 </td>
               </tr>
             )}
@@ -3751,81 +3756,194 @@ function ToBeCollectedPage({ user }) {
 // MATERIAL IN PAGE
 // ============================================================
 function MaterialInPage({ user }) {
-  const [orderedComponents, setOrderedComponents] = useState([]);
+  // State for MIR loading
+  const [openMirs, setOpenMirs] = useState([]);
+  const [selectedMir, setSelectedMir] = useState(null);
+  
+  // State for item entry
+  const [identCode, setIdentCode] = useState('');
+  const [itemDescription, setItemDescription] = useState('');
+  const [itemDiam1, setItemDiam1] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [isPartial, setIsPartial] = useState(false);
+  const [missingQty, setMissingQty] = useState('');
+  const [itemNote, setItemNote] = useState('');
+  
+  // State for loaded items list
+  const [loadedItems, setLoadedItems] = useState([]);
+  
+  // State for partials log
+  const [partialsLog, setPartialsLog] = useState([]);
+  const [showPartialsLog, setShowPartialsLog] = useState(false);
+  
   const [loading, setLoading] = useState(true);
-  const [showReceiveModal, setShowReceiveModal] = useState(false);
-  const [selectedComponent, setSelectedComponent] = useState(null);
-  const [receiveData, setReceiveData] = useState({ destination: 'YARD', tag_number: '', note: '' });
-  const [allTags, setAllTags] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
-    const { data: ordData } = await supabase
-      .from('request_components')
-      .select(`*, requests (request_number, sub_number)`)
-      .eq('status', 'Ordered');
-    if (ordData) setOrderedComponents(ordData);
-
-    const { data: tagData } = await supabase
-      .from('project_materials')
-      .select('tag_number')
-      .not('tag_number', 'is', null);
-    if (tagData) {
-      const unique = [...new Set(tagData.map(t => t.tag_number).filter(Boolean))];
-      setAllTags(unique);
-    }
+    // Load only Open + Piping MIRs
+    const { data: mirData } = await supabase
+      .from('mirs')
+      .select('*')
+      .eq('status', 'Open')
+      .eq('mir_type', 'Piping')
+      .order('created_at', { ascending: false });
+    if (mirData) setOpenMirs(mirData);
+    
+    // Load partials log
+    const { data: partialsData } = await supabase
+      .from('material_in_partials')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (partialsData) setPartialsLog(partialsData);
+    
     setLoading(false);
   };
 
-  const openReceiveModal = (component) => {
-    setSelectedComponent(component);
-    setReceiveData({ destination: 'YARD', tag_number: '', note: '' });
-    setShowReceiveModal(true);
+  // Search ident code in project_materials
+  const searchIdentCode = async (term) => {
+    if (term.length < 3) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+    const { data } = await supabase
+      .from('project_materials')
+      .select('ident_code, description, diam1')
+      .ilike('ident_code', `%${term}%`)
+      .limit(30);
+    if (data) {
+      // Get unique ident codes with their data
+      const unique = [];
+      const seen = new Set();
+      data.forEach(d => {
+        if (!seen.has(d.ident_code)) {
+          seen.add(d.ident_code);
+          unique.push(d);
+        }
+      });
+      setSearchResults(unique);
+      setShowSearchResults(true);
+    }
   };
 
-  const receiveComponent = async () => {
+  const selectIdent = (item) => {
+    setIdentCode(item.ident_code);
+    setItemDescription(item.description || '');
+    setItemDiam1(item.diam1 || '');
+    setShowSearchResults(false);
+  };
+
+  const addToList = () => {
+    if (!selectedMir) {
+      alert('Please select a MIR first');
+      return;
+    }
+    if (!identCode) {
+      alert('Please enter an Ident Code');
+      return;
+    }
+    
+    const receivedQty = parseInt(quantity) || 0;
+    const missing = isPartial ? (parseInt(missingQty) || 0) : 0;
+    
+    const newItem = {
+      id: Date.now(),
+      mir_id: selectedMir.id,
+      mir_number: selectedMir.mir_number,
+      rk_number: selectedMir.rk_number,
+      ident_code: identCode,
+      description: itemDescription,
+      diam1: itemDiam1,
+      quantity: receivedQty,
+      is_partial: isPartial,
+      missing_qty: missing,
+      note: itemNote
+    };
+    
+    setLoadedItems([...loadedItems, newItem]);
+    
+    // Reset form
+    setIdentCode('');
+    setItemDescription('');
+    setItemDiam1('');
+    setQuantity('');
+    setIsPartial(false);
+    setMissingQty('');
+    setItemNote('');
+  };
+
+  const removeFromList = (id) => {
+    setLoadedItems(loadedItems.filter(i => i.id !== id));
+  };
+
+  const assignToWarehouse = async (destination) => {
+    if (loadedItems.length === 0) {
+      alert('No items to assign');
+      return;
+    }
+    
     try {
-      const dest = receiveData.destination;
-      await supabase.from('request_components')
-        .update({ 
-          status: dest === 'YARD' ? 'Yard' : 'Site',
-          current_location: dest,
-          tag_number: receiveData.tag_number || null
-        })
-        .eq('id', selectedComponent.id);
-      
-      if (dest === 'YARD') {
-        await supabase.rpc('increment_yard_qty', { p_ident_code: selectedComponent.ident_code, p_qty: selectedComponent.quantity });
-      } else {
-        await supabase.rpc('increment_site_qty', { p_ident_code: selectedComponent.ident_code, p_qty: selectedComponent.quantity });
+      for (const item of loadedItems) {
+        // Update inventory
+        if (item.quantity > 0) {
+          // Update collected_ten_wh
+          await supabase.rpc('increment_collected_ten_wh', { 
+            p_ident_code: item.ident_code, 
+            p_qty: item.quantity 
+          });
+          
+          // Update yard or site qty
+          if (destination === 'YARD') {
+            await supabase.rpc('increment_yard_qty', { 
+              p_ident_code: item.ident_code, 
+              p_qty: item.quantity 
+            });
+          } else {
+            await supabase.rpc('increment_site_qty', { 
+              p_ident_code: item.ident_code, 
+              p_qty: item.quantity 
+            });
+          }
+        }
+        
+        // Log movement
+        await supabase.from('movements').insert({
+          ident_code: item.ident_code,
+          movement_type: 'IN',
+          quantity: item.quantity,
+          from_location: 'TEN_WH',
+          to_location: destination,
+          performed_by: user.full_name,
+          note: `MIR ${item.mir_number || item.rk_number}${item.is_partial ? ' (Partial)' : ''}${item.note ? ' - ' + item.note : ''}`
+        });
+        
+        // If partial, log to partials table
+        if (item.is_partial && item.missing_qty > 0) {
+          await supabase.from('material_in_partials').insert({
+            mir_id: item.mir_id,
+            mir_number: item.mir_number,
+            rk_number: item.rk_number,
+            ident_code: item.ident_code,
+            description: item.description,
+            received_qty: item.quantity,
+            missing_qty: item.missing_qty,
+            note: item.note,
+            created_by: user.id,
+            created_by_name: user.full_name
+          });
+        }
       }
-
-      await supabase.from('component_history').insert({
-        component_id: selectedComponent.id,
-        action: 'Order Received',
-        from_status: 'Ordered',
-        to_status: dest === 'YARD' ? 'Yard' : 'Site',
-        performed_by_user_id: user.id,
-        performed_by_name: user.full_name,
-        note: receiveData.note
-      });
-
-      await supabase.from('movements').insert({
-        ident_code: selectedComponent.ident_code,
-        movement_type: 'IN',
-        quantity: selectedComponent.quantity,
-        from_location: 'SUPPLIER',
-        to_location: dest,
-        performed_by: user.full_name,
-        note: receiveData.note || 'Order received'
-      });
-
-      setShowReceiveModal(false);
+      
+      alert(`Successfully assigned ${loadedItems.length} items to ${destination}`);
+      setLoadedItems([]);
       loadData();
     } catch (error) {
-      alert('Errore: ' + error.message);
+      alert('Error: ' + error.message);
     }
   };
 
@@ -3835,79 +3953,329 @@ function MaterialInPage({ user }) {
 
   return (
     <div>
-      <div style={styles.card}>
+      {/* MIR Selection */}
+      <div style={{ ...styles.card, marginBottom: '20px' }}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Material IN - Ordinati in Attesa ({orderedComponents.length})</h3>
+          <h3 style={{ fontWeight: '600' }}>📦 Material IN - Load from TEN Warehouse</h3>
+          <button 
+            onClick={() => setShowPartialsLog(!showPartialsLog)}
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            📋 {showPartialsLog ? 'Hide' : 'Show'} Partials Log
+          </button>
         </div>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
-              <th style={styles.th}>Description</th>
-              <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Data Ordine</th>
-              <th style={styles.th}>Previsto</th>
-              <th style={styles.th}>Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orderedComponents.map(comp => (
-              <tr key={comp.id}>
-                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                  {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
-                </td>
-                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
-                <td style={styles.td}>{comp.description}</td>
-                <td style={styles.td}>{comp.quantity}</td>
-                <td style={styles.td}>{comp.order_date ? new Date(comp.order_date).toLocaleDateString() : '-'}</td>
-                <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}</td>
-                <td style={styles.td}>
-                  <button onClick={() => openReceiveModal(comp)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>
-                    📥 Ricevi
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {orderedComponents.length === 0 && (
-              <tr><td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>Nessun ordine in attesa</td></tr>
-            )}
-          </tbody>
-        </table>
+        <div style={{ padding: '20px' }}>
+          {/* Step 1: Select MIR */}
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{ ...styles.label, fontSize: '16px', fontWeight: '600', color: COLORS.info }}>
+              Step 1: Select MIR (Piping Only)
+            </label>
+            <select
+              value={selectedMir?.id || ''}
+              onChange={(e) => {
+                const mir = openMirs.find(m => m.id === e.target.value);
+                setSelectedMir(mir || null);
+              }}
+              style={{ ...styles.select, maxWidth: '400px' }}
+              disabled={!canModify}
+            >
+              <option value="">-- Select MIR --</option>
+              {openMirs.map(mir => (
+                <option key={mir.id} value={mir.id}>
+                  MIR {mir.mir_number} / RK {mir.rk_number} - {mir.category} {mir.description ? `(${mir.description})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Step 2: Add Items */}
+          {selectedMir && (
+            <div style={{ 
+              padding: '16px', 
+              backgroundColor: '#f9fafb', 
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              <label style={{ ...styles.label, fontSize: '16px', fontWeight: '600', color: COLORS.success }}>
+                Step 2: Add Items
+              </label>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                {/* Ident Code with search */}
+                <div style={{ position: 'relative' }}>
+                  <label style={styles.label}>Ident Code *</label>
+                  <input
+                    type="text"
+                    value={identCode}
+                    onChange={(e) => {
+                      setIdentCode(e.target.value);
+                      searchIdentCode(e.target.value);
+                    }}
+                    onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
+                    onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+                    style={styles.input}
+                    placeholder="Type 3+ chars to search..."
+                    disabled={!canModify}
+                  />
+                  {showSearchResults && searchResults.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      backgroundColor: 'white',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                      zIndex: 100
+                    }}>
+                      {searchResults.map((item, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => selectIdent(item)}
+                          style={{
+                            padding: '10px 12px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #f3f4f6',
+                            fontSize: '13px'
+                          }}
+                          onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                          onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                        >
+                          <strong>{item.ident_code}</strong>
+                          <span style={{ color: '#6b7280', marginLeft: '8px' }}>{item.description?.substring(0, 40)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Description (auto-filled) */}
+                <div>
+                  <label style={styles.label}>Description</label>
+                  <input
+                    type="text"
+                    value={itemDescription}
+                    readOnly
+                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                    placeholder="Auto-filled"
+                  />
+                </div>
+                
+                {/* Diam1 (auto-filled) */}
+                <div>
+                  <label style={styles.label}>Diam1</label>
+                  <input
+                    type="text"
+                    value={itemDiam1}
+                    readOnly
+                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                    placeholder="Auto"
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 150px 120px 1fr 100px', gap: '16px', alignItems: 'end' }}>
+                {/* Quantity */}
+                <div>
+                  <label style={styles.label}>Quantity</label>
+                  <input
+                    type="number"
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    style={styles.input}
+                    min="0"
+                    placeholder="0"
+                    disabled={!canModify}
+                  />
+                </div>
+                
+                {/* Partial checkbox */}
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginTop: '24px' }}>
+                    <input
+                      type="checkbox"
+                      checked={isPartial}
+                      onChange={(e) => setIsPartial(e.target.checked)}
+                      style={{ width: '18px', height: '18px' }}
+                      disabled={!canModify}
+                    />
+                    <span style={{ fontWeight: isPartial ? '600' : '400', color: isPartial ? COLORS.warning : '#374151' }}>
+                      Partial?
+                    </span>
+                  </label>
+                </div>
+                
+                {/* Missing Qty (if partial) */}
+                <div>
+                  <label style={styles.label}>Missing Qty</label>
+                  <input
+                    type="number"
+                    value={missingQty}
+                    onChange={(e) => setMissingQty(e.target.value)}
+                    style={{ ...styles.input, backgroundColor: isPartial ? 'white' : '#f3f4f6' }}
+                    min="0"
+                    placeholder="0"
+                    disabled={!canModify || !isPartial}
+                  />
+                </div>
+                
+                {/* Note */}
+                <div>
+                  <label style={styles.label}>Note (optional)</label>
+                  <input
+                    type="text"
+                    value={itemNote}
+                    onChange={(e) => setItemNote(e.target.value)}
+                    style={styles.input}
+                    placeholder="Add note..."
+                    disabled={!canModify}
+                  />
+                </div>
+                
+                {/* Load button */}
+                <button
+                  onClick={addToList}
+                  disabled={!canModify || !identCode}
+                  style={{ 
+                    ...styles.button, 
+                    backgroundColor: identCode ? COLORS.info : '#d1d5db',
+                    color: 'white',
+                    height: '42px',
+                    justifyContent: 'center'
+                  }}
+                >
+                  + Load
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      <Modal isOpen={showReceiveModal} onClose={() => setShowReceiveModal(false)} title="Ricevi Materiale">
-        <div style={{ marginBottom: '16px' }}>
-          <p><strong>Codice:</strong> {selectedComponent?.ident_code}</p>
-          <p><strong>Qty:</strong> {selectedComponent?.quantity}</p>
-        </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Destinazione</label>
-          <div style={{ display: 'flex', gap: '16px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input type="radio" value="YARD" checked={receiveData.destination === 'YARD'} onChange={(e) => setReceiveData({...receiveData, destination: e.target.value})} />
-              WH Yard
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input type="radio" value="SITE" checked={receiveData.destination === 'SITE'} onChange={(e) => setReceiveData({...receiveData, destination: e.target.value})} />
-              WH Site
-            </label>
+      {/* Loaded Items List */}
+      {loadedItems.length > 0 && (
+        <div style={{ ...styles.card, marginBottom: '20px' }}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: '600' }}>📋 Loaded Items ({loadedItems.length})</h3>
+          </div>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>MIR/RK</th>
+                <th style={styles.th}>Ident Code</th>
+                <th style={styles.th}>Description</th>
+                <th style={styles.th}>Diam1</th>
+                <th style={styles.th}>Qty</th>
+                <th style={styles.th}>Partial</th>
+                <th style={styles.th}>Missing</th>
+                <th style={styles.th}>Note</th>
+                <th style={styles.th}>Remove</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadedItems.map(item => (
+                <tr key={item.id}>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{item.mir_number || '-'}/{item.rk_number}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
+                  <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.description || '-'}</td>
+                  <td style={styles.td}>{item.diam1 || '-'}</td>
+                  <td style={{ ...styles.td, fontWeight: '600' }}>{item.quantity}</td>
+                  <td style={styles.td}>
+                    {item.is_partial ? (
+                      <span style={{ ...styles.statusBadge, backgroundColor: COLORS.warning }}>Yes</span>
+                    ) : '-'}
+                  </td>
+                  <td style={{ ...styles.td, color: item.missing_qty > 0 ? COLORS.primary : '#6b7280' }}>
+                    {item.missing_qty || '-'}
+                  </td>
+                  <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280' }}>{item.note || '-'}</td>
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => removeFromList(item.id)}
+                      style={{ ...styles.actionButton, backgroundColor: COLORS.primary }}
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {/* Assign buttons */}
+          <div style={{ padding: '20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '16px', justifyContent: 'center' }}>
+            <button
+              onClick={() => assignToWarehouse('SITE')}
+              disabled={!canModify}
+              style={{ 
+                ...styles.button, 
+                backgroundColor: COLORS.info, 
+                color: 'white',
+                padding: '12px 32px',
+                fontSize: '16px'
+              }}
+            >
+              🏭 Assign to SITE
+            </button>
+            <button
+              onClick={() => assignToWarehouse('YARD')}
+              disabled={!canModify}
+              style={{ 
+                ...styles.button, 
+                backgroundColor: COLORS.secondary, 
+                color: 'white',
+                padding: '12px 32px',
+                fontSize: '16px'
+              }}
+            >
+              🏢 Assign to YARD
+            </button>
           </div>
         </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Tag (opzionale)</label>
-          <input type="text" list="tag-opts" value={receiveData.tag_number} onChange={(e) => setReceiveData({...receiveData, tag_number: e.target.value})} style={styles.input} />
-          <datalist id="tag-opts">{allTags.map(t => <option key={t} value={t} />)}</datalist>
+      )}
+
+      {/* Partials Log */}
+      {showPartialsLog && (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#FEF3C7' }}>
+            <h3 style={{ fontWeight: '600', color: COLORS.warning }}>⚠️ Partials Log - Items Not Fully Received</h3>
+          </div>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Date</th>
+                <th style={styles.th}>MIR/RK</th>
+                <th style={styles.th}>Ident Code</th>
+                <th style={styles.th}>Description</th>
+                <th style={styles.th}>Received</th>
+                <th style={styles.th}>Missing</th>
+                <th style={styles.th}>Note</th>
+                <th style={styles.th}>By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {partialsLog.map(p => (
+                <tr key={p.id}>
+                  <td style={styles.td}>{new Date(p.created_at).toLocaleDateString()}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{p.mir_number || '-'}/{p.rk_number}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{p.ident_code}</td>
+                  <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.description || '-'}</td>
+                  <td style={{ ...styles.td, color: COLORS.success }}>{p.received_qty}</td>
+                  <td style={{ ...styles.td, color: COLORS.primary, fontWeight: '600' }}>{p.missing_qty}</td>
+                  <td style={{ ...styles.td, fontSize: '12px' }}>{p.note || '-'}</td>
+                  <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280' }}>{p.created_by_name}</td>
+                </tr>
+              ))}
+              {partialsLog.length === 0 && (
+                <tr><td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No partial items recorded</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Nota</label>
-          <textarea value={receiveData.note} onChange={(e) => setReceiveData({...receiveData, note: e.target.value})} style={{ ...styles.input, minHeight: '60px' }} />
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowReceiveModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          <button onClick={receiveComponent} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Confirm</button>
-        </div>
-      </Modal>
+      )}
     </div>
   );
 }
@@ -3949,10 +4317,10 @@ function SparePartsPage({ user }) {
           <thead>
             <tr>
               <th style={styles.th}>Request</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Azioni</th>
+              <th style={styles.th}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -3970,7 +4338,7 @@ function SparePartsPage({ user }) {
                 </td>
               </tr>
             ))}
-            {components.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>Nessun componente</td></tr>}
+            {components.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No components</td></tr>}
           </tbody>
         </table>
       </div>
@@ -4028,7 +4396,7 @@ function OrdersPage({ user }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-        {[{ id: 'daOrdinare', label: `Da Ordinare (${toOrderComponents.length})` }, { id: 'ordinati', label: `Ordinati (${orderedComponents.length})` }, { id: 'log', label: 'Log' }].map(tab => (
+        {[{ id: 'daOrdinare', label: `To Order (${toOrderComponents.length})` }, { id: 'ordinati', label: `Ordered (${orderedComponents.length})` }, { id: 'log', label: 'Log' }].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ ...styles.button, backgroundColor: activeTab === tab.id ? 'white' : '#e5e7eb', color: activeTab === tab.id ? '#1f2937' : '#6b7280', borderRadius: '8px 8px 0 0' }}>{tab.label}</button>
         ))}
       </div>
@@ -4036,7 +4404,7 @@ function OrdersPage({ user }) {
       <div style={styles.card}>
         {activeTab === 'daOrdinare' && (
           <table style={styles.table}>
-            <thead><tr><th style={styles.th}>Request</th><th style={styles.th}>Codice</th><th style={styles.th}>Qty</th><th style={styles.th}>Tipo</th><th style={styles.th}>Azioni</th></tr></thead>
+            <thead><tr><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Qty</th><th style={styles.th}>Tipo</th><th style={styles.th}>Actions</th></tr></thead>
             <tbody>
               {toOrderComponents.map(comp => (
                 <tr key={comp.id}>
@@ -4047,13 +4415,13 @@ function OrdersPage({ user }) {
                   <td style={styles.td}><button onClick={() => openOrderModal(comp)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>🛒 Ordina</button></td>
                 </tr>
               ))}
-              {toOrderComponents.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>Nessun ordine</td></tr>}
+              {toOrderComponents.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No orders</td></tr>}
             </tbody>
           </table>
         )}
         {activeTab === 'ordinati' && (
           <table style={styles.table}>
-            <thead><tr><th style={styles.th}>Request</th><th style={styles.th}>Codice</th><th style={styles.th}>Qty</th><th style={styles.th}>Data Ordine</th><th style={styles.th}>Previsto</th></tr></thead>
+            <thead><tr><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Qty</th><th style={styles.th}>Order Date</th><th style={styles.th}>Forecast</th></tr></thead>
             <tbody>
               {orderedComponents.map(comp => (
                 <tr key={comp.id}>
@@ -4064,13 +4432,13 @@ function OrdersPage({ user }) {
                   <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}</td>
                 </tr>
               ))}
-              {orderedComponents.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>Nessun ordine</td></tr>}
+              {orderedComponents.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No orders</td></tr>}
             </tbody>
           </table>
         )}
         {activeTab === 'log' && (
           <table style={styles.table}>
-            <thead><tr><th style={styles.th}>Data</th><th style={styles.th}>Codice</th><th style={styles.th}>Qty</th><th style={styles.th}>Tipo</th><th style={styles.th}>Ordinato da</th></tr></thead>
+            <thead><tr><th style={styles.th}>Data</th><th style={styles.th}>Code</th><th style={styles.th}>Qty</th><th style={styles.th}>Tipo</th><th style={styles.th}>Ordinato da</th></tr></thead>
             <tbody>
               {orderLog.map((log, idx) => (
                 <tr key={idx}>
@@ -4081,15 +4449,15 @@ function OrdersPage({ user }) {
                   <td style={styles.td}>{log.ordered_by}</td>
                 </tr>
               ))}
-              {orderLog.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>Nessun log</td></tr>}
+              {orderLog.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No log entries</td></tr>}
             </tbody>
           </table>
         )}
       </div>
 
-      <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="Piazza Ordine">
+      <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="Place Order">
         <p style={{ marginBottom: '16px' }}><strong>{selectedComponent?.ident_code}</strong> - Qty: {selectedComponent?.quantity}</p>
-        <div style={{ marginBottom: '16px' }}><label style={styles.label}>Data Ordine *</label><input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={styles.input} /></div>
+        <div style={{ marginBottom: '16px' }}><label style={styles.label}>Order Date *</label><input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={styles.input} /></div>
         <div style={{ marginBottom: '16px' }}><label style={styles.label}>Data Prevista Consegna</label><input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={styles.input} /></div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowOrderModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
@@ -4129,9 +4497,9 @@ function ManagementPage({ user }) {
   return (
     <div>
       <div style={styles.card}>
-        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Management - Decisioni ({components.length})</h3></div>
+        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Management - Decisions ({components.length})</h3></div>
         <table style={styles.table}>
-          <thead><tr><th style={styles.th}>Request</th><th style={styles.th}>Codice</th><th style={styles.th}>Description</th><th style={styles.th}>Qty</th><th style={styles.th}>Azioni</th></tr></thead>
+          <thead><tr><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Description</th><th style={styles.th}>Qty</th><th style={styles.th}>Actions</th></tr></thead>
           <tbody>
             {components.map(comp => (
               <tr key={comp.id}>
@@ -4147,7 +4515,7 @@ function ManagementPage({ user }) {
                 </td>
               </tr>
             ))}
-            {components.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>Nessuna decisione</td></tr>}
+            {components.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No decisions pending</td></tr>}
           </tbody>
         </table>
       </div>
@@ -4168,6 +4536,7 @@ function MIRPage({ user }) {
   const [category, setCategory] = useState('Bulk');
   const [forecastDate, setForecastDate] = useState('');
   const [priority, setPriority] = useState('Medium');
+  const [mirDescription, setMirDescription] = useState('');
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -4187,6 +4556,7 @@ function MIRPage({ user }) {
     setCategory('Bulk');
     setForecastDate('');
     setPriority('Medium');
+    setMirDescription('');
     setShowCreateModal(true);
   };
 
@@ -4210,6 +4580,7 @@ function MIRPage({ user }) {
       category: mirType === 'Piping' ? category : null,
       forecast_date: forecastDate || null,
       priority: priority,
+      description: mirDescription || null,
       created_by: user.id,
       status: 'Open'
     });
@@ -4238,13 +4609,15 @@ function MIRPage({ user }) {
   const closedMirs = mirs.filter(m => m.status === 'Closed');
   
   const filterMirs = (mirList) => {
-    if (!searchTerm) return mirList;
-    const term = searchTerm.toLowerCase();
-    return mirList.filter(m => 
-      (m.mir_number && m.mir_number.includes(term)) ||
-      (m.rk_number && m.rk_number.includes(term)) ||
-      (m.category && m.category.toLowerCase().includes(term))
-    );
+    if (!searchTerm || searchTerm.trim() === '') return mirList;
+    const term = searchTerm.toLowerCase().trim();
+    return mirList.filter(m => {
+      const mirNum = String(m.mir_number || '').toLowerCase();
+      const rkNum = String(m.rk_number || '').toLowerCase();
+      const cat = String(m.category || '').toLowerCase();
+      const desc = String(m.description || '').toLowerCase();
+      return mirNum.includes(term) || rkNum.includes(term) || cat.includes(term) || desc.includes(term);
+    });
   };
 
   const displayedMirs = activeTab === 'open' ? filterMirs(openMirs) : filterMirs(closedMirs);
@@ -4308,6 +4681,7 @@ function MIRPage({ user }) {
               <th style={styles.th}>MIR #</th>
               <th style={styles.th}>RK #</th>
               <th style={styles.th}>Category</th>
+              <th style={styles.th}>Description</th>
               <th style={styles.th}>Forecast</th>
               <th style={styles.th}>Status</th>
               <th style={styles.th}>Created</th>
@@ -4334,6 +4708,7 @@ function MIRPage({ user }) {
                 <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{mir.mir_number || '-'}</td>
                 <td style={{ ...styles.td, fontFamily: 'monospace', color: COLORS.info }}>{mir.rk_number || '-'}</td>
                 <td style={styles.td}>{mir.category || '-'}</td>
+                <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mir.description || ''}>{mir.description || '-'}</td>
                 <td style={styles.td}>{mir.forecast_date ? new Date(mir.forecast_date).toLocaleDateString() : '-'}</td>
                 <td style={styles.td}>
                   <span style={{ 
@@ -4466,6 +4841,17 @@ function MIRPage({ user }) {
           </div>
         </div>
 
+        {/* Description (optional) */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Description (optional)</label>
+          <textarea
+            value={mirDescription}
+            onChange={(e) => setMirDescription(e.target.value)}
+            style={{ ...styles.input, minHeight: '60px', resize: 'vertical' }}
+            placeholder="Add a description for this MIR..."
+          />
+        </div>
+
         {/* Forecast Date */}
         <div style={{ marginBottom: '24px' }}>
           <label style={styles.label}>Forecast Date</label>
@@ -4585,7 +4971,7 @@ function LogPage({ user }) {
             <tr>
               <th style={styles.th}>Data</th>
               <th style={styles.th}>Tipo</th>
-              <th style={styles.th}>Codice</th>
+              <th style={styles.th}>Code</th>
               <th style={styles.th}>Qty</th>
               <th style={styles.th}>Da → A</th>
               <th style={styles.th}>Operatore</th>
@@ -4632,7 +5018,7 @@ function LogPage({ user }) {
           </select>
         </div>
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantità *</label>
+          <label style={styles.label}>Quantity *</label>
           <input type="number" value={newMovement.quantity} onChange={(e) => setNewMovement({ ...newMovement, quantity: e.target.value })} style={styles.input} min="1" />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -4764,7 +5150,7 @@ function DatabasePage({ user }) {
           <table style={styles.table}>
             <thead style={{ position: 'sticky', top: 0 }}>
               <tr>
-                <th style={styles.th}>Codice</th>
+                <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>YARD</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>SITE</th>
@@ -4772,7 +5158,7 @@ function DatabasePage({ user }) {
                 <th style={{ ...styles.th, backgroundColor: COLORS.purple, color: 'white', textAlign: 'center' }}>BROKEN</th>
                 <th style={{ ...styles.th, textAlign: 'center' }}>TOTALE</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.success, color: 'white', textAlign: 'center' }}>Prelevati</th>
-                <th style={styles.th}>Azioni</th>
+                <th style={styles.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
