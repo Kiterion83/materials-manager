@@ -6169,6 +6169,10 @@ function LogPage({ user }) {
   const [allUsers, setAllUsers] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  // V28: State for tabs and request tracker
+  const [activeTab, setActiveTab] = useState('movements');
+  const [requests, setRequests] = useState([]);
+  const [requestSearchTerm, setRequestSearchTerm] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
@@ -6182,6 +6186,14 @@ function LogPage({ user }) {
 
     const { data: userData } = await supabase.from('users').select('id, full_name').eq('is_active', true);
     if (userData) setAllUsers(userData);
+
+    // V28: Load request components for tracker
+    const { data: reqData } = await supabase
+      .from('request_components')
+      .select('*, requests(*)')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (reqData) setRequests(reqData);
 
     setLoading(false);
   };
