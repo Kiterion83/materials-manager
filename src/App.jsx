@@ -1,7 +1,7 @@
 // ============================================================
-// MATERIALS MANAGER V27.8 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V27.8: Fix badges, Partial for Eng Checks, uniform buttons
+// V28.0: Spare Parts 2-tabs, Orders To Site/Yard, Forecast alerts, Search boxes
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -30,7 +30,8 @@ const COLORS = {
   orange: '#EA580C',
   gray: '#6B7280',
   yellow: '#CA8A04',
-  teal: '#0D9488'
+  teal: '#0D9488',
+  alertRed: '#FEE2E2'
 };
 
 const STATUS_COLORS = {
@@ -283,6 +284,27 @@ function ActionButton({ color, onClick, disabled, children, title }) {
       {children}
     </button>
   );
+}
+
+// V28: Search Box Component
+function SearchBox({ value, onChange, placeholder = "Search..." }) {
+  return (
+    <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} 
+      style={{ ...styles.input, flex: 1, minWidth: '200px', maxWidth: '400px' }} />
+  );
+}
+
+// V28: Overdue Badge
+function OverdueBadge() {
+  return <span style={{ ...styles.statusBadge, backgroundColor: COLORS.primary, marginLeft: '8px' }}>⚠️ OVERDUE</span>;
+}
+
+// V28: Check if date is overdue
+function isOverdue(forecastDate) {
+  if (!forecastDate) return false;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const forecast = new Date(forecastDate); forecast.setHours(0, 0, 0, 0);
+  return today > forecast;
 }
 
 // ============================================================
@@ -5396,184 +5418,270 @@ function MaterialInPage({ user }) {
 }
 
 // ============================================================
-// SPARE PARTS PAGE
+// SPARE PARTS PAGE - V28: 2 Tabs (Not Confirmed / Confirmed)
 // ============================================================
 function SparePartsPage({ user }) {
-  const [components, setComponents] = useState([]);
+  const [activeTab, setActiveTab] = useState('notConfirmed');
+  const [notConfirmedComponents, setNotConfirmedComponents] = useState([]);
+  const [confirmedComponents, setConfirmedComponents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [selectedComponent, setSelectedComponent] = useState(null);
+  const [forecastDate, setForecastDate] = useState('');
 
   useEffect(() => { loadComponents(); }, []);
 
   const loadComponents = async () => {
     setLoading(true);
-    const { data } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number)`)
-      .eq('status', 'Spare');
-    if (data) setComponents(data);
+    const { data: notConf } = await supabase.from('request_components')
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
+      .eq('status', 'Spare').is('forecast_date', null);
+    const { data: conf } = await supabase.from('request_components')
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
+      .eq('status', 'Spare').not('forecast_date', 'is', null);
+    if (notConf) setNotConfirmedComponents(notConf);
+    if (conf) setConfirmedComponents(conf);
     setLoading(false);
   };
 
-  const handleAction = async (component, orderType) => {
-    await supabase.from('request_components').update({ status: 'Order', order_type: orderType }).eq('id', component.id);
-    await supabase.from('component_history').insert({
-      component_id: component.id, action: `Sent to ${orderType} Order`, from_status: 'Spare', to_status: 'Order',
-      performed_by_user_id: user.id, performed_by_name: user.full_name
-    });
-    loadComponents();
+  const logHistory = async (compId, action, fromStatus, toStatus, note) => {
+    await supabase.from('component_history').insert({ component_id: compId, action, from_status: fromStatus, to_status: toStatus, performed_by_user_id: user.id, performed_by_name: user.full_name, note });
+  };
+
+  const openClientModal = (comp) => { setSelectedComponent(comp); setForecastDate(''); setShowClientModal(true); };
+
+  const submitClient = async () => {
+    if (!forecastDate) { alert('Please enter a forecast date'); return; }
+    await supabase.from('request_components').update({ forecast_date: forecastDate }).eq('id', selectedComponent.id);
+    await logHistory(selectedComponent.id, 'Client Confirmed', 'Spare', 'Spare', `Forecast: ${forecastDate}`);
+    setShowClientModal(false); loadComponents();
+  };
+
+  const handleNotConfirmedAction = async (comp, action) => {
+    try {
+      if (action === 'client') { openClientModal(comp); return; }
+      if (action === 'delete' && confirm('Delete this item?')) {
+        await supabase.from('request_components').update({ status: 'Cancelled' }).eq('id', comp.id);
+        await logHistory(comp.id, 'Cancelled', 'Spare', 'Cancelled', '');
+      }
+      if (action === 'return') {
+        await supabase.from('request_components').update({ status: 'Eng' }).eq('id', comp.id);
+        await logHistory(comp.id, 'Returned to Engineering', 'Spare', 'Eng', '');
+      }
+      loadComponents();
+    } catch (e) { alert('Error: ' + e.message); }
+  };
+
+  const handleConfirmedAction = async (comp, action) => {
+    try {
+      if (action === 'toSite') {
+        await supabase.rpc('increment_site_qty', { p_ident_code: comp.ident_code, p_qty: comp.quantity });
+        await supabase.from('request_components').update({ status: 'WH_Site', current_location: 'SITE', forecast_date: null }).eq('id', comp.id);
+        await logHistory(comp.id, 'Client Delivered - To Site', 'Spare', 'WH_Site', '');
+        await supabase.from('movements').insert({ ident_code: comp.ident_code, movement_type: 'IN', quantity: comp.quantity, from_location: 'CLIENT', to_location: 'SITE', performed_by: user.full_name, note: 'Spare Parts delivery' });
+      }
+      if (action === 'toYard') {
+        await supabase.rpc('increment_yard_qty', { p_ident_code: comp.ident_code, p_qty: comp.quantity });
+        await supabase.from('request_components').update({ status: 'Yard', current_location: 'YARD', forecast_date: null }).eq('id', comp.id);
+        await logHistory(comp.id, 'Client Delivered - To Yard', 'Spare', 'Yard', '');
+        await supabase.from('movements').insert({ ident_code: comp.ident_code, movement_type: 'IN', quantity: comp.quantity, from_location: 'CLIENT', to_location: 'YARD', performed_by: user.full_name, note: 'Spare Parts delivery' });
+      }
+      if (action === 'return') {
+        await supabase.from('request_components').update({ status: 'Eng', forecast_date: null }).eq('id', comp.id);
+        await logHistory(comp.id, 'Returned to Engineering', 'Spare', 'Eng', '');
+      }
+      if (action === 'delete' && confirm('Delete this item?')) {
+        await supabase.from('request_components').update({ status: 'Cancelled', forecast_date: null }).eq('id', comp.id);
+        await logHistory(comp.id, 'Cancelled', 'Spare', 'Cancelled', '');
+      }
+      loadComponents();
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
   const canModify = user.role === 'admin' || user.perm_spare_parts === 'modify';
+  const filterComps = (comps) => {
+    if (!searchTerm) return comps;
+    const t = searchTerm.toLowerCase();
+    return comps.filter(c => (c.ident_code||'').toLowerCase().includes(t) || (c.description||'').toLowerCase().includes(t) || String(c.requests?.request_number||'').includes(t));
+  };
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
+  const filteredNotConf = filterComps(notConfirmedComponents);
+  const filteredConf = filterComps(confirmedComponents);
+
   return (
     <div>
-      <div style={styles.card}>
-        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Spare Parts ({components.length})</h3></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Cat</th>
-                <th style={styles.th}>Sub</th>
-                <th style={styles.th}>ISO</th>
-                <th style={styles.th}>Spool</th>
-                <th style={styles.th}>HF</th>
-                <th style={styles.th}>Request</th>
-                <th style={styles.th}>Code</th>
-                <th style={styles.th}>Description</th>
-                <th style={styles.th}>Tag</th>
-                <th style={styles.th}>Diam</th>
-                <th style={styles.th}>Qty</th>
-                <th style={styles.th}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {components.map(comp => (
-                <tr key={comp.id}>
-                  <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
-                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
-                  </td>
-                  <td style={styles.td}>{comp.tag || '-'}</td>
-                  <td style={styles.td}>{comp.dia1 || '-'}</td>
-                  <td style={styles.td}>{comp.quantity}</td>
-                  <td style={styles.td}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleAction(comp, 'Client')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white', padding: '6px 12px', fontSize: '12px' }}>👤 Client</button>
-                      <button onClick={() => handleAction(comp, 'Internal')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '6px 12px', fontSize: '12px' }}>🏢 Internal</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {components.length === 0 && <tr><td colSpan="12" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No components</td></tr>}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>
+        <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="Search code, description, request..." />
       </div>
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        <button onClick={() => setActiveTab('notConfirmed')} style={{ ...styles.button, backgroundColor: activeTab === 'notConfirmed' ? 'white' : '#e5e7eb', color: activeTab === 'notConfirmed' ? '#1f2937' : '#6b7280', borderRadius: '8px 8px 0 0', boxShadow: activeTab === 'notConfirmed' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none' }}>Not Confirmed ({notConfirmedComponents.length})</button>
+        <button onClick={() => setActiveTab('confirmed')} style={{ ...styles.button, backgroundColor: activeTab === 'confirmed' ? 'white' : '#e5e7eb', color: activeTab === 'confirmed' ? '#1f2937' : '#6b7280', borderRadius: '8px 8px 0 0', boxShadow: activeTab === 'confirmed' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none' }}>Confirmed ({confirmedComponents.length})</button>
+      </div>
+      <div style={styles.card}>
+        {activeTab === 'notConfirmed' && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead><tr><th style={styles.th}>Cat</th><th style={styles.th}>Sub</th><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Description</th><th style={styles.th}>Qty</th><th style={styles.th}>Actions</th></tr></thead>
+              <tbody>
+                {filteredNotConf.map(comp => (
+                  <tr key={comp.id}>
+                    <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
+                    <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5,'0')}-{comp.requests?.sub_number}</td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description ? (comp.description.length > 50 ? comp.description.substring(0,50)+'...' : comp.description) : '-'}</td>
+                    <td style={styles.td}>{comp.quantity}</td>
+                    <td style={styles.td}><ActionDropdown actions={[{id:'client',icon:'👤',label:'Client (Set Forecast)'},{id:'return',icon:'↩️',label:'Return to Eng'},{id:'delete',icon:'🗑️',label:'Delete'}]} onExecute={(a)=>handleNotConfirmedAction(comp,a)} disabled={!canModify} componentId={comp.id}/></td>
+                  </tr>
+                ))}
+                {filteredNotConf.length === 0 && <tr><td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No components</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {activeTab === 'confirmed' && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead><tr><th style={styles.th}>Cat</th><th style={styles.th}>Sub</th><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Description</th><th style={styles.th}>Qty</th><th style={styles.th}>Forecast</th><th style={styles.th}>Actions</th></tr></thead>
+              <tbody>
+                {filteredConf.map(comp => {
+                  const overdue = isOverdue(comp.forecast_date);
+                  return (
+                    <tr key={comp.id} style={overdue ? { backgroundColor: COLORS.alertRed } : {}}>
+                      <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
+                      <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5,'0')}-{comp.requests?.sub_number}</td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
+                      <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description ? (comp.description.length > 50 ? comp.description.substring(0,50)+'...' : comp.description) : '-'}</td>
+                      <td style={styles.td}>{comp.quantity}</td>
+                      <td style={styles.td}>{comp.forecast_date ? new Date(comp.forecast_date).toLocaleDateString() : '-'}{overdue && <OverdueBadge />}</td>
+                      <td style={styles.td}><ActionDropdown actions={[{id:'toSite',icon:'🏭',label:'Received - To Site'},{id:'toYard',icon:'🏢',label:'Received - To Yard'},{id:'return',icon:'↩️',label:'Return'},{id:'delete',icon:'🗑️',label:'Delete'}]} onExecute={(a)=>handleConfirmedAction(comp,a)} disabled={!canModify} componentId={comp.id}/></td>
+                    </tr>
+                  );
+                })}
+                {filteredConf.length === 0 && <tr><td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No confirmed items</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <Modal isOpen={showClientModal} onClose={() => setShowClientModal(false)} title="Client Confirmation - Set Forecast">
+        <p style={{ marginBottom: '16px' }}><strong>{selectedComponent?.ident_code}</strong> - Qty: {selectedComponent?.quantity}</p>
+        <div style={{ marginBottom: '16px' }}><label style={styles.label}>Expected Delivery Date *</label><input type="date" value={forecastDate} onChange={(e) => setForecastDate(e.target.value)} style={styles.input} /></div>
+        <div style={{ backgroundColor: '#f0fdf4', padding: '12px', borderRadius: '6px', marginBottom: '16px' }}><p style={{ fontSize: '13px', color: '#166534' }}>ℹ️ When client delivers the material, use "Received - To Site" or "Received - To Yard" to load into inventory.</p></div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={() => setShowClientModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={submitClient} style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white' }}>Confirm</button>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 // ============================================================
-// ORDERS PAGE
+// ORDERS PAGE - V28: To Site/Yard actions, overdue alerts
 // ============================================================
 function OrdersPage({ user }) {
   const [activeTab, setActiveTab] = useState('toOrder');
   const [toOrderComponents, setToOrderComponents] = useState([]);
   const [orderedComponents, setOrderedComponents] = useState([]);
-  const [orderLog, setOrderLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [expectedDate, setExpectedDate] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     const { data: toOrder } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
       .eq('status', 'Order');
     const { data: ordered } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type)`)
       .eq('status', 'Ordered');
-    const { data: log } = await supabase.from('order_log').select('*').order('created_at', { ascending: false }).limit(50);
     if (toOrder) setToOrderComponents(toOrder);
     if (ordered) setOrderedComponents(ordered);
-    if (log) setOrderLog(log);
     setLoading(false);
   };
 
-  const openOrderModal = (component) => {
-    setSelectedComponent(component);
-    setOrderDate(new Date().toISOString().split('T')[0]);
-    setExpectedDate('');
-    setShowOrderModal(true);
+  const logHistory = async (compId, action, fromStatus, toStatus, note) => {
+    await supabase.from('component_history').insert({ component_id: compId, action, from_status: fromStatus, to_status: toStatus, performed_by_user_id: user.id, performed_by_name: user.full_name, note });
   };
+
+  const openOrderModal = (comp) => { setSelectedComponent(comp); setOrderDate(new Date().toISOString().split('T')[0]); setExpectedDate(''); setShowOrderModal(true); };
 
   const submitOrder = async () => {
     await supabase.from('request_components').update({ status: 'Ordered', order_date: orderDate, order_forecast: expectedDate || null }).eq('id', selectedComponent.id);
     await supabase.from('order_log').insert({ ident_code: selectedComponent.ident_code, quantity: selectedComponent.quantity, order_type: selectedComponent.order_type || 'Internal', order_date: orderDate, expected_date: expectedDate || null, ordered_by: user.full_name });
-    await supabase.from('component_history').insert({ component_id: selectedComponent.id, action: 'Order Placed', from_status: 'Order', to_status: 'Ordered', performed_by_user_id: user.id, performed_by_name: user.full_name, note: `Expected: ${expectedDate || 'TBD'}` });
+    await logHistory(selectedComponent.id, 'Order Placed', 'Order', 'Ordered', `Expected: ${expectedDate || 'TBD'}`);
     await supabase.from('movements').insert({ ident_code: selectedComponent.ident_code, movement_type: 'ORDER', quantity: selectedComponent.quantity, from_location: 'ORDER', to_location: 'SUPPLIER', performed_by: user.full_name });
-    setShowOrderModal(false);
-    loadData();
+    setShowOrderModal(false); loadData();
+  };
+
+  const handleOrderedAction = async (comp, action) => {
+    try {
+      if (action === 'toSite') {
+        await supabase.rpc('increment_site_qty', { p_ident_code: comp.ident_code, p_qty: comp.quantity });
+        await supabase.from('request_components').update({ status: 'WH_Site', current_location: 'SITE', order_forecast: null }).eq('id', comp.id);
+        await logHistory(comp.id, 'Order Received - To Site', 'Ordered', 'WH_Site', '');
+        await supabase.from('movements').insert({ ident_code: comp.ident_code, movement_type: 'IN', quantity: comp.quantity, from_location: 'SUPPLIER', to_location: 'SITE', performed_by: user.full_name, note: 'Order received' });
+      }
+      if (action === 'toYard') {
+        await supabase.rpc('increment_yard_qty', { p_ident_code: comp.ident_code, p_qty: comp.quantity });
+        await supabase.from('request_components').update({ status: 'Yard', current_location: 'YARD', order_forecast: null }).eq('id', comp.id);
+        await logHistory(comp.id, 'Order Received - To Yard', 'Ordered', 'Yard', '');
+        await supabase.from('movements').insert({ ident_code: comp.ident_code, movement_type: 'IN', quantity: comp.quantity, from_location: 'SUPPLIER', to_location: 'YARD', performed_by: user.full_name, note: 'Order received' });
+      }
+      loadData();
+    } catch (e) { alert('Error: ' + e.message); }
   };
 
   const canModify = user.role === 'admin' || user.perm_orders === 'modify';
+  const filterComps = (comps) => {
+    if (!searchTerm) return comps;
+    const t = searchTerm.toLowerCase();
+    return comps.filter(c => (c.ident_code||'').toLowerCase().includes(t) || (c.description||'').toLowerCase().includes(t) || String(c.requests?.request_number||'').includes(t));
+  };
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
+  const filteredToOrder = filterComps(toOrderComponents);
+  const filteredOrdered = filterComps(orderedComponents);
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
-        {[{ id: 'toOrder', label: `To Order (${toOrderComponents.length})` }, { id: 'ordered', label: `Ordered (${orderedComponents.length})` }, { id: 'log', label: 'Log' }].map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ ...styles.button, backgroundColor: activeTab === tab.id ? 'white' : '#e5e7eb', color: activeTab === tab.id ? '#1f2937' : '#6b7280', borderRadius: '8px 8px 0 0' }}>{tab.label}</button>
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', gap: '12px' }}>
+        <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="Search code, description, request..." />
       </div>
-
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        <button onClick={() => setActiveTab('toOrder')} style={{ ...styles.button, backgroundColor: activeTab === 'toOrder' ? 'white' : '#e5e7eb', color: activeTab === 'toOrder' ? '#1f2937' : '#6b7280', borderRadius: '8px 8px 0 0', boxShadow: activeTab === 'toOrder' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none' }}>To Order ({toOrderComponents.length})</button>
+        <button onClick={() => setActiveTab('ordered')} style={{ ...styles.button, backgroundColor: activeTab === 'ordered' ? 'white' : '#e5e7eb', color: activeTab === 'ordered' ? '#1f2937' : '#6b7280', borderRadius: '8px 8px 0 0', boxShadow: activeTab === 'ordered' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none' }}>Ordered ({orderedComponents.length})</button>
+      </div>
       <div style={styles.card}>
         {activeTab === 'toOrder' && (
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Cat</th>
-                  <th style={styles.th}>Sub</th>
-                  <th style={styles.th}>ISO</th>
-                  <th style={styles.th}>Request</th>
-                  <th style={styles.th}>Code</th>
-                  <th style={styles.th}>Description</th>
-                  <th style={styles.th}>Qty</th>
-                  <th style={styles.th}>Type</th>
-                  <th style={styles.th}>Actions</th>
-                </tr>
-              </thead>
+              <thead><tr><th style={styles.th}>Cat</th><th style={styles.th}>Sub</th><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Description</th><th style={styles.th}>Qty</th><th style={styles.th}>Type</th><th style={styles.th}>Actions</th></tr></thead>
               <tbody>
-                {toOrderComponents.map(comp => (
+                {filteredToOrder.map(comp => (
                   <tr key={comp.id}>
                     <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
                     <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
-                    <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5,'0')}-{comp.requests?.sub_number}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
-                    </td>
+                    <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description ? (comp.description.length > 50 ? comp.description.substring(0,50)+'...' : comp.description) : '-'}</td>
                     <td style={styles.td}>{comp.quantity}</td>
                     <td style={styles.td}><span style={{ ...styles.statusBadge, backgroundColor: comp.order_type === 'Client' ? COLORS.cyan : COLORS.info }}>{comp.order_type || 'Internal'}</span></td>
                     <td style={styles.td}><button onClick={() => openOrderModal(comp)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', padding: '6px 12px', fontSize: '12px' }}>🛒 Order</button></td>
                   </tr>
                 ))}
-                {toOrderComponents.length === 0 && <tr><td colSpan="9" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No orders</td></tr>}
+                {filteredToOrder.length === 0 && <tr><td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No items to order</td></tr>}
               </tbody>
             </table>
           </div>
@@ -5581,66 +5689,37 @@ function OrdersPage({ user }) {
         {activeTab === 'ordered' && (
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Cat</th>
-                  <th style={styles.th}>Sub</th>
-                  <th style={styles.th}>ISO</th>
-                  <th style={styles.th}>Request</th>
-                  <th style={styles.th}>Code</th>
-                  <th style={styles.th}>Description</th>
-                  <th style={styles.th}>Qty</th>
-                  <th style={styles.th}>Order Date</th>
-                  <th style={styles.th}>Forecast</th>
-                </tr>
-              </thead>
+              <thead><tr><th style={styles.th}>Cat</th><th style={styles.th}>Sub</th><th style={styles.th}>Request</th><th style={styles.th}>Code</th><th style={styles.th}>Description</th><th style={styles.th}>Qty</th><th style={styles.th}>Order Date</th><th style={styles.th}>Forecast</th><th style={styles.th}>Actions</th></tr></thead>
               <tbody>
-                {orderedComponents.map(comp => (
-                  <tr key={comp.id}>
-                    <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                    <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
-                    <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
-                    <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
-                    </td>
-                    <td style={styles.td}>{comp.quantity}</td>
-                    <td style={styles.td}>{comp.order_date ? new Date(comp.order_date).toLocaleDateString() : '-'}</td>
-                    <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}</td>
-                  </tr>
-                ))}
-                {orderedComponents.length === 0 && <tr><td colSpan="9" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No orders</td></tr>}
+                {filteredOrdered.map(comp => {
+                  const overdue = isOverdue(comp.order_forecast);
+                  return (
+                    <tr key={comp.id} style={overdue ? { backgroundColor: COLORS.alertRed } : {}}>
+                      <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
+                      <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5,'0')}-{comp.requests?.sub_number}</td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
+                      <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description ? (comp.description.length > 50 ? comp.description.substring(0,50)+'...' : comp.description) : '-'}</td>
+                      <td style={styles.td}>{comp.quantity}</td>
+                      <td style={styles.td}>{comp.order_date ? new Date(comp.order_date).toLocaleDateString() : '-'}</td>
+                      <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}{overdue && <OverdueBadge />}</td>
+                      <td style={styles.td}><ActionDropdown actions={[{id:'toSite',icon:'🏭',label:'Received - To Site'},{id:'toYard',icon:'🏢',label:'Received - To Yard'}]} onExecute={(a)=>handleOrderedAction(comp,a)} disabled={!canModify} componentId={comp.id}/></td>
+                    </tr>
+                  );
+                })}
+                {filteredOrdered.length === 0 && <tr><td colSpan="9" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No ordered items</td></tr>}
               </tbody>
             </table>
           </div>
         )}
-        {activeTab === 'log' && (
-          <table style={styles.table}>
-            <thead><tr><th style={styles.th}>Date</th><th style={styles.th}>Code</th><th style={styles.th}>Qty</th><th style={styles.th}>Type</th><th style={styles.th}>Ordered by</th></tr></thead>
-            <tbody>
-              {orderLog.map((log, idx) => (
-                <tr key={idx}>
-                  <td style={styles.td}>{new Date(log.created_at).toLocaleDateString()}</td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{log.ident_code}</td>
-                  <td style={styles.td}>{log.quantity}</td>
-                  <td style={styles.td}>{log.order_type}</td>
-                  <td style={styles.td}>{log.ordered_by}</td>
-                </tr>
-              ))}
-              {orderLog.length === 0 && <tr><td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No log entries</td></tr>}
-            </tbody>
-          </table>
-        )}
       </div>
-
       <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="Place Order">
         <p style={{ marginBottom: '16px' }}><strong>{selectedComponent?.ident_code}</strong> - Qty: {selectedComponent?.quantity}</p>
         <div style={{ marginBottom: '16px' }}><label style={styles.label}>Order Date *</label><input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={styles.input} /></div>
-        <div style={{ marginBottom: '16px' }}><label style={styles.label}>Expected Delivery Date</label><input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={styles.input} /></div>
+        <div style={{ marginBottom: '16px' }}><label style={styles.label}>Expected Delivery (Forecast)</label><input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={styles.input} /></div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowOrderModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          <button onClick={submitOrder} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Confirm</button>
+          <button onClick={submitOrder} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Confirm Order</button>
         </div>
       </Modal>
     </div>
@@ -6263,83 +6342,213 @@ function LogPage({ user }) {
     );
   });
 
+  // V28: Filter requests by search term
+  const filteredRequests = requests.filter(r => {
+    if (!requestSearchTerm) return true;
+    const term = requestSearchTerm.toLowerCase();
+    const reqNum = String(r.requests?.request_number).padStart(5, '0') + '-' + r.requests?.sub_number;
+    return (
+      reqNum.includes(term) ||
+      (r.ident_code || '').toLowerCase().includes(term) ||
+      (r.status || '').toLowerCase().includes(term) ||
+      (r.requests?.request_type || '').toLowerCase().includes(term) ||
+      (r.requests?.sub_category || '').toLowerCase().includes(term)
+    );
+  });
+
   const canModify = user.role === 'admin' || user.perm_movements === 'modify';
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
   return (
     <div>
-      {/* Search and Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: '200px', maxWidth: '400px' }}>
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by code, operator, type, IB#..."
-            style={styles.input}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>
-            📥 Export CSV
-          </button>
-          <button onClick={() => setShowIBModal(true)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.orange, color: 'white' }}>
-            📋 IB Request
-          </button>
-        </div>
+      {/* V28: Tabs for Movements and Request Tracker */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        <button
+          onClick={() => setActiveTab('movements')}
+          style={{
+            ...styles.button,
+            backgroundColor: activeTab === 'movements' ? 'white' : '#e5e7eb',
+            color: activeTab === 'movements' ? '#1f2937' : '#6b7280',
+            borderRadius: '8px 8px 0 0',
+            boxShadow: activeTab === 'movements' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none'
+          }}
+        >
+          📄 Movements ({filteredMovements.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('tracker')}
+          style={{
+            ...styles.button,
+            backgroundColor: activeTab === 'tracker' ? 'white' : '#e5e7eb',
+            color: activeTab === 'tracker' ? '#1f2937' : '#6b7280',
+            borderRadius: '8px 8px 0 0',
+            boxShadow: activeTab === 'tracker' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none'
+          }}
+        >
+          🔍 Request Tracker
+        </button>
       </div>
 
-      <div style={styles.card}>
-        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Movements Log ({filteredMovements.length})</h3></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Date</th>
-                <th style={styles.th}>Type</th>
-                <th style={styles.th}>IB#</th>
-                <th style={styles.th}>Code</th>
-                <th style={styles.th}>Qty</th>
-                <th style={styles.th}>From → To</th>
-                <th style={styles.th}>Operator</th>
-                <th style={styles.th}>Reason</th>
-                <th style={styles.th}>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredMovements.map((mov, idx) => (
-                <tr key={idx}>
-                  <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
-                  <td style={styles.td}>
-                    <span style={{
-                      ...styles.statusBadge,
-                      backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
-                                      mov.movement_type === 'OUT' ? COLORS.primary :
-                                      mov.movement_type === 'LOST' ? COLORS.orange :
-                                      mov.movement_type === 'BROKEN' ? COLORS.purple :
-                                      mov.movement_type === 'TRANSFER' ? COLORS.info :
-                                      mov.movement_type === 'BAL_IN' ? COLORS.teal :
-                                      mov.movement_type === 'BAL_OUT' ? COLORS.yellow : COLORS.gray
-                    }}>
-                      {mov.movement_type}
-                    </span>
-                  </td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: mov.ib_number ? '600' : 'normal', color: mov.ib_number ? COLORS.orange : 'inherit' }}>
-                    {mov.ib_number || '-'}
-                  </td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
-                  <td style={styles.td}>{mov.quantity}</td>
-                  <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
-                  <td style={styles.td}>{mov.performed_by}</td>
-                  <td style={styles.td}>{mov.reason || '-'}</td>
-                  <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mov.note || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {activeTab === 'movements' && (
+        <>
+          {/* Search and Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '200px', maxWidth: '400px' }}>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by code, operator, type, IB#..."
+                style={styles.input}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>
+                📥 Export CSV
+              </button>
+              <button onClick={() => setShowIBModal(true)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.orange, color: 'white' }}>
+                📋 IB Request
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Movements Log ({filteredMovements.length})</h3></div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>IB#</th>
+                    <th style={styles.th}>Code</th>
+                    <th style={styles.th}>Qty</th>
+                    <th style={styles.th}>From → To</th>
+                    <th style={styles.th}>Operator</th>
+                    <th style={styles.th}>Reason</th>
+                    <th style={styles.th}>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredMovements.map((mov, idx) => (
+                    <tr key={idx}>
+                      <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
+                      <td style={styles.td}>
+                        <span style={{
+                          ...styles.statusBadge,
+                          backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
+                                          mov.movement_type === 'OUT' ? COLORS.primary :
+                                          mov.movement_type === 'LOST' ? COLORS.orange :
+                                          mov.movement_type === 'BROKEN' ? COLORS.purple :
+                                          mov.movement_type === 'TRANSFER' ? COLORS.info :
+                                          mov.movement_type === 'BAL_IN' ? COLORS.teal :
+                                          mov.movement_type === 'BAL_OUT' ? COLORS.yellow : COLORS.gray
+                        }}>
+                          {mov.movement_type}
+                        </span>
+                      </td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: mov.ib_number ? '600' : 'normal', color: mov.ib_number ? COLORS.orange : 'inherit' }}>
+                        {mov.ib_number || '-'}
+                      </td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
+                      <td style={styles.td}>{mov.quantity}</td>
+                      <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
+                      <td style={styles.td}>{mov.performed_by}</td>
+                      <td style={styles.td}>{mov.reason || '-'}</td>
+                      <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mov.note || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'tracker' && (
+        <>
+          {/* V28: Request Tracker - Find where your request is */}
+          <div style={{ 
+            backgroundColor: '#EFF6FF', 
+            border: '1px solid #3B82F6', 
+            borderRadius: '8px', 
+            padding: '16px', 
+            marginBottom: '16px' 
+          }}>
+            <h4 style={{ color: COLORS.info, marginBottom: '8px', fontWeight: '600' }}>
+              🔍 Request Status Tracker
+            </h4>
+            <p style={{ color: '#6b7280', fontSize: '13px' }}>
+              Search for your request number to see its current status. Enter request number (e.g., "00023" or "00023-1").
+            </p>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <input
+              type="text"
+              value={requestSearchTerm}
+              onChange={(e) => setRequestSearchTerm(e.target.value)}
+              placeholder="Search by request #, code, status, category..."
+              style={{ ...styles.searchBox, width: '400px' }}
+            />
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.cardHeader}>
+              <h3 style={{ fontWeight: '600' }}>Request Status ({filteredRequests.length})</h3>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Request #</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Category</th>
+                    <th style={styles.th}>Code</th>
+                    <th style={styles.th}>Description</th>
+                    <th style={styles.th}>Qty</th>
+                    <th style={styles.th}>Current Status</th>
+                    <th style={styles.th}>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRequests.map((req, idx) => (
+                    <tr key={idx}>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
+                        {String(req.requests?.request_number).padStart(5, '0')}-{req.requests?.sub_number}
+                      </td>
+                      <td style={styles.td}>{req.requests?.request_type || '-'}</td>
+                      <td style={styles.td}>{req.requests?.sub_category || '-'}</td>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{req.ident_code}</td>
+                      <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={req.description || ''}>
+                        {req.description ? (req.description.length > 40 ? req.description.substring(0, 40) + '...' : req.description) : '-'}
+                      </td>
+                      <td style={styles.td}>{req.quantity}</td>
+                      <td style={styles.td}>
+                        <span style={{ 
+                          ...styles.statusBadge, 
+                          backgroundColor: STATUS_COLORS[req.status] || COLORS.gray 
+                        }}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td style={styles.td}>{new Date(req.updated_at || req.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                  {filteredRequests.length === 0 && (
+                    <tr>
+                      <td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                        No requests found. Try searching by request number.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* IB Request Modal */}
       <Modal isOpen={showIBModal} onClose={() => setShowIBModal(false)} title="📋 Internal Balance Request (IB)">
