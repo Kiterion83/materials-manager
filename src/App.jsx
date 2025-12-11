@@ -1542,12 +1542,16 @@ function RequestsPage({ user }) {
   // V27: Async search for Ident Code (3+ chars, with description) - INDEPENDENT from ISO
   const searchIdentCodeGlobal = async (searchTerm) => {
     if (searchTerm.length < 3) return [];
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('project_materials')
-      .select('ident_code, description, diam1')
+      .select('ident_code, description, dia1')
       .ilike('ident_code', `%${searchTerm}%`)
       .order('ident_code')
       .limit(50);
+    
+    console.log('Search results for', searchTerm, ':', data); // Debug
+    if (error) console.error('Search error:', error);
+    
     if (data) {
       // Get unique ident codes with their descriptions
       const seen = new Set();
@@ -1556,12 +1560,12 @@ function RequestsPage({ user }) {
         if (d.ident_code && !seen.has(d.ident_code)) {
           seen.add(d.ident_code);
           const descText = d.description ? d.description.substring(0, 50) : 'No description';
-          const diamText = d.diam1 ? ` [Ø${d.diam1}]` : '';
+          const diamText = d.dia1 ? ` [Ø${d.dia1}]` : '';
           results.push({
             value: d.ident_code,
             label: descText + diamText,
             description: d.description || '',
-            diam1: d.diam1 || ''
+            dia1: d.dia1 || ''
           });
         }
       });
@@ -1575,7 +1579,7 @@ function RequestsPage({ user }) {
     if (searchTerm.length < 3) return [];
     const { data } = await supabase
       .from('project_materials')
-      .select('ident_code, description, diam1')
+      .select('ident_code, description, dia1')
       .ilike('ident_code', `%${searchTerm}%`)
       .order('ident_code')
       .limit(50);
@@ -1586,12 +1590,12 @@ function RequestsPage({ user }) {
         if (d.ident_code && !seen.has(d.ident_code)) {
           seen.add(d.ident_code);
           const descText = d.description ? d.description.substring(0, 50) : 'No description';
-          const diamText = d.diam1 ? ` [Ø${d.diam1}]` : '';
+          const diamText = d.dia1 ? ` [Ø${d.dia1}]` : '';
           results.push({
             value: d.ident_code,
             label: descText + diamText,
             description: d.description || '',
-            diam1: d.diam1 || ''
+            dia1: d.dia1 || ''
           });
         }
       });
@@ -1624,13 +1628,38 @@ function RequestsPage({ user }) {
     // Handle both string and object (from AsyncSearchInput with description)
     let identCode = identCodeOrObject;
     let desc = '';
-    let diam1 = '';
-    if (typeof identCodeOrObject === 'object') {
-      identCode = identCodeOrObject.value;
+    let dia1 = '';
+    
+    if (typeof identCodeOrObject === 'object' && identCodeOrObject !== null) {
+      identCode = identCodeOrObject.value || identCodeOrObject;
       desc = identCodeOrObject.description || '';
-      diam1 = identCodeOrObject.diam1 || '';
+      dia1 = identCodeOrObject.dia1 || '';
+      console.log('Selected material:', identCodeOrObject); // Debug log
     }
-    setCurrentMaterial({ ...currentMaterial, ident_code: identCode, tag: '', description: desc, diam1: diam1 });
+    
+    // If description is still empty, try to fetch from database
+    if (!desc && identCode) {
+      const { data } = await supabase
+        .from('project_materials')
+        .select('description, dia1')
+        .eq('ident_code', identCode)
+        .limit(1)
+        .single();
+      
+      if (data) {
+        desc = data.description || '';
+        dia1 = data.dia1 || '';
+        console.log('Fetched from DB:', data); // Debug log
+      }
+    }
+    
+    setCurrentMaterial({ 
+      ...currentMaterial, 
+      ident_code: identCode, 
+      tag: '', 
+      description: desc, 
+      dia1: dia1 
+    });
     loadTagsForIdent(identCode);
     // Reset warnings when changing ident
     setOverQuantityWarning(null);
@@ -1653,11 +1682,11 @@ function RequestsPage({ user }) {
       ident_code: currentMaterial.ident_code,
       tag: currentMaterial.tag,
       description: materialDesc,
-      diam1: currentMaterial.diam1 || '',
+      dia1: currentMaterial.dia1 || '',
       qty: currentMaterial.qty,
       pos_qty: selected?.pos_qty || 0
     }]);
-    setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '', diam1: '' });
+    setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '', dia1: '' });
     setTagOptions([]);
   };
 
@@ -2231,7 +2260,7 @@ function RequestsPage({ user }) {
               </div>
 
               {/* Material Preview - Shows Description and Diam after selection */}
-              {currentMaterial.ident_code && (currentMaterial.description || currentMaterial.diam1) && (
+              {currentMaterial.ident_code && (
                 <div style={{
                   marginTop: '12px',
                   padding: '12px 16px',
@@ -2245,13 +2274,13 @@ function RequestsPage({ user }) {
                   <div style={{ flex: 1 }}>
                     <span style={{ fontSize: '11px', color: '#6b7280', textTransform: 'uppercase' }}>Description</span>
                     <p style={{ fontSize: '14px', color: '#1f2937', marginTop: '2px' }}>
-                      {currentMaterial.description || '-'}
+                      {currentMaterial.description || '(no description)'}
                     </p>
                   </div>
                   <div style={{ minWidth: '80px' }}>
                     <span style={{ fontSize: '11px', color: '#6b7280', textTransform: 'uppercase' }}>Diam</span>
                     <p style={{ fontSize: '14px', color: '#1f2937', fontWeight: '600', marginTop: '2px' }}>
-                      {currentMaterial.diam1 || '-'}
+                      {currentMaterial.dia1 || '-'}
                     </p>
                   </div>
                 </div>
@@ -2324,7 +2353,7 @@ function RequestsPage({ user }) {
                       <tr key={idx}>
                         <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mat.ident_code}</td>
                         <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mat.description || '-'}</td>
-                        <td style={styles.td}>{mat.diam1 || '-'}</td>
+                        <td style={styles.td}>{mat.dia1 || '-'}</td>
                         <td style={styles.td}>{mat.tag || '-'}</td>
                         <td style={styles.td}>{mat.qty}</td>
                         <td style={styles.td}>
@@ -4104,11 +4133,15 @@ function MaterialInPage({ user }) {
       setShowSearchResults(false);
       return;
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('project_materials')
-      .select('ident_code, description, diam1')
+      .select('ident_code, description, dia1')
       .ilike('ident_code', `%${term}%`)
       .limit(30);
+    
+    console.log('Material IN search for', term, ':', data); // Debug
+    if (error) console.error('Material IN search error:', error);
+    
     if (data) {
       // Get unique ident codes with their data
       const unique = [];
@@ -4125,9 +4158,10 @@ function MaterialInPage({ user }) {
   };
 
   const selectIdent = (item) => {
+    console.log('Selected item:', item); // Debug
     setIdentCode(item.ident_code);
     setItemDescription(item.description || '');
-    setItemDiam1(item.diam1 || '');
+    setItemDiam1(item.dia1 || '');
     setShowSearchResults(false);
   };
 
@@ -4151,7 +4185,7 @@ function MaterialInPage({ user }) {
       rk_number: selectedMir.rk_number,
       ident_code: identCode,
       description: itemDescription,
-      diam1: itemDiam1,
+      dia1: itemDiam1,
       quantity: receivedQty,
       is_partial: isPartial,
       missing_qty: missing,
@@ -4334,11 +4368,14 @@ function MaterialInPage({ user }) {
                             borderBottom: '1px solid #f3f4f6',
                             fontSize: '13px'
                           }}
-                          onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
-                          onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
                         >
-                          <strong>{item.ident_code}</strong>
-                          <span style={{ color: '#6b7280', marginLeft: '8px' }}>{item.description?.substring(0, 40)}</span>
+                          <div style={{ fontWeight: '600', fontFamily: 'monospace' }}>{item.ident_code}</div>
+                          <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '2px' }}>
+                            {item.description ? item.description.substring(0, 50) : '(no description)'}
+                            {item.dia1 && <span style={{ marginLeft: '8px', color: '#3b82f6' }}>Ø{item.dia1}</span>}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -4474,7 +4511,7 @@ function MaterialInPage({ user }) {
                   <td style={{ ...styles.td, fontFamily: 'monospace' }}>{item.mir_number || '-'}/{item.rk_number}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.description || '-'}</td>
-                  <td style={styles.td}>{item.diam1 || '-'}</td>
+                  <td style={styles.td}>{item.dia1 || '-'}</td>
                   <td style={{ ...styles.td, fontWeight: '600' }}>{item.quantity}</td>
                   <td style={styles.td}>
                     {item.is_partial ? (
