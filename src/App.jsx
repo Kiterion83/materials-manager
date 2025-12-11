@@ -1,7 +1,7 @@
 // ============================================================
-// MATERIALS MANAGER V27 - APP.JSX COMPLETE
+// MATERIALS MANAGER V27.6 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V27: Async search, Unified Actions Popup, MIR Priority/Close
+// V27.6: Description 50 chars with tooltip, all pages fixed
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -2734,7 +2734,9 @@ function WHSitePage({ user }) {
                       {String(check.requests?.request_number).padStart(5, '0')}-{check.requests?.sub_number}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{check.description || '-'}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
+                      {check.description ? (check.description.length > 50 ? check.description.substring(0, 50) + '...' : check.description) : '-'}
+                    </td>
                     <td style={styles.td}>{check.tag || '-'}</td>
                     <td style={styles.td}>{check.dia1 || '-'}</td>
                     <td style={styles.td}>{check.quantity}</td>
@@ -2793,7 +2795,9 @@ function WHSitePage({ user }) {
                     {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{comp.description || '-'}</td>
+                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                  </td>
                   <td style={styles.td}>{comp.tag || '-'}</td>
                   <td style={styles.td}>{comp.dia1 || '-'}</td>
                   <td style={styles.td}>{comp.quantity}</td>
@@ -3189,7 +3193,9 @@ function WHYardPage({ user }) {
                         {String(check.requests?.request_number).padStart(5, '0')}-{check.requests?.sub_number}
                       </td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
-                      <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{check.description || '-'}</td>
+                      <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
+                        {check.description ? (check.description.length > 50 ? check.description.substring(0, 50) + '...' : check.description) : '-'}
+                      </td>
                       <td style={styles.td}>{check.tag || '-'}</td>
                       <td style={styles.td}>{check.dia1 || '-'}</td>
                       <td style={styles.td}>{check.quantity}</td>
@@ -3272,7 +3278,9 @@ function WHYardPage({ user }) {
                       {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{comp.description || '-'}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                    </td>
                     <td style={styles.td}>{comp.tag || '-'}</td>
                     <td style={styles.td}>{comp.dia1 || '-'}</td>
                     <td style={styles.td}>{comp.quantity}</td>
@@ -3446,7 +3454,9 @@ function SiteInPage({ user }) {
                     {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description || '-'}</td>
+                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                  </td>
                   <td style={styles.td}>{comp.tag || '-'}</td>
                   <td style={styles.td}>{comp.dia1 || '-'}</td>
                   <td style={styles.td}>{comp.quantity}</td>
@@ -4427,7 +4437,9 @@ function ToBeCollectedPage({ user }) {
                       {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description || '-'}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                    </td>
                     <td style={styles.td}>{comp.tag || '-'}</td>
                     <td style={styles.td}>{comp.dia1 || '-'}</td>
                     <td style={styles.td}>{comp.quantity}</td>
@@ -4995,7 +5007,9 @@ function MaterialInPage({ user }) {
                   <td style={styles.td}>{new Date(p.created_at).toLocaleDateString()}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace' }}>{p.mir_number || '-'}/{p.rk_number}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{p.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.description || '-'}</td>
+                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={p.description || ''}>
+                    {p.description ? (p.description.length > 50 ? p.description.substring(0, 50) + '...' : p.description) : '-'}
+                  </td>
                   <td style={{ ...styles.td, color: COLORS.success }}>{p.received_qty}</td>
                   <td style={{ ...styles.td, color: COLORS.primary, fontWeight: '600' }}>{p.missing_qty}</td>
                   <td style={{ ...styles.td, fontSize: '12px' }}>{p.note || '-'}</td>
@@ -5076,7 +5090,9 @@ function SparePartsPage({ user }) {
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description || '-'}</td>
+                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                  </td>
                   <td style={styles.td}>{comp.tag || '-'}</td>
                   <td style={styles.td}>{comp.dia1 || '-'}</td>
                   <td style={styles.td}>{comp.quantity}</td>
@@ -5181,7 +5197,9 @@ function OrdersPage({ user }) {
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description || '-'}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                    </td>
                     <td style={styles.td}>{comp.quantity}</td>
                     <td style={styles.td}><span style={{ ...styles.statusBadge, backgroundColor: comp.order_type === 'Client' ? COLORS.cyan : COLORS.info }}>{comp.order_type || 'Internal'}</span></td>
                     <td style={styles.td}><button onClick={() => openOrderModal(comp)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', padding: '6px 12px', fontSize: '12px' }}>🛒 Order</button></td>
@@ -5216,7 +5234,9 @@ function OrdersPage({ user }) {
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description || '-'}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                    </td>
                     <td style={styles.td}>{comp.quantity}</td>
                     <td style={styles.td}>{comp.order_date ? new Date(comp.order_date).toLocaleDateString() : '-'}</td>
                     <td style={styles.td}>{comp.order_forecast ? new Date(comp.order_forecast).toLocaleDateString() : '-'}</td>
@@ -5319,7 +5339,9 @@ function ManagementPage({ user }) {
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>{comp.description || '-'}</td>
+                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                  </td>
                   <td style={styles.td}>{comp.tag || '-'}</td>
                   <td style={styles.td}>{comp.dia1 || '-'}</td>
                   <td style={styles.td}>{comp.quantity}</td>
