@@ -399,23 +399,31 @@ function AsyncSearchInput({
           boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
           zIndex: 100
         }}>
-          {options.map((option, idx) => (
-            <div
-              key={idx}
-              onClick={() => handleSelect(option)}
-              style={{
-                padding: '10px 12px',
-                cursor: 'pointer',
-                borderBottom: idx < options.length - 1 ? '1px solid #f3f4f6' : 'none',
-                fontSize: '14px',
-                transition: 'background-color 0.15s'
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
-            >
-              {typeof option === 'object' ? option.label : option}
-            </div>
-          ))}
+          {options.map((option, idx) => {
+            const isObject = typeof option === 'object';
+            const displayValue = isObject ? option.value : option;
+            const displayLabel = isObject ? option.label : null;
+            return (
+              <div
+                key={idx}
+                onClick={() => handleSelect(option)}
+                style={{
+                  padding: '10px 12px',
+                  cursor: 'pointer',
+                  borderBottom: idx < options.length - 1 ? '1px solid #f3f4f6' : 'none',
+                  fontSize: '14px',
+                  transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+              >
+                <div style={{ fontWeight: '600', fontFamily: 'monospace' }}>{displayValue}</div>
+                {displayLabel && (
+                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>{displayLabel}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       {value.length > 0 && value.length < minChars && (
@@ -1174,7 +1182,7 @@ function RequestsPage({ user }) {
   const [testPackNumber, setTestPackNumber] = useState('');
   const [missingType, setMissingType] = useState('Material');
   const [materials, setMaterials] = useState([]);
-  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '' });
+  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '', description: '' });
   const [isoOptions, setIsoOptions] = useState([]);
   const [spoolOptions, setSpoolOptions] = useState([]);
   const [identOptions, setIdentOptions] = useState([]);
@@ -1187,6 +1195,9 @@ function RequestsPage({ user }) {
   const [hfError, setHfError] = useState(null);
   const [secondaryCollector, setSecondaryCollector] = useState('');
   const [allUsers, setAllUsers] = useState([]);
+  // V27: Multi-spool support for TestPack
+  const [selectedSpools, setSelectedSpools] = useState([]);
+  const [currentSpoolInput, setCurrentSpoolInput] = useState('');
 
   useEffect(() => {
     loadNextNumber();
@@ -1361,10 +1372,27 @@ function RequestsPage({ user }) {
     return false;
   };
 
+  // HF must be exactly "HF" + 6 digits (e.g., HF123456)
   const handleHfChange = async (value) => {
-    setHfNumber(value);
-    if (value.length >= 2) {
-      await checkHfDuplicate(value);
+    // Auto-uppercase and format
+    let formatted = value.toUpperCase();
+    
+    // If starts typing digits without HF, auto-prepend HF
+    if (/^\d/.test(formatted) && !formatted.startsWith('HF')) {
+      formatted = 'HF' + formatted;
+    }
+    
+    // Limit to HF + 6 digits max
+    if (formatted.startsWith('HF')) {
+      const digits = formatted.slice(2).replace(/\D/g, '').slice(0, 6);
+      formatted = 'HF' + digits;
+    }
+    
+    setHfNumber(formatted);
+    
+    // Check for duplicates only when complete (HF + 6 digits)
+    if (/^HF\d{6}$/.test(formatted)) {
+      await checkHfDuplicate(formatted);
     } else {
       setHfError(null);
     }
@@ -1444,10 +1472,8 @@ function RequestsPage({ user }) {
     setOverQuantityWarning(null);
     setProjectQtyExhausted(false);
     setSecondaryCollector('');
-    // Load all spools for TestPack spool selection
-    if (type === 'TestPack') {
-      loadAllSpoolsForTestPack();
-    }
+    setSelectedSpools([]);
+    setCurrentSpoolInput('');
   };
 
   // Load ALL spools for TestPack (filtered, no SP000/SPSUP/SPTAG)
@@ -1456,17 +1482,57 @@ function RequestsPage({ user }) {
   };
 
   // V27: Async search for TestPack Material (3+ chars)
-  const searchTestPackMaterial = async (searchTerm) => {
+  // V27: Async search for Ident Code (3+ chars, with description) - INDEPENDENT from ISO
+  const searchIdentCodeGlobal = async (searchTerm) => {
     if (searchTerm.length < 3) return [];
     const { data } = await supabase
       .from('project_materials')
-      .select('ident_code')
+      .select('ident_code, description')
       .ilike('ident_code', `%${searchTerm}%`)
       .order('ident_code')
       .limit(50);
     if (data) {
-      const unique = [...new Set(data.map(d => d.ident_code).filter(Boolean))];
-      return unique;
+      // Get unique ident codes with their descriptions
+      const seen = new Set();
+      const results = [];
+      data.forEach(d => {
+        if (d.ident_code && !seen.has(d.ident_code)) {
+          seen.add(d.ident_code);
+          results.push({
+            value: d.ident_code,
+            label: d.description || 'No description',
+            description: d.description || ''
+          });
+        }
+      });
+      return results;
+    }
+    return [];
+  };
+
+  // V27: Async search for TestPack Material (3+ chars, with description)
+  const searchTestPackMaterial = async (searchTerm) => {
+    if (searchTerm.length < 3) return [];
+    const { data } = await supabase
+      .from('project_materials')
+      .select('ident_code, description')
+      .ilike('ident_code', `%${searchTerm}%`)
+      .order('ident_code')
+      .limit(50);
+    if (data) {
+      const seen = new Set();
+      const results = [];
+      data.forEach(d => {
+        if (d.ident_code && !seen.has(d.ident_code)) {
+          seen.add(d.ident_code);
+          results.push({
+            value: d.ident_code,
+            label: d.description || 'No description',
+            description: d.description || ''
+          });
+        }
+      });
+      return results;
     }
     return [];
   };
@@ -1491,8 +1557,15 @@ function RequestsPage({ user }) {
     return [];
   };
 
-  const handleIdentCodeChange = async (identCode) => {
-    setCurrentMaterial({ ...currentMaterial, ident_code: identCode, tag: '' });
+  const handleIdentCodeChange = async (identCodeOrObject) => {
+    // Handle both string and object (from AsyncSearchInput with description)
+    let identCode = identCodeOrObject;
+    let desc = '';
+    if (typeof identCodeOrObject === 'object') {
+      identCode = identCodeOrObject.value;
+      desc = identCodeOrObject.description || '';
+    }
+    setCurrentMaterial({ ...currentMaterial, ident_code: identCode, tag: '', description: desc });
     loadTagsForIdent(identCode);
     // Reset warnings when changing ident
     setOverQuantityWarning(null);
@@ -1507,15 +1580,18 @@ function RequestsPage({ user }) {
       await checkProjectQtyAvailable(currentMaterial.ident_code, currentMaterial.qty);
     }
     
+    // Use description from currentMaterial (set by handleIdentCodeChange) or find from identOptions
     const selected = identOptions.find(o => o.ident_code === currentMaterial.ident_code);
+    const materialDesc = currentMaterial.description || selected?.description || '';
+    
     setMaterials([...materials, {
       ident_code: currentMaterial.ident_code,
       tag: currentMaterial.tag,
-      description: selected?.description || '',
+      description: materialDesc,
       qty: currentMaterial.qty,
       pos_qty: selected?.pos_qty || 0
     }]);
-    setCurrentMaterial({ ident_code: '', tag: '', qty: '' });
+    setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '' });
     setTagOptions([]);
   };
 
@@ -1536,6 +1612,7 @@ function RequestsPage({ user }) {
         if (!spoolNumber) throw new Error('Full Spool Number required');
         if (subCategory === 'Erection' && !hfNumber) throw new Error('HF Number required for Erection');
         if (subCategory === 'Erection' && hfError) throw new Error('Cannot create request with duplicate HF');
+        if (subCategory === 'Erection' && !/^HF\d{6}$/.test(hfNumber)) throw new Error('HF Number must be HF + 6 digits (e.g., HF123456)');
         if (materials.length === 0) throw new Error('Add at least one material');
       }
       if (requestType === 'Mechanical') {
@@ -1546,6 +1623,36 @@ function RequestsPage({ user }) {
         if (missingType === 'Material' && materials.length === 0) {
           throw new Error('Add at least one material');
         }
+        if (missingType === 'Spool' && selectedSpools.length === 0) {
+          throw new Error('Add at least one spool');
+        }
+      }
+
+      // For TestPack Spool: Gather all materials from all selected spools
+      let combinedMaterials = [...materials];
+      if (requestType === 'TestPack' && missingType === 'Spool' && selectedSpools.length > 0) {
+        // Fetch materials from all selected spools
+        for (const spoolNum of selectedSpools) {
+          const { data: spoolMats } = await supabase
+            .from('project_materials')
+            .select('ident_code, description, pos_qty, tag_number')
+            .eq('full_spool_number', spoolNum);
+          
+          if (spoolMats) {
+            // Add each material from the spool (with qty = pos_qty)
+            spoolMats.forEach(mat => {
+              combinedMaterials.push({
+                ident_code: mat.ident_code,
+                description: mat.description || '',
+                qty: mat.pos_qty || 1,
+                tag: mat.tag_number || '',
+                from_spool: spoolNum
+              });
+            });
+          }
+        }
+        // Set description to list of spools
+        setDescription(selectedSpools.join(', '));
       }
 
       // Get next request number
@@ -1567,7 +1674,9 @@ function RequestsPage({ user }) {
           test_pack_number: requestType === 'TestPack' ? testPackNumber : null,
           missing_type: requestType === 'TestPack' ? missingType : null,
           secondary_collector: requestType === 'TestPack' ? (secondaryCollector || null) : null,
-          description: description || null
+          description: (requestType === 'TestPack' && missingType === 'Spool') 
+            ? `Spools: ${selectedSpools.join(', ')}` 
+            : (description || null)
         })
         .select()
         .single();
@@ -1591,7 +1700,12 @@ function RequestsPage({ user }) {
           current_location: destination === 'yard' ? 'YARD' : 'SITE'
         });
       } else {
-        for (const mat of materials) {
+        // Use combinedMaterials for TestPack Spool, otherwise use materials
+        const matsToInsert = (requestType === 'TestPack' && missingType === 'Spool') 
+          ? combinedMaterials 
+          : materials;
+          
+        for (const mat of matsToInsert) {
           const { data: comp, error: compError } = await supabase
             .from('request_components')
             .insert({
@@ -1599,10 +1713,10 @@ function RequestsPage({ user }) {
               ident_code: mat.ident_code,
               tag: mat.tag || null,
               iso_number: requestType === 'Piping' ? isoNumber : null,
-              full_spool_number: requestType === 'Piping' ? spoolNumber : null,
+              full_spool_number: requestType === 'Piping' ? spoolNumber : (mat.from_spool || null),
               tag_number: mat.tag || null,
               description: mat.description,
-              quantity: parseInt(mat.qty),
+              quantity: parseInt(mat.qty) || 1,
               status: status,
               current_location: destination === 'yard' ? 'YARD' : 'SITE'
             })
@@ -1638,6 +1752,8 @@ function RequestsPage({ user }) {
       setOverQuantityWarning(null);
       setProjectQtyExhausted(false);
       setSecondaryCollector('');
+      setSelectedSpools([]);
+      setCurrentSpoolInput('');
       loadNextNumber();
 
     } catch (error) {
@@ -1774,7 +1890,8 @@ function RequestsPage({ user }) {
                     value={hfNumber}
                     onChange={(e) => handleHfChange(e.target.value)}
                     style={{ ...styles.input, backgroundColor: 'white', borderColor: hfError ? '#EF4444' : '#d1d5db' }}
-                    placeholder="Enter HF Number"
+                    placeholder="HF123456"
+                    maxLength={8}
                     disabled={!canModify}
                   />
                   {hfError && (
@@ -1790,14 +1907,14 @@ function RequestsPage({ user }) {
                       </p>
                       <p style={{ fontSize: '13px', color: '#6b7280' }}>
                         <strong>Request:</strong> {hfError.request}<br />
-                        <strong>Data:</strong> {hfError.date}<br />
+                        <strong>Date:</strong> {hfError.date}<br />
                         <strong>Requested by:</strong> {hfError.person}
                       </p>
                     </div>
                   )}
                   {!hfError && (
                     <p style={{ fontSize: '12px', color: '#92400E', marginTop: '6px' }}>
-                      Required for Erection - identifies the flanged joint
+                      Format: HF + 6 digits (e.g., HF123456)
                     </p>
                   )}
                 </div>
@@ -1809,7 +1926,7 @@ function RequestsPage({ user }) {
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   style={{ ...styles.input, minHeight: '80px', resize: 'vertical' }}
-                  placeholder="Note aggiuntive..."
+                  placeholder="Additional notes..."
                   disabled={!canModify}
                 />
               </div>
@@ -1900,16 +2017,85 @@ function RequestsPage({ user }) {
               {missingType === 'Spool' && (
                 <div style={{ marginBottom: '20px' }}>
                   <label style={styles.label}>Full Spool Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 6+ chars)</span></label>
-                  <AsyncSearchInput
-                    value={description}
-                    onChange={(val) => setDescription(val)}
-                    onSearch={searchTestPackSpool}
-                    onSelect={(val) => setDescription(val)}
-                    minChars={6}
-                    placeholder="Type spool number (6+ chars)..."
-                    disabled={!canModify}
-                  />
-                  <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>Excludes SP000, SPSUP, SPTAG</p>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <AsyncSearchInput
+                        value={currentSpoolInput}
+                        onChange={(val) => setCurrentSpoolInput(val)}
+                        onSearch={searchTestPackSpool}
+                        onSelect={(val) => setCurrentSpoolInput(val)}
+                        minChars={6}
+                        placeholder="Type spool number (6+ chars)..."
+                        disabled={!canModify}
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (currentSpoolInput && !selectedSpools.includes(currentSpoolInput)) {
+                          setSelectedSpools([...selectedSpools, currentSpoolInput]);
+                          setCurrentSpoolInput('');
+                        }
+                      }}
+                      disabled={!currentSpoolInput || selectedSpools.includes(currentSpoolInput)}
+                      style={{
+                        ...styles.button,
+                        backgroundColor: currentSpoolInput && !selectedSpools.includes(currentSpoolInput) ? COLORS.success : '#d1d5db',
+                        color: 'white',
+                        marginTop: '0px',
+                        height: '42px',
+                        padding: '0 16px'
+                      }}
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>Excludes SP000, SPSUP, SPTAG. Add multiple spools to combine in one request.</p>
+                  
+                  {/* Selected Spools List */}
+                  {selectedSpools.length > 0 && (
+                    <div style={{ 
+                      marginTop: '16px', 
+                      padding: '12px', 
+                      backgroundColor: '#ECFDF5', 
+                      borderRadius: '8px',
+                      border: '1px solid #10B981'
+                    }}>
+                      <p style={{ fontWeight: '600', color: '#065F46', marginBottom: '8px' }}>
+                        📦 Selected Spools ({selectedSpools.length}):
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {selectedSpools.map((spool, idx) => (
+                          <div key={idx} style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '6px',
+                            backgroundColor: 'white',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            border: '1px solid #A7F3D0',
+                            fontSize: '13px',
+                            fontFamily: 'monospace'
+                          }}>
+                            {spool}
+                            <button
+                              onClick={() => setSelectedSpools(selectedSpools.filter((_, i) => i !== idx))}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: COLORS.primary,
+                                cursor: 'pointer',
+                                fontSize: '16px',
+                                padding: '0 2px',
+                                lineHeight: 1
+                              }}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1929,37 +2115,20 @@ function RequestsPage({ user }) {
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 100px 80px', gap: '12px', alignItems: 'end' }}>
                 <div>
                   <label style={styles.label}>
-                    Ident Code 
-                    {requestType === 'TestPack' && <span style={{ fontSize: '11px', color: '#9ca3af' }}> (type 3+ chars)</span>}
+                    Ident Code <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 3+ chars)</span>
                   </label>
-                  {requestType === 'TestPack' ? (
-                    <AsyncSearchInput
-                      value={currentMaterial.ident_code}
-                      onChange={(val) => handleIdentCodeChange(val)}
-                      onSearch={searchTestPackMaterial}
-                      onSelect={(val) => handleIdentCodeChange(val)}
-                      minChars={3}
-                      placeholder="Type ident code (3+ chars)..."
-                      disabled={!canModify}
-                    />
-                  ) : (
-                    <>
-                      <input
-                        type="text"
-                        list="ident-options"
-                        value={currentMaterial.ident_code}
-                        onChange={(e) => handleIdentCodeChange(e.target.value)}
-                        style={{ ...styles.input, backgroundColor: (!spoolNumber) ? '#f3f4f6' : 'white' }}
-                        placeholder={!spoolNumber ? 'Select spool first' : 'Type to search...'}
-                        disabled={!canModify || !spoolNumber}
-                      />
-                      <datalist id="ident-options">
-                        {[...new Set(identOptions.map(o => o.ident_code))].map(code => (
-                          <option key={code} value={code} />
-                        ))}
-                      </datalist>
-                    </>
-                  )}
+                  <AsyncSearchInput
+                    value={currentMaterial.ident_code}
+                    onChange={(val) => {
+                      const valStr = typeof val === 'object' ? val.value : val;
+                      setCurrentMaterial({ ...currentMaterial, ident_code: valStr });
+                    }}
+                    onSearch={searchIdentCodeGlobal}
+                    onSelect={(val) => handleIdentCodeChange(val)}
+                    minChars={3}
+                    placeholder="Type ident code (3+ chars)..."
+                    disabled={!canModify}
+                  />
                 </div>
                 <div>
                   <label style={styles.label}>Tag</label>
