@@ -1,6 +1,12 @@
 // ============================================================
-// MATERIALS MANAGER V28.5 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.6 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V28.6 Changes:
+//   - MIR Alert: ⚠️ column when forecast_date is overdue
+//   - Engineering Check: To HF/TestPack options if originated from HF/TP
+//   - Action disabling: Based on site_qty/yard_qty availability
+//   - Role-based permissions: admin, engineering, wh_site, wh_yard, foreman, management, buyer
+//   - previous_status tracking for Engineering checks
 // V28.5 Changes:
 //   - Dashboard navigation: clickable boxes go to respective pages
 //   - IB movements fix: SQL functions create movements + update inventory
@@ -8,7 +14,6 @@
 //   - To Be Collected actions: Collect/Delete/Return dropdown
 //   - Over quantity logic: sum ALL open requests vs available inventory
 //   - P121 filter: ISO search limited to P121 project
-//   - previous_status column: tracks status for Return actions
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -24,7 +29,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.5';
+const APP_VERSION = 'V28.6';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -56,6 +61,34 @@ function isOverdue(forecastDate) {
   const forecast = new Date(forecastDate);
   forecast.setHours(0, 0, 0, 0);
   return today > forecast;
+}
+
+// V28.6: Role-based permission helper
+// Roles: admin, engineering, management (full access), wh_site, wh_yard, foreman, buyer
+function canModifyPage(user, page) {
+  if (!user) return false;
+  const role = user.role?.toLowerCase();
+  
+  // Admin, Engineering and Management can modify everything
+  if (role === 'admin' || role === 'engineering' || role === 'management') return true;
+  
+  // Role-specific permissions
+  switch(page) {
+    case 'requests':
+      return role === 'foreman';
+    case 'wh_site':
+    case 'site_in':
+    case 'hf':
+    case 'testpack':
+    case 'to_be_collected':
+      return role === 'wh_site';
+    case 'wh_yard':
+      return role === 'wh_yard';
+    case 'orders':
+      return role === 'buyer';
+    default:
+      return false;
+  }
 }
 
 function SearchBox({ value, onChange, placeholder = 'Search...' }) {
@@ -2320,7 +2353,7 @@ function RequestsPage({ user }) {
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_requests === 'modify';
+  const canModify = canModifyPage(user, 'requests');
   const hasWarning = overQuantityWarning !== null;
   const siteYardDisabled = projectQtyExhausted || hfError;
 
@@ -3160,6 +3193,30 @@ function WHSitePage({ user }) {
           .eq('id', check.id);
         await logHistory(check.id, 'Check - Not Found', 'WH_Site', 'Eng', 'Item not found, returned to Engineering');
         loadComponents();
+      } else if (action === 'check_to_hf') {
+        // V28.6: Send to HF
+        await supabase.from('request_components')
+          .update({ 
+            status: 'HF', 
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - To HF', 'WH_Site', 'HF', 'Sent to HF from Engineering check');
+        loadComponents();
+      } else if (action === 'check_to_tp') {
+        // V28.6: Send to TestPack
+        await supabase.from('request_components')
+          .update({ 
+            status: 'TP', 
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - To TestPack', 'WH_Site', 'TP', 'Sent to TestPack from Engineering check');
+        loadComponents();
       } else if (action === 'check_partial') {
         // Open partial modal
         setSelectedCheck(check);
@@ -3256,7 +3313,7 @@ function WHSitePage({ user }) {
     setShowHistory(true);
   };
 
-  const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
+  const canModify = canModifyPage(user, 'wh_site');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -3348,11 +3405,23 @@ function WHSitePage({ user }) {
                     <td style={{ ...styles.td, color: '#B45309', fontStyle: 'italic' }}>{check.eng_check_message || '-'}</td>
                     <td style={styles.td}>
                       <ActionDropdown
-                        actions={[
-                          { id: 'check_found', icon: '✓', label: 'Found (All)' },
-                          { id: 'check_partial', icon: '✂️', label: 'Partial' },
-                          { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
-                        ]}
+                        actions={(() => {
+                          // V28.6: Build actions dynamically based on origin
+                          const actions = [
+                            { id: 'check_found', icon: '✓', label: 'Found (All)' },
+                            { id: 'check_partial', icon: '✂️', label: 'Partial' }
+                          ];
+                          // If component was from HF (has hf_number or previous_status was HF)
+                          if (check.requests?.hf_number || check.previous_status === 'HF') {
+                            actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
+                          }
+                          // If component was from TestPack (has test_pack_number or previous_status was TP)
+                          if (check.requests?.test_pack_number || check.previous_status === 'TP') {
+                            actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
+                          }
+                          actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
+                          return actions;
+                        })()}
                         onExecute={(action) => handleCheckAction(check, action)}
                         disabled={!canModify}
                         componentId={check.id}
@@ -3469,15 +3538,32 @@ function WHSitePage({ user }) {
                   </td>
                   <td style={styles.td}>
                     <ActionDropdown
-                      actions={[
-                        { id: 'ready', icon: '✓', label: 'Ready' },
-                        { id: 'pt', icon: '✂️', label: 'Partial' },
-                        { id: 'yard', icon: '🏢', label: 'To Yard' },
-                        { id: 'eng', icon: '⚙️', label: 'To Engineering' },
-                        { id: 'hf', icon: '🔩', label: 'To HF' },
-                        { id: 'tp', icon: '📋', label: 'To TestPack' },
-                        { id: 'delete', icon: '🗑️', label: 'Delete' }
-                      ]}
+                      actions={(() => {
+                        // V28.6: Build actions dynamically based on inventory quantities
+                        const actions = [];
+                        const hasSiteQty = inv.site > 0;
+                        const hasYardQty = inv.yard > 0;
+                        
+                        // Actions requiring site_qty > 0
+                        if (hasSiteQty) {
+                          actions.push({ id: 'ready', icon: '✓', label: 'Ready' });
+                          actions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
+                        }
+                        // To Yard requires yard_qty > 0 (no point sending to yard if nothing there)
+                        if (hasYardQty) {
+                          actions.push({ id: 'yard', icon: '🏢', label: 'To Yard' });
+                        }
+                        // Engineering always available
+                        actions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
+                        // HF and TestPack require site_qty > 0
+                        if (hasSiteQty) {
+                          actions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
+                          actions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
+                        }
+                        // Delete always available
+                        actions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
+                        return actions;
+                      })()}
                       onExecute={(action) => handleAction(comp, action)}
                       disabled={!canModify}
                       componentId={comp.id}
@@ -3935,6 +4021,30 @@ function WHYardPage({ user }) {
           .eq('id', check.id);
         await logHistory(check.id, 'Check - Not Found', 'Yard', 'Eng', 'Item not found in Yard, returned to Engineering');
         loadComponents();
+      } else if (action === 'check_to_hf') {
+        // V28.6: Send to HF
+        await supabase.from('request_components')
+          .update({ 
+            status: 'HF', 
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - To HF', 'Yard', 'HF', 'Sent to HF from Engineering check');
+        loadComponents();
+      } else if (action === 'check_to_tp') {
+        // V28.6: Send to TestPack
+        await supabase.from('request_components')
+          .update({ 
+            status: 'TP', 
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - To TestPack', 'Yard', 'TP', 'Sent to TestPack from Engineering check');
+        loadComponents();
       } else if (action === 'check_partial') {
         // Open partial modal
         setSelectedCheck(check);
@@ -4045,7 +4155,7 @@ function WHYardPage({ user }) {
     setShowHistory(true);
   };
 
-  const canModify = user.role === 'admin' || user.perm_wh_yard === 'modify';
+  const canModify = canModifyPage(user, 'wh_yard');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -4114,16 +4224,26 @@ function WHYardPage({ user }) {
                       <td style={{ ...styles.td, color: '#B45309', fontStyle: 'italic' }}>{check.eng_check_message || '-'}</td>
                       <td style={styles.td}>
                         <ActionDropdown
-                          actions={canFulfill ? [
-                            { id: 'check_found', icon: '✓', label: 'Found (All) → Site IN' },
-                            { id: 'check_partial', icon: '✂️', label: 'Partial' },
-                            { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
-                          ] : available > 0 ? [
-                            { id: 'check_partial', icon: '✂️', label: 'Partial' },
-                            { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
-                          ] : [
-                            { id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' }
-                          ]}
+                          actions={(() => {
+                            // V28.6: Build actions dynamically based on origin and availability
+                            const actions = [];
+                            if (canFulfill) {
+                              actions.push({ id: 'check_found', icon: '✓', label: 'Found (All) → Site IN' });
+                            }
+                            if (available > 0) {
+                              actions.push({ id: 'check_partial', icon: '✂️', label: 'Partial' });
+                            }
+                            // If component was from HF (has hf_number or previous_status was HF)
+                            if (check.requests?.hf_number || check.previous_status === 'HF') {
+                              actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
+                            }
+                            // If component was from TestPack (has test_pack_number or previous_status was TP)
+                            if (check.requests?.test_pack_number || check.previous_status === 'TP') {
+                              actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
+                            }
+                            actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
+                            return actions;
+                          })()}
                           onExecute={(action) => handleCheckAction(check, action)}
                           disabled={!canModify}
                           componentId={check.id}
@@ -4219,18 +4339,31 @@ function WHYardPage({ user }) {
                 const totalRequested = totalRequestedMap[comp.ident_code] || 0;
                 const isOverQty = totalRequested > totalAvailable;
                 
-                // Build actions list based on conditions
+                // V28.6: Build actions list based on inventory quantities
                 const yardActions = [];
+                const hasYardQty = available > 0;
+                const hasSiteQty = inv.site > 0;
+                
+                // Found requires full quantity available in yard
                 if (canFulfill) {
                   yardActions.push({ id: 'found', icon: '✓', label: 'Found/Transfer' });
                 }
-                if (available > 0) {
+                // Partial requires some quantity in yard
+                if (hasYardQty) {
                   yardActions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
                 }
+                // Engineering always available
                 yardActions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
-                yardActions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
-                yardActions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
-                yardActions.push({ id: 'return', icon: '↩️', label: 'Return to Site' });
+                // HF and TestPack require yard_qty > 0
+                if (hasYardQty) {
+                  yardActions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
+                  yardActions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
+                }
+                // Return to Site requires site_qty > 0 (material must be available at site)
+                if (hasSiteQty) {
+                  yardActions.push({ id: 'return', icon: '↩️', label: 'Return to Site' });
+                }
+                // Delete always available
                 yardActions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
                 
                 return (
@@ -4532,7 +4665,7 @@ function SiteInPage({ user }) {
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_site_in === 'modify';
+  const canModify = canModifyPage(user, 'site_in');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -4879,7 +5012,7 @@ function EngineeringPage({ user }) {
     setShowHistory(true);
   };
 
-  const canModify = user.role === 'admin' || user.perm_engineering === 'modify';
+  const canModify = canModifyPage(user, 'engineering');
 
   // V28: Filter by search
   const filterComponents = (comps) => {
@@ -5308,7 +5441,7 @@ function HFPage({ user }) {
     setShowHistory(true);
   };
 
-  const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
+  const canModify = canModifyPage(user, 'hf');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -5564,7 +5697,7 @@ function TestPackPage({ user }) {
     setShowHistory(true);
   };
 
-  const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
+  const canModify = canModifyPage(user, 'testpack');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -5876,7 +6009,7 @@ function ToBeCollectedPage({ user }) {
     setShowHistory(true);
   };
 
-  const canModify = user.role === 'admin' || user.perm_wh_site === 'modify';
+  const canModify = canModifyPage(user, 'to_be_collected');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -6349,7 +6482,7 @@ function MaterialInPage({ user }) {
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_material_in === 'modify';
+  const canModify = canModifyPage(user, 'material_in');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -6934,7 +7067,7 @@ function SparePartsPage({ user }) {
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_spare_parts === 'modify';
+  const canModify = canModifyPage(user, 'spare_parts');
 
   const filterComponents = (comps) => {
     if (!searchTerm) return comps;
@@ -7264,7 +7397,7 @@ function OrdersPage({ user }) {
     }
   };
 
-  const canModify = user.role === 'admin' || user.perm_orders === 'modify';
+  const canModify = canModifyPage(user, 'orders');
 
   const filterComponents = (comps) => {
     if (!searchTerm) return comps;
@@ -7572,7 +7705,7 @@ function ManagementPage({ user }) {
     loadComponents();
   };
 
-  const canModify = user.role === 'admin' || user.perm_management === 'modify';
+  const canModify = canModifyPage(user, 'management');
 
   // Filter by search
   const filterComponents = (comps) => {
@@ -7773,7 +7906,7 @@ function MIRPage({ user }) {
     loadMirs();
   };
 
-  const canModify = user.role === 'admin' || user.perm_mir === 'modify';
+  const canModify = canModifyPage(user, 'mir');
 
   // Filter MIRs by tab and search
   const openMirs = mirs.filter(m => m.status === 'Open');
@@ -7892,6 +8025,7 @@ function MIRPage({ user }) {
               <th style={styles.th}>Category</th>
               <th style={styles.th}>Description</th>
               <th style={styles.th}>Forecast</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>⚠️</th>
               <th style={styles.th}>Status</th>
               <th style={styles.th}>Created</th>
               {activeTab === 'open' && <th style={styles.th}>Actions</th>}
@@ -7919,6 +8053,11 @@ function MIRPage({ user }) {
                 <td style={styles.td}>{mir.category || '-'}</td>
                 <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mir.description || ''}>{mir.description || '-'}</td>
                 <td style={styles.td}>{mir.forecast_date ? new Date(mir.forecast_date).toLocaleDateString() : '-'}</td>
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  {mir.forecast_date && isOverdue(mir.forecast_date) && (
+                    <span title="Forecast date overdue!" style={{ fontSize: '18px', cursor: 'help' }}>⚠️</span>
+                  )}
+                </td>
                 <td style={styles.td}>
                   <span style={{ 
                     ...styles.statusBadge, 
@@ -7954,7 +8093,7 @@ function MIRPage({ user }) {
             ))}
             {displayedMirs.length === 0 && (
               <tr>
-                <td colSpan={activeTab === 'open' ? 9 : 9} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                <td colSpan={activeTab === 'open' ? 11 : 11} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                   No {activeTab === 'open' ? 'open' : 'closed'} MIRs
                 </td>
               </tr>
@@ -8455,7 +8594,7 @@ function LogPage({ user }) {
     );
   });
 
-  const canModify = user.role === 'admin' || user.perm_movements === 'modify';
+  const canModify = canModifyPage(user, 'movements');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
@@ -9115,7 +9254,7 @@ function DatabasePage({ user }) {
     a.click();
   };
 
-  const canModify = user.role === 'admin' || user.perm_database === 'modify';
+  const canModify = canModifyPage(user, 'database');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
