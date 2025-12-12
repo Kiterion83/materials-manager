@@ -2910,14 +2910,25 @@ function WHSitePage({ user }) {
     
     // Load inventory for WH_Site and WH_Yard quantities
     const { data: invData, error: invError } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
-    console.log('📦 WH Site - Inventory loaded:', { count: invData?.length, error: invError });
+    console.log('📦 WH Site - Inventory query result:', { data: invData, error: invError, count: invData?.length });
+    
+    // Debug: show ALL ident_codes returned
+    if (invData) {
+      console.log('📦 WH Site - ALL ident_codes from inventory:', invData.map(i => i.ident_code));
+      console.log('📦 WH Site - Full inventory data:', JSON.stringify(invData, null, 2));
+    }
     
     const invMap = {};
     if (invData) {
-      invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
-      // Debug: show first 5 inventory items
-      console.log('📦 WH Site - Sample inventory:', invData.slice(0, 5));
+      invData.forEach(i => { 
+        invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; 
+      });
     }
+    
+    // Debug: check for C1GXTDJK specifically
+    console.log('📦 WH Site - invMap has C1GXTDJK?', 'C1GXTDJK' in invMap);
+    console.log('📦 WH Site - invMap[C1GXTDJK]:', invMap['C1GXTDJK']);
+    
     setInventoryMap(invMap);
     
     // V28.5: Load ALL open requests to sum quantities per ident_code
@@ -8847,15 +8858,23 @@ function DatabasePage({ user }) {
     const { data: projectData, count } = await query;
     
     // Get inventory data
-    const { data: invData } = await supabase
+    const { data: invData, error: invError } = await supabase
       .from('inventory')
       .select('*');
+    
+    console.log('🔍 DATABASE - Inventory raw data:', invData);
+    console.log('🔍 DATABASE - Inventory error:', invError);
     
     // Create inventory map by ident_code
     const invMap = {};
     if (invData) {
-      invData.forEach(i => { invMap[i.ident_code] = i; });
+      invData.forEach(i => { 
+        console.log('🔍 DATABASE - Adding to invMap:', i.ident_code, '→', { yard: i.yard_qty, site: i.site_qty });
+        invMap[i.ident_code] = i; 
+      });
     }
+    
+    console.log('🔍 DATABASE - invMap keys:', Object.keys(invMap));
     
     // V28.1: Group by ISO + ident_code (unique combination)
     const groupedData = {};
@@ -8864,6 +8883,13 @@ function DatabasePage({ user }) {
         const key = `${item.iso_number}|${item.ident_code}`;
         if (!groupedData[key]) {
           const inv = invMap[item.ident_code] || {};
+          
+          // Debug: check if C1GXTDJK is found
+          if (item.ident_code === 'C1GXTDJK') {
+            console.log('🔍 DATABASE - Looking for C1GXTDJK in invMap:', inv);
+            console.log('🔍 DATABASE - invMap has C1GXTDJK?', invMap.hasOwnProperty('C1GXTDJK'));
+          }
+          
           groupedData[key] = {
             iso_number: item.iso_number,
             ident_code: item.ident_code,
