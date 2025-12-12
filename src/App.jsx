@@ -1,8 +1,14 @@
 // ============================================================
-// MATERIALS MANAGER V28.4 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.5 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V28.4: Dashboard counts, HF/TP actions, Ident debounce,
-//        Request filter fix, Remove print from requests
+// V28.5 Changes:
+//   - Dashboard navigation: clickable boxes go to respective pages
+//   - IB movements fix: SQL functions create movements + update inventory
+//   - Site IN actions: Receive/Delete/Return dropdown with previous_status
+//   - To Be Collected actions: Collect/Delete/Return dropdown
+//   - Over quantity logic: sum ALL open requests vs available inventory
+//   - P121 filter: ISO search limited to P121 project
+//   - previous_status column: tracks status for Return actions
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -1460,8 +1466,8 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
 // ============================================================
 // DASHBOARD
 // ============================================================
-function Dashboard({ user }) {
-  // V28.4: New Dashboard with all status counters
+function Dashboard({ user, setActivePage }) {
+  // V28.5: Dashboard with clickable status boxes
   const [stats, setStats] = useState({
     yard: 0, site: 0, eng: 0, mng: 0, spare: 0,
     order: 0, siteIn: 0, toCollect: 0, tp: 0, hf: 0,
@@ -1518,39 +1524,73 @@ function Dashboard({ user }) {
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
-  // Dashboard box style
-  const boxStyle = (color) => ({
+  // V28.5: Clickable dashboard box style
+  const boxStyle = (color, clickable = true) => ({
     backgroundColor: color,
     padding: '20px',
     borderRadius: '12px',
     color: 'white',
     textAlign: 'center',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+    cursor: clickable ? 'pointer' : 'default',
+    transition: 'transform 0.2s, box-shadow 0.2s'
   });
+
+  const handleBoxClick = (pageId) => {
+    if (setActivePage) {
+      setActivePage(pageId);
+    }
+  };
 
   return (
     <div>
       <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>📊 Request Status Overview</h2>
+      <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '16px' }}>Click on any box to navigate to that section</p>
       
       {/* Main Status Grid - 5 columns */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={boxStyle(COLORS.secondary)}>
+        <div 
+          style={boxStyle(COLORS.secondary)} 
+          onClick={() => handleBoxClick('whYard')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Yard</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.yard}</p>
         </div>
-        <div style={boxStyle(COLORS.info)}>
+        <div 
+          style={boxStyle(COLORS.info)} 
+          onClick={() => handleBoxClick('whSite')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>WH Site</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.site}</p>
         </div>
-        <div style={boxStyle(COLORS.purple)}>
+        <div 
+          style={boxStyle(COLORS.purple)} 
+          onClick={() => handleBoxClick('engineering')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Engineering</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.eng}</p>
         </div>
-        <div style={boxStyle(COLORS.yellow)}>
+        <div 
+          style={boxStyle(COLORS.yellow)} 
+          onClick={() => handleBoxClick('management')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Management</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.mng}</p>
         </div>
-        <div style={boxStyle(COLORS.pink)}>
+        <div 
+          style={boxStyle(COLORS.pink)} 
+          onClick={() => handleBoxClick('spareParts')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Spare Parts</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.spare}</p>
         </div>
@@ -1558,39 +1598,69 @@ function Dashboard({ user }) {
 
       {/* Second Row - 5 columns */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={boxStyle(COLORS.orange)}>
+        <div 
+          style={boxStyle(COLORS.orange)} 
+          onClick={() => handleBoxClick('orders')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Orders</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.order}</p>
         </div>
-        <div style={boxStyle(COLORS.cyan)}>
+        <div 
+          style={boxStyle(COLORS.cyan)} 
+          onClick={() => handleBoxClick('siteIn')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Site IN</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.siteIn}</p>
         </div>
-        <div style={boxStyle(COLORS.success)}>
+        <div 
+          style={boxStyle(COLORS.success)} 
+          onClick={() => handleBoxClick('toBeCollected')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>To Be Collected</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.toCollect}</p>
         </div>
-        <div style={boxStyle('#8B5CF6')}>
+        <div 
+          style={boxStyle('#8B5CF6')} 
+          onClick={() => handleBoxClick('testPack')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>TestPack</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.tp}</p>
         </div>
-        <div style={boxStyle(COLORS.teal)}>
+        <div 
+          style={boxStyle(COLORS.teal)} 
+          onClick={() => handleBoxClick('hf')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>HF</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.hf}</p>
         </div>
       </div>
 
-      {/* Third Row - MIR, Lost, Broken */}
+      {/* Third Row - MIR, Lost, Broken (Lost and Broken NOT clickable) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-        <div style={boxStyle(COLORS.primary)}>
+        <div 
+          style={boxStyle(COLORS.primary)} 
+          onClick={() => handleBoxClick('mir')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
+        >
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>📋 MIR Open</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.mirOpen}</p>
         </div>
-        <div style={boxStyle('#DC2626')}>
+        <div style={boxStyle('#DC2626', false)}>
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>⚠️ Lost</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.lost}</p>
         </div>
-        <div style={boxStyle('#7C3AED')}>
+        <div style={boxStyle('#7C3AED', false)}>
           <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🔧 Broken</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.broken}</p>
         </div>
@@ -1644,11 +1714,13 @@ function RequestsPage({ user }) {
   };
 
   // V27: Async ISO search (4+ characters)
+  // V28.5: Filtered to P121 project only
   const searchIsoOptions = async (searchTerm) => {
     if (searchTerm.length < 4) return [];
     const { data } = await supabase
       .from('project_materials')
       .select('iso_number')
+      .like('iso_number', 'P121%')  // V28.5: P121 project filter
       .ilike('iso_number', `%${searchTerm}%`)
       .order('iso_number')
       .limit(50);
@@ -2810,6 +2882,7 @@ function WHSitePage({ user }) {
   const [historyComponentId, setHistoryComponentId] = useState(null);
   const [engChecks, setEngChecks] = useState([]);
   const [inventoryMap, setInventoryMap] = useState({});
+  const [totalRequestedMap, setTotalRequestedMap] = useState({}); // V28.5: Sum of all open requests per ident_code
   // Engineering Check Partial state
   const [showCheckPartialModal, setShowCheckPartialModal] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
@@ -2829,6 +2902,21 @@ function WHSitePage({ user }) {
       invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
     }
     setInventoryMap(invMap);
+    
+    // V28.5: Load ALL open requests to sum quantities per ident_code
+    const openStatuses = ['WH_Site', 'Yard', 'Eng', 'Order', 'Trans', 'ToCollect', 'TP', 'HF', 'Spare', 'Mng'];
+    const { data: allOpenData } = await supabase
+      .from('request_components')
+      .select('ident_code, quantity')
+      .in('status', openStatuses);
+    
+    const reqMap = {};
+    if (allOpenData) {
+      allOpenData.forEach(c => {
+        reqMap[c.ident_code] = (reqMap[c.ident_code] || 0) + (c.quantity || 0);
+      });
+    }
+    setTotalRequestedMap(reqMap);
     
     // Load components with full request info
     const { data: siteData, error: siteError } = await supabase
@@ -3269,7 +3357,8 @@ function WHSitePage({ user }) {
                   ${components.map(comp => {
                     const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
                     const totalAvailable = inv.site + inv.yard;
-                    const isOverQty = comp.quantity > totalAvailable;
+                    const totalRequested = totalRequestedMap[comp.ident_code] || 0;
+                    const isOverQty = totalRequested > totalAvailable;
                     return `<tr>
                       <td>${comp.requests?.request_type || '-'}</td>
                       <td>${comp.requests?.sub_category || '-'}</td>
@@ -3320,7 +3409,9 @@ function WHSitePage({ user }) {
               {components.map(comp => {
                 const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
                 const totalAvailable = inv.site + inv.yard;
-                const isOverQty = comp.quantity > totalAvailable;
+                // V28.5: Use sum of ALL open requests for this ident_code
+                const totalRequested = totalRequestedMap[comp.ident_code] || 0;
+                const isOverQty = totalRequested > totalAvailable;
                 return (
                 <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
@@ -3364,7 +3455,7 @@ function WHSitePage({ user }) {
                   </td>
                   <td style={{ ...styles.td, textAlign: 'center' }}>
                     {isOverQty && (
-                      <span title={`Requested ${comp.quantity}, available ${totalAvailable}`} style={{ cursor: 'help', fontSize: '18px' }}>⚠️</span>
+                      <span title={`Total requested: ${totalRequested}, available: ${totalAvailable}`} style={{ cursor: 'help', fontSize: '18px' }}>⚠️</span>
                     )}
                   </td>
                 </tr>
@@ -3512,6 +3603,7 @@ function WHSitePage({ user }) {
 function WHYardPage({ user }) {
   const [components, setComponents] = useState([]);
   const [inventoryMap, setInventoryMap] = useState({});
+  const [totalRequestedMap, setTotalRequestedMap] = useState({}); // V28.5: Sum of all open requests per ident_code
   const [loading, setLoading] = useState(true);
   const [showPartialModal, setShowPartialModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
@@ -3539,6 +3631,21 @@ function WHYardPage({ user }) {
       invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
     }
     setInventoryMap(invMap);
+    
+    // V28.5: Load ALL open requests to sum quantities per ident_code
+    const openStatuses = ['WH_Site', 'Yard', 'Eng', 'Order', 'Trans', 'ToCollect', 'TP', 'HF', 'Spare', 'Mng'];
+    const { data: allOpenData } = await supabase
+      .from('request_components')
+      .select('ident_code, quantity')
+      .in('status', openStatuses);
+    
+    const reqMap = {};
+    if (allOpenData) {
+      allOpenData.forEach(c => {
+        reqMap[c.ident_code] = (reqMap[c.ident_code] || 0) + (c.quantity || 0);
+      });
+    }
+    setTotalRequestedMap(reqMap);
     
     const { data: yardData } = await supabase
       .from('request_components')
@@ -4004,7 +4111,8 @@ function WHYardPage({ user }) {
                   ${components.map(comp => {
                     const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
                     const totalAvailable = inv.site + inv.yard;
-                    const isOverQty = comp.quantity > totalAvailable;
+                    const totalRequested = totalRequestedMap[comp.ident_code] || 0;
+                    const isOverQty = totalRequested > totalAvailable;
                     return `<tr>
                       <td>${comp.requests?.request_type || '-'}</td>
                       <td>${comp.requests?.sub_category || '-'}</td>
@@ -4057,7 +4165,9 @@ function WHYardPage({ user }) {
                 const available = inv.yard;
                 const totalAvailable = inv.site + inv.yard;
                 const canFulfill = available >= comp.quantity;
-                const isOverQty = comp.quantity > totalAvailable;
+                // V28.5: Use sum of ALL open requests for this ident_code
+                const totalRequested = totalRequestedMap[comp.ident_code] || 0;
+                const isOverQty = totalRequested > totalAvailable;
                 
                 // Build actions list based on conditions
                 const yardActions = [];
@@ -4108,7 +4218,7 @@ function WHYardPage({ user }) {
                     </td>
                     <td style={{ ...styles.td, textAlign: 'center' }}>
                       {isOverQty && (
-                        <span title={`Requested ${comp.quantity}, available ${totalAvailable}`} style={{ cursor: 'help', fontSize: '18px' }}>⚠️</span>
+                        <span title={`Total requested: ${totalRequested}, available: ${totalAvailable}`} style={{ cursor: 'help', fontSize: '18px' }}>⚠️</span>
                       )}
                     </td>
                   </tr>
@@ -4255,11 +4365,12 @@ function WHYardPage({ user }) {
 }
 
 // ============================================================
-// SITE IN PAGE - Transit from Yard to Site
+// SITE IN PAGE - V28.5: Actions dropdown with Receive/Delete/Return
 // ============================================================
 function SiteInPage({ user }) {
   const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openDropdown, setOpenDropdown] = useState(null);
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -4273,10 +4384,11 @@ function SiteInPage({ user }) {
     setLoading(false);
   };
 
+  // V28.5: Receive → WH_Site (not ToCollect)
   const handleReceive = async (component) => {
     try {
       await supabase.from('request_components')
-        .update({ status: 'ToCollect', current_location: 'SITE' })
+        .update({ status: 'WH_Site', current_location: 'SITE', previous_status: 'Trans' })
         .eq('id', component.id);
       
       await supabase.rpc('increment_site_qty', { 
@@ -4288,10 +4400,10 @@ function SiteInPage({ user }) {
         component_id: component.id,
         action: 'Received at Site',
         from_status: 'Trans',
-        to_status: 'ToCollect',
+        to_status: 'WH_Site',
         performed_by_user_id: user.id,
         performed_by_name: user.full_name,
-        note: 'Material arrived and ready for pickup'
+        note: 'Material arrived at Site warehouse'
       });
 
       await supabase.from('movements').insert({
@@ -4303,9 +4415,70 @@ function SiteInPage({ user }) {
         performed_by: user.full_name
       });
 
+      setOpenDropdown(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
+    }
+  };
+
+  // V28.5: Delete action
+  const handleDelete = async (component) => {
+    if (!confirm(`Delete request ${String(component.requests?.request_number).padStart(5, '0')}-${component.requests?.sub_number}?`)) return;
+    
+    try {
+      await supabase.from('request_components')
+        .update({ status: 'Deleted' })
+        .eq('id', component.id);
+      
+      await supabase.from('component_history').insert({
+        component_id: component.id,
+        action: 'Deleted from Site IN',
+        from_status: 'Trans',
+        to_status: 'Deleted',
+        performed_by_user_id: user.id,
+        performed_by_name: user.full_name,
+        note: 'Request deleted while in transit'
+      });
+
+      setOpenDropdown(null);
+      loadComponents();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // V28.5: Return to previous status (Yard)
+  const handleReturn = async (component) => {
+    const prevStatus = component.previous_status || 'Yard';
+    
+    try {
+      await supabase.from('request_components')
+        .update({ status: prevStatus, previous_status: 'Trans' })
+        .eq('id', component.id);
+      
+      await supabase.from('component_history').insert({
+        component_id: component.id,
+        action: 'Returned from Site IN',
+        from_status: 'Trans',
+        to_status: prevStatus,
+        performed_by_user_id: user.id,
+        performed_by_name: user.full_name,
+        note: `Returned to ${prevStatus}`
+      });
+
+      setOpenDropdown(null);
+      loadComponents();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const handleAction = (component, action) => {
+    switch(action) {
+      case 'receive': handleReceive(component); break;
+      case 'delete': handleDelete(component); break;
+      case 'return': handleReturn(component); break;
     }
   };
 
@@ -4394,19 +4567,60 @@ function SiteInPage({ user }) {
                   <td style={styles.td}>{comp.dia1 || '-'}</td>
                   <td style={styles.td}>{comp.quantity}</td>
                   <td style={styles.td}>
-                    <button
-                      onClick={() => handleReceive(comp)}
-                      disabled={!canModify}
-                      style={{ 
-                        ...styles.button, 
-                        backgroundColor: COLORS.success, 
-                        color: 'white',
-                        padding: '6px 12px',
-                        fontSize: '12px'
-                      }}
-                    >
-                      📥 Receive
-                    </button>
+                    {/* V28.5: Actions dropdown */}
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={() => setOpenDropdown(openDropdown === comp.id ? null : comp.id)}
+                        disabled={!canModify}
+                        style={{ 
+                          ...styles.button, 
+                          backgroundColor: COLORS.success, 
+                          color: 'white',
+                          padding: '6px 12px',
+                          fontSize: '12px'
+                        }}
+                      >
+                        Actions ▼
+                      </button>
+                      {openDropdown === comp.id && (
+                        <div style={{
+                          position: 'absolute',
+                          right: 0,
+                          top: '100%',
+                          backgroundColor: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '6px',
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                          zIndex: 100,
+                          minWidth: '160px'
+                        }}>
+                          <div
+                            onClick={() => handleAction(comp, 'receive')}
+                            style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f3f4f6' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                          >
+                            <span>📥</span> <span>Receive</span>
+                          </div>
+                          <div
+                            onClick={() => handleAction(comp, 'return')}
+                            style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid #f3f4f6' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                          >
+                            <span>↩️</span> <span>Return</span>
+                          </div>
+                          <div
+                            onClick={() => handleAction(comp, 'delete')}
+                            style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: COLORS.danger }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#FEE2E2'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                          >
+                            <span>🗑️</span> <span>Delete</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -5452,7 +5666,7 @@ function TestPackPage({ user }) {
 }
 
 // ============================================================
-// TO BE COLLECTED PAGE - V28.2 with free collection + collector name
+// TO BE COLLECTED PAGE - V28.5 with actions dropdown
 // ============================================================
 function ToBeCollectedPage({ user }) {
   const [components, setComponents] = useState([]);
@@ -5464,6 +5678,7 @@ function ToBeCollectedPage({ user }) {
   const [collectorName, setCollectorName] = useState('');
   const [allUsers, setAllUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
+  const [showActionMenu, setShowActionMenu] = useState(null);
 
   useEffect(() => { loadComponents(); loadUsers(); }, []);
 
@@ -5499,6 +5714,7 @@ function ToBeCollectedPage({ user }) {
     setCollectorName('');
     setFilteredUsers([]);
     setShowCollectModal(true);
+    setShowActionMenu(null);
   };
 
   const handleCollectorSearch = (value) => {
@@ -5525,8 +5741,13 @@ function ToBeCollectedPage({ user }) {
     }
 
     try {
+      // V28.5: Save previous_status
       await supabase.from('request_components')
-        .update({ status: 'Done', collected_by: collectorName.trim() })
+        .update({ 
+          status: 'Done', 
+          previous_status: 'ToCollect',
+          collected_by: collectorName.trim() 
+        })
         .eq('id', selectedComponent.id);
       
       // Decrement site inventory
@@ -5555,6 +5776,45 @@ function ToBeCollectedPage({ user }) {
       });
 
       setShowCollectModal(false);
+      loadComponents();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // V28.5: Delete action
+  const handleDelete = async (comp) => {
+    if (!confirm(`Delete request ${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}?`)) return;
+    
+    try {
+      await supabase.from('request_components')
+        .update({ status: 'Cancelled', previous_status: 'ToCollect' })
+        .eq('id', comp.id);
+      
+      await logHistory(comp.id, 'Request Deleted', 'ToCollect', 'Cancelled', 'Deleted from To Be Collected');
+      
+      setShowActionMenu(null);
+      loadComponents();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // V28.5: Return action - go back to previous_status
+  const handleReturn = async (comp) => {
+    const prevStatus = comp.previous_status || 'WH_Site';
+    
+    try {
+      await supabase.from('request_components')
+        .update({ 
+          status: prevStatus,
+          previous_status: 'ToCollect'
+        })
+        .eq('id', comp.id);
+      
+      await logHistory(comp.id, 'Returned from ToCollect', 'ToCollect', prevStatus, `Returned to ${prevStatus}`);
+      
+      setShowActionMenu(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -5656,18 +5916,94 @@ function ToBeCollectedPage({ user }) {
                     {comp.description ? (comp.description.length > 40 ? comp.description.substring(0, 40) + '...' : comp.description) : '-'}
                   </td>
                   <td style={styles.td}>{comp.quantity}</td>
-                  <td style={styles.td}>
+                  <td style={{ ...styles.td, position: 'relative' }}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <ActionButton 
-                        color={COLORS.success}
-                        onClick={() => openCollectModal(comp)}
-                        disabled={!canModify}
-                        title="Collect Material"
-                        style={{ minWidth: '70px' }}
-                      >
-                        Collect
-                      </ActionButton>
-                      {/* V28.2: ℹ️ Blue if no description, Red if has description */}
+                      {canModify ? (
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            onClick={() => setShowActionMenu(showActionMenu === comp.id ? null : comp.id)}
+                            style={{ 
+                              ...styles.button, 
+                              backgroundColor: COLORS.success, 
+                              color: 'white',
+                              padding: '6px 12px',
+                              fontSize: '12px'
+                            }}
+                          >
+                            ⚡ Actions ▼
+                          </button>
+                          {showActionMenu === comp.id && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '100%',
+                              right: 0,
+                              backgroundColor: 'white',
+                              border: '1px solid #e5e7eb',
+                              borderRadius: '8px',
+                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                              zIndex: 1000,
+                              minWidth: '150px'
+                            }}>
+                              <button
+                                onClick={() => openCollectModal(comp)}
+                                style={{
+                                  display: 'block',
+                                  width: '100%',
+                                  padding: '10px 16px',
+                                  textAlign: 'left',
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  borderBottom: '1px solid #e5e7eb'
+                                }}
+                                onMouseOver={(e) => e.target.style.backgroundColor = '#D1FAE5'}
+                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                              >
+                                ✅ Collect
+                              </button>
+                              <button
+                                onClick={() => handleDelete(comp)}
+                                style={{
+                                  display: 'block',
+                                  width: '100%',
+                                  padding: '10px 16px',
+                                  textAlign: 'left',
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  fontSize: '13px',
+                                  borderBottom: '1px solid #e5e7eb',
+                                  color: COLORS.primary
+                                }}
+                                onMouseOver={(e) => e.target.style.backgroundColor = '#FEE2E2'}
+                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                              >
+                                🗑️ Delete
+                              </button>
+                              <button
+                                onClick={() => handleReturn(comp)}
+                                style={{
+                                  display: 'block',
+                                  width: '100%',
+                                  padding: '10px 16px',
+                                  textAlign: 'left',
+                                  border: 'none',
+                                  background: 'none',
+                                  cursor: 'pointer',
+                                  fontSize: '13px'
+                                }}
+                                onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                              >
+                                ↩️ Return
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#9ca3af', fontSize: '12px' }}>View only</span>
+                      )}
                       <ActionButton 
                         color={comp.requests?.description ? COLORS.primary : COLORS.info} 
                         onClick={() => openHistory(comp.id)} 
@@ -7842,6 +8178,7 @@ function LogPage({ user }) {
   };
 
   // Submit IB Request
+  // V28.5: Fixed IB Request submission - direct operations instead of RPC
   const submitIBRequest = async () => {
     if (!ibRequest.ident_code || !ibRequest.quantity) {
       alert('Ident Code and Quantity required');
@@ -7849,37 +8186,87 @@ function LogPage({ user }) {
     }
 
     try {
-      let ibNumber;
       const qty = parseInt(ibRequest.quantity);
       
-      if (ibRequest.reason === 'Broken') {
-        const { data } = await supabase.rpc('process_ib_broken', {
-          p_ident_code: ibRequest.ident_code,
-          p_qty: qty,
-          p_location: ibRequest.location,
-          p_note: ibRequest.note || null,
-          p_performed_by: user.full_name
-        });
-        ibNumber = data;
-      } else if (ibRequest.reason === 'Lost') {
-        const { data } = await supabase.rpc('process_ib_lost', {
-          p_ident_code: ibRequest.ident_code,
-          p_qty: qty,
-          p_location: ibRequest.location,
-          p_note: ibRequest.note || null,
-          p_performed_by: user.full_name
-        });
-        ibNumber = data;
-      } else if (ibRequest.reason === 'Balance') {
-        const { data } = await supabase.rpc('process_ib_balance', {
-          p_ident_code: ibRequest.ident_code,
-          p_qty: qty,
-          p_location: ibRequest.location,
-          p_note: ibRequest.note || null,
-          p_performed_by: user.full_name
-        });
-        ibNumber = data;
+      // Generate IB number
+      const { data: maxIB } = await supabase
+        .from('movements')
+        .select('ib_number')
+        .not('ib_number', 'is', null)
+        .order('ib_number', { ascending: false })
+        .limit(1);
+      
+      let nextNum = 1;
+      if (maxIB && maxIB.length > 0 && maxIB[0].ib_number) {
+        const match = maxIB[0].ib_number.match(/IB(\d+)/);
+        if (match) {
+          nextNum = parseInt(match[1]) + 1;
+        }
       }
+      const ibNumber = 'IB' + String(nextNum).padStart(4, '0');
+
+      // Determine movement details based on reason
+      let movementType, fromLoc, toLoc;
+      
+      if (ibRequest.reason === 'Broken') {
+        movementType = 'BROKEN';
+        fromLoc = ibRequest.location;
+        toLoc = 'BROKEN';
+        
+        // Decrement source and increment broken
+        if (ibRequest.location === 'SITE') {
+          await supabase.rpc('decrement_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        } else {
+          await supabase.rpc('decrement_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        }
+        await supabase.rpc('increment_broken_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        
+      } else if (ibRequest.reason === 'Lost') {
+        movementType = 'LOST';
+        fromLoc = ibRequest.location;
+        toLoc = 'LOST';
+        
+        // Decrement source and increment lost
+        if (ibRequest.location === 'SITE') {
+          await supabase.rpc('decrement_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        } else {
+          await supabase.rpc('decrement_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        }
+        await supabase.rpc('increment_lost_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        
+      } else if (ibRequest.reason === 'Balance') {
+        movementType = 'BAL';
+        fromLoc = 'BALANCE';
+        toLoc = ibRequest.location;
+        
+        // For balance: positive qty = add, negative qty = subtract
+        if (qty >= 0) {
+          if (ibRequest.location === 'SITE') {
+            await supabase.rpc('increment_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+          } else {
+            await supabase.rpc('increment_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+          }
+        } else {
+          if (ibRequest.location === 'SITE') {
+            await supabase.rpc('decrement_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: Math.abs(qty) });
+          } else {
+            await supabase.rpc('decrement_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: Math.abs(qty) });
+          }
+        }
+      }
+
+      // Create movement record
+      await supabase.from('movements').insert({
+        ident_code: ibRequest.ident_code,
+        movement_type: movementType,
+        quantity: Math.abs(qty),
+        from_location: fromLoc,
+        to_location: toLoc,
+        performed_by: user.full_name,
+        note: ibRequest.note || null,
+        ib_number: ibNumber,
+        reason: ibRequest.reason
+      });
 
       // V28.2: If linked to a request, update the request component
       if (ibRequest.linked_request) {
@@ -8977,7 +9364,7 @@ export default function App() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'dashboard': return <Dashboard user={user} />;
+      case 'dashboard': return <Dashboard user={user} setActivePage={setActivePage} />;
       case 'requests': return <RequestsPage user={user} />;
       case 'mir': return <MIRPage user={user} />;
       case 'materialIn': return <MaterialInPage user={user} />;
@@ -8994,7 +9381,7 @@ export default function App() {
       case 'management': return <ManagementPage user={user} />;
       case 'database': return <DatabasePage user={user} />;
       case 'print': return <PrintRequestsPage user={user} />;
-      default: return <Dashboard user={user} />;
+      default: return <Dashboard user={user} setActivePage={setActivePage} />;
     }
   };
 
