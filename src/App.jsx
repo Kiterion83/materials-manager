@@ -2909,10 +2909,14 @@ function WHSitePage({ user }) {
     setLoading(true);
     
     // Load inventory for WH_Site and WH_Yard quantities
-    const { data: invData } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
+    const { data: invData, error: invError } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
+    console.log('📦 WH Site - Inventory loaded:', { count: invData?.length, error: invError });
+    
     const invMap = {};
     if (invData) {
       invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
+      // Debug: show first 5 inventory items
+      console.log('📦 WH Site - Sample inventory:', invData.slice(0, 5));
     }
     setInventoryMap(invMap);
     
@@ -2938,6 +2942,14 @@ function WHSitePage({ user }) {
       .eq('status', 'WH_Site');
 
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
+    
+    // Debug: check if component ident_codes exist in inventory
+    if (siteData && siteData.length > 0) {
+      siteData.forEach(comp => {
+        const inv = invMap[comp.ident_code];
+        console.log(`📦 Component ${comp.ident_code}: inventory=`, inv || 'NOT FOUND');
+      });
+    }
 
     // Load Engineering Checks sent to Site (separate section)
     const { data: checksData, error: checksError } = await supabase
@@ -8205,22 +8217,31 @@ function LogPage({ user }) {
         return;
       }
       
-      // Generate IB number
-      const { data: maxIB } = await supabase
+      // Generate IB number - V28.5: Fixed to properly find max number
+      const { data: allIBs, error: ibError } = await supabase
         .from('movements')
         .select('ib_number')
         .not('ib_number', 'is', null)
-        .order('ib_number', { ascending: false })
-        .limit(1);
+        .ilike('ib_number', 'IB%');
       
-      let nextNum = 1;
-      if (maxIB && maxIB.length > 0 && maxIB[0].ib_number) {
-        const match = maxIB[0].ib_number.match(/IB(\d+)/);
-        if (match) {
-          nextNum = parseInt(match[1]) + 1;
-        }
+      console.log('📋 IB Numbers found:', allIBs);
+      
+      let maxNum = 0;
+      if (allIBs && allIBs.length > 0) {
+        allIBs.forEach(row => {
+          if (row.ib_number) {
+            // Extract number from IB0001, IBA001, IBB001, IBL001 etc
+            const match = row.ib_number.match(/IB[ABL]?(\d+)/);
+            if (match) {
+              const num = parseInt(match[1]);
+              if (num > maxNum) maxNum = num;
+            }
+          }
+        });
       }
+      const nextNum = maxNum + 1;
       const ibNumber = 'IB' + String(nextNum).padStart(4, '0');
+      console.log('📋 New IB Number:', ibNumber, '(max was:', maxNum, ')');
 
       // Get current inventory for this ident_code
       const { data: currentInv } = await supabase
