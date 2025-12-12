@@ -137,6 +137,23 @@ function OverQtyInfo({ note }) {
   );
 }
 
+// Status Badge Component for Request Tracker
+function StatusBadge({ status }) {
+  const color = STATUS_COLORS[status] || COLORS.gray;
+  return (
+    <span style={{
+      backgroundColor: color,
+      color: 'white',
+      padding: '2px 8px',
+      borderRadius: '4px',
+      fontSize: '11px',
+      fontWeight: '500'
+    }}>
+      {status || '-'}
+    </span>
+  );
+}
+
 const STATUS_COLORS = {
   WH_Site: COLORS.info,
   Yard: COLORS.secondary,
@@ -371,7 +388,7 @@ function Modal({ isOpen, onClose, title, children, wide }) {
   );
 }
 
-function ActionButton({ color, onClick, disabled, children, title }) {
+function ActionButton({ color, onClick, disabled, children, title, style = {} }) {
   return (
     <button
       onClick={onClick}
@@ -381,7 +398,8 @@ function ActionButton({ color, onClick, disabled, children, title }) {
         ...styles.actionButton,
         backgroundColor: disabled ? '#d1d5db' : color,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? 0.6 : 1
+        opacity: disabled ? 0.6 : 1,
+        ...style
       }}
     >
       {children}
@@ -3288,7 +3306,7 @@ function WHYardPage({ user }) {
 
   const handleDestinationSelect = async (dest) => {
     const component = selectedComponent;
-    const available = inventory[component.ident_code] || 0;
+    const available = inventoryMap[component.ident_code]?.yard || 0;
     
     // Decrement yard
     await supabase.rpc('decrement_yard_qty', { 
@@ -3335,7 +3353,7 @@ function WHYardPage({ user }) {
   };
 
   const submitPartial = async () => {
-    const available = inventory[selectedComponent.ident_code] || 0;
+    const available = inventoryMap[selectedComponent?.ident_code]?.yard || 0;
     if (!partialQty || parseInt(partialQty) > available) {
       alert(`Max available: ${available}`);
       return;
@@ -3402,7 +3420,7 @@ function WHYardPage({ user }) {
 
   // Handle Engineering Check actions for Yard
   const handleCheckAction = async (check, action) => {
-    const available = inventory[check.ident_code] || 0;
+    const available = inventoryMap[check?.ident_code]?.yard || 0;
     try {
       if (action === 'check_found') {
         if (available < check.quantity) {
@@ -3455,7 +3473,7 @@ function WHYardPage({ user }) {
     
     const foundQty = parseInt(checkPartialQty);
     const notFoundQty = selectedCheck.quantity - foundQty;
-    const available = inventory[selectedCheck.ident_code] || 0;
+    const available = inventoryMap[selectedCheck?.ident_code]?.yard || 0;
     
     if (foundQty <= 0 || foundQty >= selectedCheck.quantity) {
       alert('Quantity must be between 1 and ' + (selectedCheck.quantity - 1));
@@ -3587,7 +3605,7 @@ function WHYardPage({ user }) {
               </thead>
               <tbody>
                 {engChecks.map(check => {
-                  const available = inventory[check.ident_code] || 0;
+                  const available = inventoryMap[check?.ident_code]?.yard || 0;
                   const canFulfill = available >= check.quantity;
                   return (
                     <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
@@ -3744,7 +3762,7 @@ function WHYardPage({ user }) {
       <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Send Partial">
         <p style={{ marginBottom: '16px' }}>
           <strong>{selectedComponent?.ident_code}</strong><br />
-          Requested: {selectedComponent?.quantity} | Available: {inventory[selectedComponent?.ident_code] || 0}
+          Requested: {selectedComponent?.quantity} | Available: {inventoryMap[selectedComponent?.ident_code]?.yard || 0}
         </p>
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Quantity to send</label>
@@ -3754,7 +3772,7 @@ function WHYardPage({ user }) {
             onChange={(e) => setPartialQty(e.target.value)}
             style={styles.input}
             min="1"
-            max={inventory[selectedComponent?.ident_code] || 0}
+            max={inventoryMap[selectedComponent?.ident_code]?.yard || 0}
           />
           <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
             The rest will go to Orders
@@ -3776,7 +3794,7 @@ function WHYardPage({ user }) {
             <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Disponibile in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventory[selectedCheck?.ident_code] || 0}</span>
+            <strong>Disponibile in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
           </p>
         </div>
         
@@ -3788,7 +3806,7 @@ function WHYardPage({ user }) {
             onChange={(e) => setCheckPartialQty(e.target.value)}
             style={styles.input}
             min="1"
-            max={Math.min(selectedCheck?.quantity - 1, inventory[selectedCheck?.ident_code] || 0)}
+            max={Math.min(selectedCheck?.quantity - 1, inventoryMap[selectedCheck?.ident_code]?.yard || 0)}
             placeholder="Inserisci quantità trovata"
           />
         </div>
@@ -3837,12 +3855,12 @@ function WHYardPage({ user }) {
           <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
           <button 
             onClick={handleCheckPartialSubmit} 
-            disabled={!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventory[selectedCheck?.ident_code] || 0)}
+            disabled={!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventoryMap[selectedCheck?.ident_code]?.yard || 0)}
             style={{ 
               ...styles.button, 
               backgroundColor: COLORS.warning, 
               color: 'white',
-              opacity: (!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventory[selectedCheck?.ident_code] || 0)) ? 0.5 : 1
+              opacity: (!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventoryMap[selectedCheck?.ident_code]?.yard || 0)) ? 0.5 : 1
             }}
           >
             SPLIT
@@ -5007,21 +5025,20 @@ function ToBeCollectedPage({ user }) {
                       )}
                     </td>
                     <td style={styles.td}>
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        <button
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <ActionButton 
+                          color={canDo ? COLORS.success : '#d1d5db'}
                           onClick={() => handleDeliver(comp)}
                           disabled={!canDo}
+                          title={canDo ? "Collect Material" : "Not authorized"}
                           style={{ 
-                            ...styles.button, 
-                            backgroundColor: canDo ? COLORS.success : '#d1d5db', 
-                            color: 'white',
+                            minWidth: '70px',
                             cursor: canDo ? 'pointer' : 'not-allowed',
-                            padding: '6px 12px',
-                            fontSize: '13px'
+                            opacity: canDo ? 1 : 0.5
                           }}
                         >
-                          📤 Collect
-                        </button>
+                          Collect
+                        </ActionButton>
                         <ActionButton color={COLORS.gray} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                       </div>
                     </td>
@@ -6950,9 +6967,9 @@ function LogPage({ user }) {
               <div style={{ fontSize: '13px', color: '#6b7280' }}>
                 {h.from_status} → {h.to_status} | by {h.performed_by_name}
               </div>
-              {h.notes && (
+              {h.note && (
                 <div style={{ fontSize: '12px', color: COLORS.warning, marginTop: '4px', backgroundColor: '#FEF3C7', padding: '4px 8px', borderRadius: '4px' }}>
-                  📝 {h.notes}
+                  📝 {h.note}
                 </div>
               )}
             </div>
