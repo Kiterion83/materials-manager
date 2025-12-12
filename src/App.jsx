@@ -1489,6 +1489,19 @@ function Dashboard({ user, setActivePage }) {
       counts[status] = data?.length || 0;
     }
     
+    // V28.5 FIX: Also count Engineering Checks sent to WH_Site and Yard
+    const { data: engChecksSite } = await supabase
+      .from('request_components')
+      .select('id')
+      .eq('has_eng_check', true)
+      .eq('eng_check_sent_to', 'WH_Site');
+    
+    const { data: engChecksYard } = await supabase
+      .from('request_components')
+      .select('id')
+      .eq('has_eng_check', true)
+      .eq('eng_check_sent_to', 'Yard');
+    
     // Load Open MIRs count
     const { data: mirData } = await supabase.from('mirs').select('id').eq('status', 'Open');
     
@@ -1504,8 +1517,8 @@ function Dashboard({ user, setActivePage }) {
     }
 
     setStats({
-      yard: counts['Yard'] || 0,
-      site: counts['WH_Site'] || 0,
+      yard: (counts['Yard'] || 0) + (engChecksYard?.length || 0),
+      site: (counts['WH_Site'] || 0) + (engChecksSite?.length || 0),
       eng: counts['Eng'] || 0,
       mng: counts['Mng'] || 0,
       spare: counts['Spare'] || 0,
@@ -8178,7 +8191,7 @@ function LogPage({ user }) {
   };
 
   // Submit IB Request
-  // V28.5: Fixed IB Request submission - direct operations instead of RPC
+  // V28.5: Fixed IB Request submission - direct SQL operations, always ADD to quantities
   const submitIBRequest = async () => {
     if (!ibRequest.ident_code || !ibRequest.quantity) {
       alert('Ident Code and Quantity required');
@@ -8187,6 +8200,10 @@ function LogPage({ user }) {
 
     try {
       const qty = parseInt(ibRequest.quantity);
+      if (qty <= 0) {
+        alert('Quantity must be greater than 0');
+        return;
+      }
       
       // Generate IB number
       const { data: maxIB } = await supabase
@@ -8205,7 +8222,14 @@ function LogPage({ user }) {
       }
       const ibNumber = 'IB' + String(nextNum).padStart(4, '0');
 
-      // Determine movement details based on reason
+      // Get current inventory for this ident_code
+      const { data: currentInv } = await supabase
+        .from('inventory')
+        .select('*')
+        .eq('ident_code', ibRequest.ident_code)
+        .single();
+
+      // Determine movement details and update inventory
       let movementType, fromLoc, toLoc;
       
       if (ibRequest.reason === 'Broken') {
@@ -8213,45 +8237,70 @@ function LogPage({ user }) {
         fromLoc = ibRequest.location;
         toLoc = 'BROKEN';
         
-        // Decrement source and increment broken
-        if (ibRequest.location === 'SITE') {
-          await supabase.rpc('decrement_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        // V28.5 FIX: ADD to broken_qty (not overwrite)
+        if (currentInv) {
+          const newBrokenQty = (currentInv.broken_qty || 0) + qty;
+          await supabase.from('inventory')
+            .update({ broken_qty: newBrokenQty })
+            .eq('ident_code', ibRequest.ident_code);
         } else {
-          await supabase.rpc('decrement_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+          // Create new inventory record
+          await supabase.from('inventory').insert({
+            ident_code: ibRequest.ident_code,
+            site_qty: 0,
+            yard_qty: 0,
+            broken_qty: qty,
+            lost_qty: 0
+          });
         }
-        await supabase.rpc('increment_broken_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
         
       } else if (ibRequest.reason === 'Lost') {
         movementType = 'LOST';
         fromLoc = ibRequest.location;
         toLoc = 'LOST';
         
-        // Decrement source and increment lost
-        if (ibRequest.location === 'SITE') {
-          await supabase.rpc('decrement_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+        // V28.5 FIX: ADD to lost_qty (not overwrite)
+        if (currentInv) {
+          const newLostQty = (currentInv.lost_qty || 0) + qty;
+          await supabase.from('inventory')
+            .update({ lost_qty: newLostQty })
+            .eq('ident_code', ibRequest.ident_code);
         } else {
-          await supabase.rpc('decrement_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+          await supabase.from('inventory').insert({
+            ident_code: ibRequest.ident_code,
+            site_qty: 0,
+            yard_qty: 0,
+            broken_qty: 0,
+            lost_qty: qty
+          });
         }
-        await supabase.rpc('increment_lost_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
         
       } else if (ibRequest.reason === 'Balance') {
         movementType = 'BAL';
         fromLoc = 'BALANCE';
         toLoc = ibRequest.location;
         
-        // For balance: positive qty = add, negative qty = subtract
-        if (qty >= 0) {
+        // V28.5 FIX: ADD to site_qty or yard_qty (not overwrite)
+        if (currentInv) {
           if (ibRequest.location === 'SITE') {
-            await supabase.rpc('increment_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+            const newSiteQty = (currentInv.site_qty || 0) + qty;
+            await supabase.from('inventory')
+              .update({ site_qty: newSiteQty })
+              .eq('ident_code', ibRequest.ident_code);
           } else {
-            await supabase.rpc('increment_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: qty });
+            const newYardQty = (currentInv.yard_qty || 0) + qty;
+            await supabase.from('inventory')
+              .update({ yard_qty: newYardQty })
+              .eq('ident_code', ibRequest.ident_code);
           }
         } else {
-          if (ibRequest.location === 'SITE') {
-            await supabase.rpc('decrement_site_qty', { p_ident_code: ibRequest.ident_code, p_qty: Math.abs(qty) });
-          } else {
-            await supabase.rpc('decrement_yard_qty', { p_ident_code: ibRequest.ident_code, p_qty: Math.abs(qty) });
-          }
+          await supabase.from('inventory').insert({
+            ident_code: ibRequest.ident_code,
+            site_qty: ibRequest.location === 'SITE' ? qty : 0,
+            yard_qty: ibRequest.location === 'YARD' ? qty : 0,
+            broken_qty: 0,
+            lost_qty: 0
+          });
         }
       }
 
@@ -8259,7 +8308,7 @@ function LogPage({ user }) {
       await supabase.from('movements').insert({
         ident_code: ibRequest.ident_code,
         movement_type: movementType,
-        quantity: Math.abs(qty),
+        quantity: qty,
         from_location: fromLoc,
         to_location: toLoc,
         performed_by: user.full_name,
@@ -8299,6 +8348,7 @@ function LogPage({ user }) {
       setIBRequest({ ident_code: '', description: '', tag: '', dia1: '', quantity: 1, reason: 'Broken', location: 'SITE', note: '', linked_request: '' });
       loadData();
     } catch (error) {
+      console.error('IB Error:', error);
       alert('Error: ' + error.message);
     }
   };
