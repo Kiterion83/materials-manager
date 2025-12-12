@@ -1,8 +1,8 @@
 // ============================================================
-// MATERIALS MANAGER V28.3 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.4 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V28.3: Spare Parts dropdown, Note field, Print everywhere,
-//        Alert column, Database filters, Eye→ℹ️
+// V28.4: Dashboard counts, HF/TP actions, Ident debounce,
+//        Request filter fix, Remove print from requests
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -18,7 +18,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.3';
+const APP_VERSION = 'V28.4';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -697,7 +697,7 @@ function AsyncSearchInput({
     if (searchTimeout) clearTimeout(searchTimeout);
     
     if (val.length >= minChars) {
-      // Debounce search by 300ms
+      // V28.4: Debounce search by 500ms (increased from 300ms)
       const timeout = setTimeout(async () => {
         setLoading(true);
         try {
@@ -709,7 +709,7 @@ function AsyncSearchInput({
           setOptions([]);
         }
         setLoading(false);
-      }, 300);
+      }, 500);
       setSearchTimeout(timeout);
     } else {
       setOptions([]);
@@ -1387,8 +1387,8 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
     { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders' },
     { id: 'log', icon: '📄', label: 'Log', perm: 'perm_movements' },
     { id: 'management', icon: '💼', label: 'Management', perm: 'perm_management' },
-    { id: 'database', icon: '💾', label: 'Database', perm: 'perm_database' },
-    { id: 'print', icon: '🖨️', label: 'Print Requests', perm: null }
+    { id: 'database', icon: '💾', label: 'Database', perm: 'perm_database' }
+    // V28.4: Removed Print Requests menu item
   ];
 
   const visibleItems = menuItems.filter(item => {
@@ -1461,11 +1461,12 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
 // DASHBOARD
 // ============================================================
 function Dashboard({ user }) {
+  // V28.4: New Dashboard with all status counters
   const [stats, setStats] = useState({
-    yard: 0, site: 0, lost: 0, broken: 0,
-    activeRequests: 0, pendingEng: 0, toOrder: 0, toCollect: 0
+    yard: 0, site: 0, eng: 0, mng: 0, spare: 0,
+    order: 0, siteIn: 0, toCollect: 0, tp: 0, hf: 0,
+    mirOpen: 0, lost: 0, broken: 0
   });
-  const [movements, setMovements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1473,118 +1474,126 @@ function Dashboard({ user }) {
   }, []);
 
   const loadDashboard = async () => {
-    // Load inventory totals
+    // Load all component counts by status
+    const statuses = ['Yard', 'WH_Site', 'Eng', 'Mng', 'Spare', 'Order', 'Trans', 'ToCollect', 'TP', 'HF'];
+    const counts = {};
+    
+    for (const status of statuses) {
+      const { data } = await supabase.from('request_components').select('id').eq('status', status);
+      counts[status] = data?.length || 0;
+    }
+    
+    // Load Open MIRs count
+    const { data: mirData } = await supabase.from('mirs').select('id').eq('status', 'Open');
+    
+    // Load inventory totals for Lost/Broken
     const { data: invData } = await supabase
       .from('inventory')
-      .select('yard_qty, site_qty, lost_qty, broken_qty');
+      .select('lost_qty, broken_qty');
     
+    let totalLost = 0, totalBroken = 0;
     if (invData) {
-      setStats(prev => ({
-        ...prev,
-        yard: invData.reduce((sum, i) => sum + (i.yard_qty || 0), 0),
-        site: invData.reduce((sum, i) => sum + (i.site_qty || 0), 0),
-        lost: invData.reduce((sum, i) => sum + (i.lost_qty || 0), 0),
-        broken: invData.reduce((sum, i) => sum + (i.broken_qty || 0), 0)
-      }));
+      totalLost = invData.reduce((sum, i) => sum + (i.lost_qty || 0), 0);
+      totalBroken = invData.reduce((sum, i) => sum + (i.broken_qty || 0), 0);
     }
 
-    // Load counts
-    const { data: siteData } = await supabase.from('request_components').select('id').eq('status', 'WH_Site');
-    const { data: engData } = await supabase.from('request_components').select('id').eq('status', 'Eng');
-    const { data: orderData } = await supabase.from('request_components').select('id').eq('status', 'Order');
-    const { data: collectData } = await supabase.from('request_components').select('id').eq('status', 'ToCollect');
-
-    setStats(prev => ({
-      ...prev,
-      activeRequests: siteData?.length || 0,
-      pendingEng: engData?.length || 0,
-      toOrder: orderData?.length || 0,
-      toCollect: collectData?.length || 0
-    }));
-
-    // Load recent movements
-    const { data: movData } = await supabase
-      .from('movements')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(5);
+    setStats({
+      yard: counts['Yard'] || 0,
+      site: counts['WH_Site'] || 0,
+      eng: counts['Eng'] || 0,
+      mng: counts['Mng'] || 0,
+      spare: counts['Spare'] || 0,
+      order: counts['Order'] || 0,
+      siteIn: counts['Trans'] || 0,
+      toCollect: counts['ToCollect'] || 0,
+      tp: counts['TP'] || 0,
+      hf: counts['HF'] || 0,
+      mirOpen: mirData?.length || 0,
+      lost: totalLost,
+      broken: totalBroken
+    });
     
-    if (movData) setMovements(movData);
     setLoading(false);
   };
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
+  // Dashboard box style
+  const boxStyle = (color) => ({
+    backgroundColor: color,
+    padding: '20px',
+    borderRadius: '12px',
+    color: 'white',
+    textAlign: 'center',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+  });
+
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <StatBox title="YARD" value={stats.yard.toLocaleString()} color={COLORS.secondary} />
-        <StatBox title="SITE" value={stats.site.toLocaleString()} color={COLORS.info} />
-        <StatBox title="LOST" value={stats.lost.toLocaleString()} color={COLORS.orange} />
-        <StatBox title="BROKEN" value={stats.broken.toLocaleString()} color={COLORS.purple} />
+      <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>📊 Request Status Overview</h2>
+      
+      {/* Main Status Grid - 5 columns */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={boxStyle(COLORS.secondary)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Yard</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.yard}</p>
+        </div>
+        <div style={boxStyle(COLORS.info)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>WH Site</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.site}</p>
+        </div>
+        <div style={boxStyle(COLORS.purple)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Engineering</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.eng}</p>
+        </div>
+        <div style={boxStyle(COLORS.yellow)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Management</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.mng}</p>
+        </div>
+        <div style={boxStyle(COLORS.pink)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Spare Parts</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.spare}</p>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
-        <div style={{ ...styles.card, padding: '24px' }}>
-          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Active @ Site</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.info }}>{stats.activeRequests}</p>
+      {/* Second Row - 5 columns */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+        <div style={boxStyle(COLORS.orange)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Orders</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.order}</p>
         </div>
-        <div style={{ ...styles.card, padding: '24px' }}>
-          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>Pending Engineering</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.purple }}>{stats.pendingEng}</p>
+        <div style={boxStyle(COLORS.cyan)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Site IN</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.siteIn}</p>
         </div>
-        <div style={{ ...styles.card, padding: '24px' }}>
-          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>To Order</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.warning }}>{stats.toOrder}</p>
+        <div style={boxStyle(COLORS.success)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>To Be Collected</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.toCollect}</p>
         </div>
-        <div style={{ ...styles.card, padding: '24px' }}>
-          <h3 style={{ color: '#6b7280', fontSize: '14px', marginBottom: '8px' }}>To Be Collected</h3>
-          <p style={{ fontSize: '32px', fontWeight: 'bold', color: COLORS.success }}>{stats.toCollect}</p>
+        <div style={boxStyle('#8B5CF6')}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>TestPack</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.tp}</p>
+        </div>
+        <div style={boxStyle(COLORS.teal)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>HF</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.hf}</p>
         </div>
       </div>
 
-      <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Ultimi Movimenti</h3>
+      {/* Third Row - MIR, Lost, Broken */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+        <div style={boxStyle(COLORS.primary)}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>📋 MIR Open</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.mirOpen}</p>
         </div>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Data</th>
-              <th style={styles.th}>Tipo</th>
-              <th style={styles.th}>Code</th>
-              <th style={styles.th}>Qty</th>
-              <th style={styles.th}>Da → A</th>
-            </tr>
-          </thead>
-          <tbody>
-            {movements.map((mov, idx) => (
-              <tr key={idx}>
-                <td style={styles.td}>{new Date(mov.created_at).toLocaleDateString()}</td>
-                <td style={styles.td}>
-                  <span style={{
-                    ...styles.statusBadge,
-                    backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
-                                    mov.movement_type === 'OUT' ? COLORS.primary :
-                                    mov.movement_type === 'LOST' ? COLORS.orange : COLORS.purple
-                  }}>
-                    {mov.movement_type}
-                  </span>
-                </td>
-                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
-                <td style={styles.td}>{mov.quantity}</td>
-                <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
-              </tr>
-            ))}
-            {movements.length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                  No movements
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div style={boxStyle('#DC2626')}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>⚠️ Lost</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.lost}</p>
+        </div>
+        <div style={boxStyle('#7C3AED')}>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🔧 Broken</p>
+          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.broken}</p>
+        </div>
       </div>
     </div>
   );
@@ -2887,6 +2896,20 @@ function WHSitePage({ user }) {
             .eq('id', component.id);
           await logHistory(component.id, 'Sent to Engineering', 'WH_Site', 'Eng', note);
           break;
+        case 'hf':
+          // V28.4: Direct to HF page
+          await supabase.from('request_components')
+            .update({ status: 'HF' })
+            .eq('id', component.id);
+          await logHistory(component.id, 'Sent to HF', 'WH_Site', 'HF', 'Direct to HF from WH Site');
+          break;
+        case 'tp':
+          // V28.4: Direct to TestPack page
+          await supabase.from('request_components')
+            .update({ status: 'TP' })
+            .eq('id', component.id);
+          await logHistory(component.id, 'Sent to TestPack', 'WH_Site', 'TP', 'Direct to TestPack from WH Site');
+          break;
         case 'delete':
           if (confirm('Delete this component?')) {
             await supabase.from('request_components')
@@ -3327,6 +3350,8 @@ function WHSitePage({ user }) {
                         { id: 'pt', icon: '✂️', label: 'Partial' },
                         { id: 'yard', icon: '🏢', label: 'To Yard' },
                         { id: 'eng', icon: '⚙️', label: 'To Engineering' },
+                        { id: 'hf', icon: '🔩', label: 'To HF' },
+                        { id: 'tp', icon: '📋', label: 'To TestPack' },
                         { id: 'delete', icon: '🗑️', label: 'Delete' }
                       ]}
                       onExecute={(action) => handleAction(comp, action)}
@@ -3567,6 +3592,20 @@ function WHYardPage({ user }) {
             .update({ status: 'Eng' })
             .eq('id', component.id);
           await logHistory(component.id, 'Sent to Engineering', 'Yard', 'Eng', '');
+          break;
+        case 'hf':
+          // V28.4: Direct to HF page
+          await supabase.from('request_components')
+            .update({ status: 'HF' })
+            .eq('id', component.id);
+          await logHistory(component.id, 'Sent to HF', 'Yard', 'HF', 'Direct to HF from WH Yard');
+          break;
+        case 'tp':
+          // V28.4: Direct to TestPack page
+          await supabase.from('request_components')
+            .update({ status: 'TP' })
+            .eq('id', component.id);
+          await logHistory(component.id, 'Sent to TestPack', 'Yard', 'TP', 'Direct to TestPack from WH Yard');
           break;
         case 'return':
           await supabase.from('request_components')
@@ -4029,6 +4068,8 @@ function WHYardPage({ user }) {
                   yardActions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
                 }
                 yardActions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
+                yardActions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
+                yardActions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
                 yardActions.push({ id: 'return', icon: '↩️', label: 'Return to Site' });
                 yardActions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
                 
@@ -5766,35 +5807,43 @@ function MaterialInPage({ user }) {
     setLoading(false);
   };
 
-  // Search ident code in project_materials
-  const searchIdentCode = async (term) => {
+  // V28.4: Search ident code with debounce (3+ chars, 500ms delay)
+  const searchIdentCode = (term) => {
+    // Clear previous timeout
+    if (identSearchTimeout) clearTimeout(identSearchTimeout);
+    
     if (term.length < 3) {
       setSearchResults([]);
       setShowSearchResults(false);
       return;
     }
-    const { data, error } = await supabase
-      .from('project_materials')
-      .select('ident_code, description, dia1')
-      .ilike('ident_code', `%${term}%`)
-      .limit(30);
     
-    console.log('Material IN search for', term, ':', data); // Debug
-    if (error) console.error('Material IN search error:', error);
-    
-    if (data) {
-      // Get unique ident codes with their data
-      const unique = [];
-      const seen = new Set();
-      data.forEach(d => {
-        if (!seen.has(d.ident_code)) {
-          seen.add(d.ident_code);
-          unique.push(d);
-        }
-      });
-      setSearchResults(unique);
-      setShowSearchResults(true);
-    }
+    // Debounce by 500ms
+    const timeout = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from('project_materials')
+        .select('ident_code, description, dia1')
+        .ilike('ident_code', `%${term}%`)
+        .limit(30);
+      
+      console.log('Material IN search for', term, ':', data); // Debug
+      if (error) console.error('Material IN search error:', error);
+      
+      if (data) {
+        // Get unique ident codes with their data
+        const unique = [];
+        const seen = new Set();
+        data.forEach(d => {
+          if (!seen.has(d.ident_code)) {
+            seen.add(d.ident_code);
+            unique.push(d);
+          }
+        });
+        setSearchResults(unique);
+        setShowSearchResults(true);
+      }
+    }, 500);
+    setIdentSearchTimeout(timeout);
   };
 
   const selectIdent = (item) => {
@@ -7662,6 +7711,8 @@ function LogPage({ user }) {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyData, setHistoryData] = useState([]);
   const [activeRequests, setActiveRequests] = useState([]); // V28.2: For linking IB to requests
+  // V28.4: Debounce timeout for IB ident search
+  const [ibSearchTimeout, setIBSearchTimeout] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -7712,30 +7763,38 @@ function LogPage({ user }) {
     setShowHistoryModal(true);
   };
 
-  // Search ident code for IB
-  const searchIdentForIB = async (term) => {
+  // V28.4: Search ident code for IB with debounce (3+ chars, 500ms delay)
+  const searchIdentForIB = (term) => {
+    // Clear previous timeout
+    if (ibSearchTimeout) clearTimeout(ibSearchTimeout);
+    
     if (term.length < 3) {
       setSearchResults([]);
       setShowSearchResults(false);
       return;
     }
-    const { data } = await supabase
-      .from('project_materials')
-      .select('ident_code, description, dia1, tag_number')
-      .ilike('ident_code', `%${term}%`)
-      .limit(20);
-    if (data) {
-      const unique = [];
-      const seen = new Set();
-      data.forEach(d => {
-        if (!seen.has(d.ident_code)) {
-          seen.add(d.ident_code);
-          unique.push(d);
-        }
-      });
-      setSearchResults(unique);
-      setShowSearchResults(true);
-    }
+    
+    // Debounce by 500ms
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase
+        .from('project_materials')
+        .select('ident_code, description, dia1, tag_number')
+        .ilike('ident_code', `%${term}%`)
+        .limit(20);
+      if (data) {
+        const unique = [];
+        const seen = new Set();
+        data.forEach(d => {
+          if (!seen.has(d.ident_code)) {
+            seen.add(d.ident_code);
+            unique.push(d);
+          }
+        });
+        setSearchResults(unique);
+        setShowSearchResults(true);
+      }
+    }, 500);
+    setIBSearchTimeout(timeout);
   };
 
   const selectIdentForIB = (item) => {
@@ -7899,10 +7958,14 @@ function LogPage({ user }) {
   const filteredRequests = requests.filter(r => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
+    // V28.4: Use padded request number for proper matching
+    const paddedReqNum = String(r.requests?.request_number || '').padStart(5, '0');
+    const fullReqNum = `${paddedReqNum}-${r.requests?.sub_number || 0}`;
     return (
       (r.ident_code || '').toLowerCase().includes(term) ||
       (r.description || '').toLowerCase().includes(term) ||
-      String(r.requests?.request_number).includes(term) ||
+      paddedReqNum.includes(term) ||
+      fullReqNum.includes(term) ||
       (r.requests?.hf_number || '').toLowerCase().includes(term) ||
       (r.requests?.test_pack_number || '').toLowerCase().includes(term) ||
       (r.requests?.created_by_name || '').toLowerCase().includes(term)
@@ -8031,9 +8094,8 @@ function LogPage({ user }) {
       {/* Request Tracker Tab */}
       {activeTab === 'tracker' && (
         <div style={styles.card}>
-          <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ ...styles.cardHeader }}>
             <h3 style={{ fontWeight: '600' }}>Request Tracker ({filteredRequests.length})</h3>
-            <PrintRequestsButton requests={filteredRequests} />
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.table}>
