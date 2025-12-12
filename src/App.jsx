@@ -24,7 +24,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.4';
+const APP_VERSION = 'V28.5';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -8721,11 +8721,13 @@ function DatabasePage({ user }) {
   useEffect(() => { loadInventory(); }, [isoFilter, identFilter]);
 
   // V28.3: Load unique ISO and Ident options for autocomplete
+  // V28.5: Filtered to P121 project only
   const loadFilters = async () => {
-    // Get unique ISO numbers
+    // Get unique ISO numbers - P121 only
     const { data: isoData } = await supabase
       .from('project_materials')
       .select('iso_number')
+      .like('iso_number', 'P121%')  // V28.5: P121 project filter
       .not('iso_number', 'is', null)
       .order('iso_number');
     
@@ -8734,10 +8736,11 @@ function DatabasePage({ user }) {
       setIsoOptions(uniqueIsos);
     }
     
-    // Get unique ident codes
+    // Get unique ident codes from P121 project
     const { data: identData } = await supabase
       .from('project_materials')
       .select('ident_code')
+      .like('iso_number', 'P121%')  // V28.5: P121 project filter
       .not('ident_code', 'is', null)
       .order('ident_code');
     
@@ -8751,9 +8754,11 @@ function DatabasePage({ user }) {
     setLoading(true);
     
     // V28.3: Build query with filters
+    // V28.5: P121 project filter
     let query = supabase
       .from('project_materials')
       .select('iso_number, ident_code, description, pos_qty, dia1')
+      .like('iso_number', 'P121%')  // V28.5: P121 project filter
       .order('iso_number')
       .order('ident_code');
     
@@ -9364,7 +9369,7 @@ export default function App() {
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'dashboard': return <Dashboard user={user} setActivePage={setActivePage} />;
+      case 'dashboard': return <Dashboard user={user} setActivePage={setCurrentPage} />;
       case 'requests': return <RequestsPage user={user} />;
       case 'mir': return <MIRPage user={user} />;
       case 'materialIn': return <MaterialInPage user={user} />;
@@ -9381,7 +9386,7 @@ export default function App() {
       case 'management': return <ManagementPage user={user} />;
       case 'database': return <DatabasePage user={user} />;
       case 'print': return <PrintRequestsPage user={user} />;
-      default: return <Dashboard user={user} setActivePage={setActivePage} />;
+      default: return <Dashboard user={user} setActivePage={setCurrentPage} />;
     }
   };
 
