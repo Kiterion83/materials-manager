@@ -1,10 +1,8 @@
 // ============================================================
-// MATERIALS MANAGER V28.2 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.3 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V28.2: Management notes icon-only, Spare Parts split,
-//        Orders improvements, IB linked to requests,
-//        Material IN notes, Free collection, Description in history,
-//        TestPack description, Print preview
+// V28.3: Spare Parts dropdown, Note field, Print everywhere,
+//        Alert column, Database filters, Eye→ℹ️
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -20,7 +18,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.2';
+const APP_VERSION = 'V28.3';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -281,6 +279,71 @@ function PrintRequestsButton({ requests }) {
       }}
     >
       🖨️ Print Preview
+    </button>
+  );
+}
+
+// V28.3: Generic Print Table Button for all pages
+function PrintTableButton({ title, columns, data, fileName }) {
+  const handlePrint = () => {
+    const printWindow = window.open('', '_blank');
+    const today = new Date().toLocaleDateString();
+    
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${title} - Materials Manager</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; font-size: 11px; }
+          h1 { color: #E31E24; font-size: 16px; margin-bottom: 5px; }
+          h2 { color: #666; font-size: 12px; margin-top: 0; font-weight: normal; }
+          table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+          th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+          th { background-color: #1f2937; color: white; font-size: 10px; }
+          tr:nth-child(even) { background-color: #f9fafb; }
+          .mono { font-family: monospace; }
+          .alert { color: #DC2626; font-weight: bold; }
+          @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+        </style>
+      </head>
+      <body>
+        <h1>MAX STREICHER - ${title}</h1>
+        <h2>Generated: ${today} | Total: ${data.length} items</h2>
+        <table>
+          <thead>
+            <tr>${columns.map(c => `<th>${c.header}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${data.map(row => `<tr>${columns.map(c => `<td class="${c.mono ? 'mono' : ''} ${c.alert && c.alert(row) ? 'alert' : ''}">${c.render ? c.render(row) : (row[c.key] || '-')}</td>`).join('')}</tr>`).join('')}
+          </tbody>
+        </table>
+      </body>
+      </html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => printWindow.print(), 500);
+  };
+  
+  return (
+    <button 
+      onClick={handlePrint}
+      style={{
+        ...styles.button,
+        backgroundColor: COLORS.purple,
+        color: 'white',
+        fontSize: '12px',
+        padding: '6px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px'
+      }}
+      title={`Print ${title}`}
+    >
+      🖨️ Print
     </button>
   );
 }
@@ -2321,7 +2384,7 @@ function RequestsPage({ user }) {
               )}
 
               <div style={{ marginBottom: '20px' }}>
-                <label style={styles.label}>Description (optional)</label>
+                <label style={styles.label}>Note (optional)</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -2368,14 +2431,14 @@ function RequestsPage({ user }) {
                 />
               </div>
 
-              {/* V28.2: Description field for TestPack (replaces Secondary Collector) */}
+              {/* V28.3: Note field for TestPack */}
               <div style={{ marginBottom: '20px' }}>
-                <label style={styles.label}>Description / Notes (optional)</label>
+                <label style={styles.label}>Note (optional)</label>
                 <textarea
                   value={componentDescription}
                   onChange={(e) => setComponentDescription(e.target.value)}
                   style={{ ...styles.input, minHeight: '80px' }}
-                  placeholder="Enter any additional notes or description..."
+                  placeholder="Enter any additional notes..."
                   disabled={!canModify}
                 />
               </div>
@@ -2761,7 +2824,7 @@ function WHSitePage({ user }) {
     // Load components with full request info
     const { data: siteData, error: siteError } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'WH_Site');
 
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
@@ -2769,7 +2832,7 @@ function WHSitePage({ user }) {
     // Load Engineering Checks sent to Site (separate section)
     const { data: checksData, error: checksError } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
       .eq('eng_check_sent_to', 'WH_Site');
 
@@ -2778,7 +2841,7 @@ function WHSitePage({ user }) {
     // Load Engineering Notes (legacy)
     const { data: notesData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number)`)
+      .select(`*, requests (request_number, sub_number, description)`)
       .eq('has_eng_check', true)
       .eq('eng_check_sent_to', 'WH_Site');
 
@@ -3161,8 +3224,53 @@ function WHSitePage({ user }) {
 
       {/* Site Components */}
       <div style={styles.card}>
-        <div style={styles.cardHeader}>
+        <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontWeight: '600' }}>WH Site - Components ({components.length})</h3>
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>WH Site Components</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #2563EB; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #DBEAFE; }
+                  .alert { color: #DC2626; font-weight: bold; }
+                </style></head><body>
+                <h1>🏭 WH Site - Components</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Site</th><th>Yard</th><th>Alert</th></tr>
+                  ${components.map(comp => {
+                    const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+                    const totalAvailable = inv.site + inv.yard;
+                    const isOverQty = comp.quantity > totalAvailable;
+                    return `<tr>
+                      <td>${comp.requests?.request_type || '-'}</td>
+                      <td>${comp.requests?.sub_category || '-'}</td>
+                      <td>${comp.requests?.iso_number || '-'}</td>
+                      <td>${comp.requests?.full_spool_number || '-'}</td>
+                      <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                      <td>${comp.ident_code}</td>
+                      <td>${comp.description || '-'}</td>
+                      <td>${comp.quantity}</td>
+                      <td>${inv.site}</td>
+                      <td>${inv.yard}</td>
+                      <td class="${isOverQty ? 'alert' : ''}">${isOverQty ? '⚠️' : ''}</td>
+                    </tr>`;
+                  }).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -3181,12 +3289,15 @@ function WHSitePage({ user }) {
                 <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                 <th style={styles.th}>Actions</th>
+                <th style={{ ...styles.th, textAlign: 'center', width: '40px' }}>ℹ️</th>
+                <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>Alert</th>
               </tr>
             </thead>
             <tbody>
               {components.map(comp => {
                 const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
-                const isOverQty = comp.quantity > inv.site;
+                const totalAvailable = inv.site + inv.yard;
+                const isOverQty = comp.quantity > totalAvailable;
                 return (
                 <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
@@ -3202,10 +3313,7 @@ function WHSitePage({ user }) {
                   <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
                     {comp.description ? (comp.description.length > 30 ? comp.description.substring(0, 30) + '...' : comp.description) : '-'}
                   </td>
-                  <td style={styles.td}>
-                    {comp.quantity}
-                    {isOverQty && <OverQtyInfo note={`Requested ${comp.quantity}, available ${inv.site}`} />}
-                  </td>
+                  <td style={styles.td}>{comp.quantity}</td>
                   <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
                     {inv.site}
                   </td>
@@ -3213,28 +3321,33 @@ function WHSitePage({ user }) {
                     {inv.yard}
                   </td>
                   <td style={styles.td}>
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      <ActionDropdown
-                        actions={[
-                          { id: 'ready', icon: '✓', label: 'Ready' },
-                          { id: 'pt', icon: '✂️', label: 'Partial' },
-                          { id: 'yard', icon: '🏢', label: 'To Yard' },
-                          { id: 'eng', icon: '⚙️', label: 'To Engineering' },
-                          { id: 'delete', icon: '🗑️', label: 'Delete' }
-                        ]}
-                        onExecute={(action) => handleAction(comp, action)}
-                        disabled={!canModify}
-                        componentId={comp.id}
-                      />
-                      <ActionButton color={comp.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
-                    </div>
+                    <ActionDropdown
+                      actions={[
+                        { id: 'ready', icon: '✓', label: 'Ready' },
+                        { id: 'pt', icon: '✂️', label: 'Partial' },
+                        { id: 'yard', icon: '🏢', label: 'To Yard' },
+                        { id: 'eng', icon: '⚙️', label: 'To Engineering' },
+                        { id: 'delete', icon: '🗑️', label: 'Delete' }
+                      ]}
+                      onExecute={(action) => handleAction(comp, action)}
+                      disabled={!canModify}
+                      componentId={comp.id}
+                    />
+                  </td>
+                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                    <ActionButton color={comp.requests?.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
+                  </td>
+                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                    {isOverQty && (
+                      <span title={`Requested ${comp.quantity}, available ${totalAvailable}`} style={{ cursor: 'help', fontSize: '18px' }}>⚠️</span>
+                    )}
                   </td>
                 </tr>
                 );
               })}
               {components.length === 0 && (
                 <tr>
-                  <td colSpan="13" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="15" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                     No components in WH Site
                   </td>
                 </tr>
@@ -3404,13 +3517,13 @@ function WHYardPage({ user }) {
     
     const { data: yardData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Yard');
 
     // Load Engineering Checks sent to Yard
     const { data: checksData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
       .eq('eng_check_sent_to', 'Yard');
 
@@ -3830,8 +3943,53 @@ function WHYardPage({ user }) {
       )}
 
       <div style={styles.card}>
-        <div style={styles.cardHeader}>
+        <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontWeight: '600' }}>WH Yard - Components ({components.length})</h3>
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>WH Yard Components</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #1F2937; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #F3F4F6; }
+                  .alert { color: #DC2626; font-weight: bold; }
+                </style></head><body>
+                <h1>🏢 WH Yard - Components</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Site</th><th>Yard</th><th>Alert</th></tr>
+                  ${components.map(comp => {
+                    const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+                    const totalAvailable = inv.site + inv.yard;
+                    const isOverQty = comp.quantity > totalAvailable;
+                    return `<tr>
+                      <td>${comp.requests?.request_type || '-'}</td>
+                      <td>${comp.requests?.sub_category || '-'}</td>
+                      <td>${comp.requests?.iso_number || '-'}</td>
+                      <td>${comp.requests?.full_spool_number || '-'}</td>
+                      <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                      <td>${comp.ident_code}</td>
+                      <td>${comp.description || '-'}</td>
+                      <td>${comp.quantity}</td>
+                      <td>${inv.site}</td>
+                      <td>${inv.yard}</td>
+                      <td class="${isOverQty ? 'alert' : ''}">${isOverQty ? '⚠️' : ''}</td>
+                    </tr>`;
+                  }).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -3850,14 +4008,17 @@ function WHYardPage({ user }) {
                 <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                 <th style={styles.th}>Actions</th>
+                <th style={{ ...styles.th, textAlign: 'center', width: '40px' }}>ℹ️</th>
+                <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>Alert</th>
               </tr>
             </thead>
             <tbody>
               {components.map(comp => {
                 const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
                 const available = inv.yard;
+                const totalAvailable = inv.site + inv.yard;
                 const canFulfill = available >= comp.quantity;
-                const isOverQty = comp.quantity > available;
+                const isOverQty = comp.quantity > totalAvailable;
                 
                 // Build actions list based on conditions
                 const yardActions = [];
@@ -3886,10 +4047,7 @@ function WHYardPage({ user }) {
                     <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
                       {comp.description ? (comp.description.length > 30 ? comp.description.substring(0, 30) + '...' : comp.description) : '-'}
                     </td>
-                    <td style={styles.td}>
-                      {comp.quantity}
-                      {isOverQty && <OverQtyInfo note={`Requested ${comp.quantity}, available ${available}`} />}
-                    </td>
+                    <td style={styles.td}>{comp.quantity}</td>
                     <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
                       {inv.site}
                     </td>
@@ -3897,22 +4055,27 @@ function WHYardPage({ user }) {
                       {available}
                     </td>
                     <td style={styles.td}>
-                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                        <ActionDropdown
-                          actions={yardActions}
-                          onExecute={(action) => handleAction(comp, action)}
-                          disabled={!canModify}
-                          componentId={comp.id}
-                        />
-                        <ActionButton color={comp.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
-                      </div>
+                      <ActionDropdown
+                        actions={yardActions}
+                        onExecute={(action) => handleAction(comp, action)}
+                        disabled={!canModify}
+                        componentId={comp.id}
+                      />
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center' }}>
+                      <ActionButton color={comp.requests?.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center' }}>
+                      {isOverQty && (
+                        <span title={`Requested ${comp.quantity}, available ${totalAvailable}`} style={{ cursor: 'help', fontSize: '18px' }}>⚠️</span>
+                      )}
                     </td>
                   </tr>
                 );
               })}
               {components.length === 0 && (
                 <tr>
-                  <td colSpan="13" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="15" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                     No components in WH Yard
                   </td>
                 </tr>
@@ -4063,7 +4226,7 @@ function SiteInPage({ user }) {
     setLoading(true);
     const { data } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Trans');
     if (data) setComponents(data);
     setLoading(false);
@@ -4112,8 +4275,44 @@ function SiteInPage({ user }) {
   return (
     <div>
       <div style={styles.card}>
-        <div style={styles.cardHeader}>
+        <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontWeight: '600' }}>Site IN - Material in Transit ({components.length})</h3>
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>Site IN - Transit</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #16a34a; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #DCFCE7; }
+                </style></head><body>
+                <h1>🏗️ Site IN - Material in Transit</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
+                  ${components.map(comp => `<tr>
+                    <td>${comp.requests?.request_type || '-'}</td>
+                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.requests?.iso_number || '-'}</td>
+                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.quantity}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -4213,13 +4412,13 @@ function EngineeringPage({ user }) {
     // Waiting for Check: items sent to Site/Yard for verification
     const { data: waitingData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true);
     
     // To Process: items in Eng status without pending check
     const { data: processData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Eng')
       .eq('has_eng_check', false);
     
@@ -4438,7 +4637,7 @@ function EngineeringPage({ user }) {
                 disabled={!canModify}
                 componentId={comp.id}
               />
-              <ActionButton color={comp.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
+              <ActionButton color={comp.requests?.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
             </div>
           </td>
         )}
@@ -4458,12 +4657,57 @@ function EngineeringPage({ user }) {
         padding: '16px',
         marginBottom: '24px'
       }}>
-        <h3 style={{ fontWeight: '600', color: '#7C3AED', marginBottom: '12px' }}>
-          🔍 Waiting for Check ({filteredWaiting.length})
-        </h3>
-        <p style={{ fontSize: '13px', color: '#6b7280', marginBottom: '12px' }}>
-          Items sent to WH Site/Yard for verification - waiting for response
-        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+          <div>
+            <h3 style={{ fontWeight: '600', color: '#7C3AED', marginBottom: '4px' }}>
+              🔍 Waiting for Check ({filteredWaiting.length})
+            </h3>
+            <p style={{ fontSize: '13px', color: '#6b7280' }}>
+              Items sent to WH Site/Yard for verification - waiting for response
+            </p>
+          </div>
+          {filteredWaiting.length > 0 && (
+            <button
+              onClick={() => {
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                  <html><head><title>Engineering - Waiting for Check</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h1 { color: #7C3AED; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                    th { background-color: #F3E8FF; }
+                  </style></head><body>
+                  <h1>🔍 Engineering - Waiting for Check</h1>
+                  <p>Printed: ${new Date().toLocaleString()} | Total: ${filteredWaiting.length}</p>
+                  <table>
+                    <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Sent To</th></tr>
+                    ${filteredWaiting.map(comp => `<tr>
+                      <td>${comp.requests?.request_type || '-'}</td>
+                      <td>${comp.requests?.sub_category || '-'}</td>
+                      <td>${comp.requests?.iso_number || '-'}</td>
+                      <td>${comp.requests?.full_spool_number || '-'}</td>
+                      <td>${comp.requests?.hf_number || '-'}</td>
+                      <td>${comp.requests?.test_pack_number || '-'}</td>
+                      <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                      <td>${comp.ident_code}</td>
+                      <td>${comp.description || '-'}</td>
+                      <td>${comp.quantity}</td>
+                      <td>${comp.eng_check_sent_to || '-'}</td>
+                    </tr>`).join('')}
+                  </table>
+                  </body></html>
+                `);
+                printWindow.document.close();
+                printWindow.print();
+              }}
+              style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+            >
+              🖨️ Print
+            </button>
+          )}
+        </div>
         {filteredWaiting.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.table}>
@@ -4496,11 +4740,51 @@ function EngineeringPage({ user }) {
 
       {/* Section 2: To Process */}
       <div style={styles.card}>
-        <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>📋 To Process ({filteredToProcess.length})</h3>
-          <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
-            Items verified by WH - need Engineering decision
-          </p>
+        <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h3 style={{ fontWeight: '600' }}>📋 To Process ({filteredToProcess.length})</h3>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '4px' }}>
+              Items verified by WH - need Engineering decision
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              const allComps = [...filteredWaiting, ...filteredToProcess];
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>Engineering Components</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #7C3AED; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #F3E8FF; }
+                </style></head><body>
+                <h1>⚙️ Engineering - All Components</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Waiting: ${filteredWaiting.length} | To Process: ${filteredToProcess.length}</p>
+                <table>
+                  <tr><th>Status</th><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
+                  ${allComps.map(comp => `<tr>
+                    <td>${comp.has_eng_check ? 'Waiting Check' : 'To Process'}</td>
+                    <td>${comp.requests?.request_type || '-'}</td>
+                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.requests?.iso_number || '-'}</td>
+                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.quantity}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print All
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -4727,16 +5011,55 @@ function HFPage({ user }) {
 
   return (
     <div>
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          🔩 HF - Flanged Joints
-          <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#6b7280' }}>
-            ({groupList.length} groups)
-          </span>
-        </h2>
-        <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
-          Complete all parts of an HF before delivering
-        </p>
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            🔩 HF - Flanged Joints
+            <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#6b7280' }}>
+              ({groupList.length} groups)
+            </span>
+          </h2>
+          <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
+            Complete all parts of an HF before delivering
+          </p>
+        </div>
+        {groupList.length > 0 && (
+          <button
+            onClick={() => {
+              const allComps = groupList.flatMap(g => g.components.map(c => ({ ...c, hf: g.hf_number })));
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>HF - Flanged Joints</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #0D9488; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #CCFBF1; }
+                </style></head><body>
+                <h1>🔩 HF - Flanged Joints</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Groups: ${groupList.length} | Components: ${allComps.length}</p>
+                <table>
+                  <tr><th>HF</th><th>Request</th><th>Code</th><th>Description</th><th>Tag</th><th>Qty</th></tr>
+                  ${allComps.map(comp => `<tr>
+                    <td>${comp.hf || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number || 0}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.tag || '-'}</td>
+                    <td>${comp.quantity}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
+        )}
       </div>
 
       {groupList.length === 0 ? (
@@ -4830,7 +5153,7 @@ function HFPage({ user }) {
                         </span>
                       </td>
                       <td style={styles.td}>
-                        <ActionButton color={comp.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
+                        <ActionButton color={comp.requests?.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                       </td>
                     </tr>
                   ))}
@@ -4944,16 +5267,55 @@ function TestPackPage({ user }) {
 
   return (
     <div>
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          📋 TestPack Materials
-          <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#6b7280' }}>
-            ({groupList.length} groups)
-          </span>
-        </h2>
-        <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
-          Complete all parts of a TestPack before delivering
-        </p>
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            📋 TestPack Materials
+            <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#6b7280' }}>
+              ({groupList.length} groups)
+            </span>
+          </h2>
+          <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
+            Complete all parts of a TestPack before delivering
+          </p>
+        </div>
+        {groupList.length > 0 && (
+          <button
+            onClick={() => {
+              const allComps = groupList.flatMap(g => g.components.map(c => ({ ...c, tp: g.test_pack_number })));
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>TestPack Materials</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #7C3AED; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #F3E8FF; }
+                </style></head><body>
+                <h1>📋 TestPack Materials</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Groups: ${groupList.length} | Components: ${allComps.length}</p>
+                <table>
+                  <tr><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Tag</th><th>Qty</th></tr>
+                  ${allComps.map(comp => `<tr>
+                    <td>${comp.tp || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number || 0}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.tag || '-'}</td>
+                    <td>${comp.quantity}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
+        )}
       </div>
 
       {groupList.length === 0 ? (
@@ -5032,7 +5394,7 @@ function TestPackPage({ user }) {
                         </span>
                       </td>
                       <td style={styles.td}>
-                        <ActionButton color={comp.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
+                        <ActionButton color={comp.requests?.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
                       </td>
                     </tr>
                   ))}
@@ -5169,11 +5531,53 @@ function ToBeCollectedPage({ user }) {
 
   return (
     <div>
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>✅ To Be Collected</h2>
-        <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
-          Material ready for pickup - Enter collector name when collecting
-        </p>
+      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>✅ To Be Collected</h2>
+          <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
+            Material ready for pickup - Enter collector name when collecting
+          </p>
+        </div>
+        {components.length > 0 && (
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>To Be Collected</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #16A34A; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #D1FAE5; }
+                </style></head><body>
+                <h1>✅ To Be Collected</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
+                  ${components.map(comp => `<tr>
+                    <td>${comp.requests?.request_type || '-'}</td>
+                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.requests?.iso_number || '-'}</td>
+                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${comp.requests?.hf_number || '-'}</td>
+                    <td>${comp.requests?.test_pack_number || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.quantity}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
+        )}
       </div>
 
       <div style={styles.card}>
@@ -5224,7 +5628,7 @@ function ToBeCollectedPage({ user }) {
                       </ActionButton>
                       {/* V28.2: ℹ️ Blue if no description, Red if has description */}
                       <ActionButton 
-                        color={comp.description ? COLORS.primary : COLORS.info} 
+                        color={comp.requests?.description ? COLORS.primary : COLORS.info} 
                         onClick={() => openHistory(comp.id)} 
                         title={comp.description ? "Has Description - Click for History" : "No Description - Click for History"}
                       >
@@ -5524,7 +5928,7 @@ function MaterialInPage({ user }) {
             onClick={() => setShowPartialsLog(!showPartialsLog)}
             style={{ ...styles.button, ...styles.buttonSecondary }}
           >
-            📋 {showPartialsLog ? 'Hide' : 'Show'} Partials Log
+            📋 {showPartialsLog ? 'Hide' : 'Show'} Partial/Note Log
           </button>
         </div>
         <div style={{ padding: '20px' }}>
@@ -5805,13 +6209,49 @@ function MaterialInPage({ user }) {
         </div>
       )}
 
-      {/* Partials Log */}
+      {/* Partial/Note Log */}
       {showPartialsLog && (
         <div style={styles.card}>
           <div style={{ ...styles.cardHeader, backgroundColor: '#FEF3C7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ fontWeight: '600', color: COLORS.warning }}>⚠️ Partials Log - Items Not Fully Received</h3>
-            {/* V28.2: Export Buttons with Filters */}
+            <h3 style={{ fontWeight: '600', color: COLORS.warning }}>📋 Partial/Note Log</h3>
+            {/* V28.3: Print + Export Buttons */}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  printWindow.document.write(`
+                    <html><head><title>Partial/Note Log</title>
+                    <style>
+                      body { font-family: Arial, sans-serif; padding: 20px; }
+                      h1 { color: #B45309; }
+                      table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                      th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px; }
+                      th { background-color: #FEF3C7; }
+                    </style></head><body>
+                    <h1>📋 Partial/Note Log - Material IN</h1>
+                    <p>Printed: ${new Date().toLocaleString()}</p>
+                    <table>
+                      <tr><th>Date</th><th>MIR/RK</th><th>Ident Code</th><th>Description</th><th>Received</th><th>Missing</th><th>Note</th><th>By</th></tr>
+                      ${partialsLog.map(p => `<tr>
+                        <td>${new Date(p.created_at).toLocaleDateString()}</td>
+                        <td>${p.mir_number || '-'}/${p.rk_number || '-'}</td>
+                        <td>${p.ident_code}</td>
+                        <td>${p.description || '-'}</td>
+                        <td>${p.received_qty}</td>
+                        <td style="color: ${p.missing_qty > 0 ? 'red' : 'inherit'}">${p.missing_qty}</td>
+                        <td>${p.note || '-'}</td>
+                        <td>${p.created_by_name || '-'}</td>
+                      </tr>`).join('')}
+                    </table>
+                    </body></html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.print();
+                }}
+                style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white', fontSize: '12px', padding: '6px 12px' }}
+              >
+                🖨️ Print
+              </button>
               <button
                 onClick={() => {
                   // Export All
@@ -5955,7 +6395,7 @@ function SparePartsPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     const { data } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Spare');
     
     if (data) {
@@ -6048,6 +6488,17 @@ function SparePartsPage({ user }) {
     }
   };
 
+  // V28.3: Handle dropdown action
+  const handleAction = (component, actionId) => {
+    switch (actionId) {
+      case 'setDate': openClientModal(component); break;
+      case 'toSite': handleToSite(component); break;
+      case 'toYard': handleToYard(component); break;
+      case 'return': handleReturn(component); break;
+      case 'delete': handleDelete(component); break;
+    }
+  };
+
   const canModify = user.role === 'admin' || user.perm_spare_parts === 'modify';
 
   const filterComponents = (comps) => {
@@ -6110,13 +6561,18 @@ function SparePartsPage({ user }) {
                 )}
               </td>
               <td style={styles.td}>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  <ActionButton color={COLORS.teal} onClick={() => openClientModal(comp)} disabled={!canModify} title="Set Date">📅</ActionButton>
-                  <ActionButton color={COLORS.info} onClick={() => handleToSite(comp)} disabled={!canModify} title="To Site">S</ActionButton>
-                  <ActionButton color={COLORS.secondary} onClick={() => handleToYard(comp)} disabled={!canModify} title="To Yard">Y</ActionButton>
-                  <ActionButton color={COLORS.gray} onClick={() => handleReturn(comp)} disabled={!canModify} title="Return">↩️</ActionButton>
-                  <ActionButton color={COLORS.primary} onClick={() => handleDelete(comp)} disabled={!canModify} title="Delete">🗑️</ActionButton>
-                </div>
+                <ActionDropdown
+                  actions={[
+                    { id: 'setDate', icon: '📅', label: 'Set Expected Date' },
+                    { id: 'toSite', icon: '📦', label: 'To Site' },
+                    { id: 'toYard', icon: '🏭', label: 'To Yard' },
+                    { id: 'return', icon: '↩️', label: 'Return to Eng' },
+                    { id: 'delete', icon: '🗑️', label: 'Delete' }
+                  ]}
+                  onExecute={(action) => handleAction(comp, action)}
+                  disabled={!canModify}
+                  componentId={comp.id}
+                />
               </td>
             </tr>
           );
@@ -6134,8 +6590,46 @@ function SparePartsPage({ user }) {
 
       {/* INTERNAL SECTION (TOP) */}
       <div style={{ ...styles.card, marginBottom: '24px' }}>
-        <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF' }}>
+        <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontWeight: '600', color: '#1E40AF' }}>🏢 Internal Spare Parts ({filteredInternal.length})</h3>
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>Internal Spare Parts</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #1E40AF; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #EFF6FF; }
+                  .overdue { color: #DC2626; font-weight: bold; }
+                </style></head><body>
+                <h1>🏢 Internal Spare Parts</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${filteredInternal.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
+                  ${filteredInternal.map(comp => `<tr>
+                    <td>${comp.requests?.request_type || '-'}</td>
+                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.requests?.iso_number || '-'}</td>
+                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.quantity}</td>
+                    <td class="${comp.forecast_date && new Date(comp.forecast_date) < new Date() ? 'overdue' : ''}">${comp.forecast_date ? new Date(comp.forecast_date).toLocaleDateString() : 'Not set'}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           {renderTable(filteredInternal, 'Internal')}
@@ -6144,8 +6638,46 @@ function SparePartsPage({ user }) {
 
       {/* CLIENT SECTION (BOTTOM) */}
       <div style={styles.card}>
-        <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA' }}>
+        <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontWeight: '600', color: '#0F766E' }}>👤 Client Spare Parts ({filteredClient.length})</h3>
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>Client Spare Parts</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #0F766E; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #F0FDFA; }
+                  .overdue { color: #DC2626; font-weight: bold; }
+                </style></head><body>
+                <h1>👤 Client Spare Parts</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${filteredClient.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
+                  ${filteredClient.map(comp => `<tr>
+                    <td>${comp.requests?.request_type || '-'}</td>
+                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.requests?.iso_number || '-'}</td>
+                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.quantity}</td>
+                    <td class="${comp.forecast_date && new Date(comp.forecast_date) < new Date() ? 'overdue' : ''}">${comp.forecast_date ? new Date(comp.forecast_date).toLocaleDateString() : 'Not set'}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
           {renderTable(filteredClient, 'Client')}
@@ -6187,10 +6719,10 @@ function OrdersPage({ user }) {
   const loadData = async () => {
     setLoading(true);
     const { data: toOrder } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Order');
     const { data: ordered } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Ordered');
     if (toOrder) setToOrderComponents(toOrder);
     if (ordered) setOrderedComponents(ordered);
@@ -6460,15 +6992,49 @@ function OrdersPage({ user }) {
         <>
           {/* Internal Section */}
           <div style={{ ...styles.card, marginBottom: '24px' }}>
-            <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF' }}>
+            <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontWeight: '600', color: '#1E40AF' }}>🏢 Internal Orders ({toOrderInternal.length})</h3>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  printWindow.document.write(`
+                    <html><head><title>Internal Orders - To Order</title>
+                    <style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #1E40AF; } table { width: 100%; border-collapse: collapse; margin-top: 20px; } th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; } th { background-color: #EFF6FF; }</style></head><body>
+                    <h1>🏢 Internal Orders - To Order</h1>
+                    <p>Printed: ${new Date().toLocaleString()} | Total: ${toOrderInternal.length}</p>
+                    <table><tr><th>Cat</th><th>ISO</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
+                    ${toOrderInternal.map(c => `<tr><td>${c.requests?.request_type || '-'}</td><td>${c.requests?.iso_number || '-'}</td><td>${String(c.requests?.request_number).padStart(5, '0')}-${c.requests?.sub_number}</td><td>${c.ident_code}</td><td>${c.description || '-'}</td><td>${c.quantity}</td></tr>`).join('')}
+                    </table></body></html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.print();
+                }}
+                style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+              >🖨️ Print</button>
             </div>
             <div style={{ overflowX: 'auto' }}>{renderToOrderTable(toOrderInternal)}</div>
           </div>
           {/* Client Section */}
           <div style={styles.card}>
-            <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA' }}>
+            <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontWeight: '600', color: '#0F766E' }}>👤 Client Orders ({toOrderClient.length})</h3>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  printWindow.document.write(`
+                    <html><head><title>Client Orders - To Order</title>
+                    <style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #0F766E; } table { width: 100%; border-collapse: collapse; margin-top: 20px; } th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; } th { background-color: #F0FDFA; }</style></head><body>
+                    <h1>👤 Client Orders - To Order</h1>
+                    <p>Printed: ${new Date().toLocaleString()} | Total: ${toOrderClient.length}</p>
+                    <table><tr><th>Cat</th><th>ISO</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
+                    ${toOrderClient.map(c => `<tr><td>${c.requests?.request_type || '-'}</td><td>${c.requests?.iso_number || '-'}</td><td>${String(c.requests?.request_number).padStart(5, '0')}-${c.requests?.sub_number}</td><td>${c.ident_code}</td><td>${c.description || '-'}</td><td>${c.quantity}</td></tr>`).join('')}
+                    </table></body></html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.print();
+                }}
+                style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+              >🖨️ Print</button>
             </div>
             <div style={{ overflowX: 'auto' }}>{renderToOrderTable(toOrderClient)}</div>
           </div>
@@ -6479,15 +7045,49 @@ function OrdersPage({ user }) {
         <>
           {/* Internal Section */}
           <div style={{ ...styles.card, marginBottom: '24px' }}>
-            <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF' }}>
+            <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontWeight: '600', color: '#1E40AF' }}>🏢 Internal - Ordered ({orderedInternal.length})</h3>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  printWindow.document.write(`
+                    <html><head><title>Internal - Ordered</title>
+                    <style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #1E40AF; } table { width: 100%; border-collapse: collapse; margin-top: 20px; } th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; } th { background-color: #EFF6FF; } .overdue { color: #DC2626; }</style></head><body>
+                    <h1>🏢 Internal - Ordered</h1>
+                    <p>Printed: ${new Date().toLocaleString()} | Total: ${orderedInternal.length}</p>
+                    <table><tr><th>Cat</th><th>ISO</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Order Date</th><th>Forecast</th></tr>
+                    ${orderedInternal.map(c => `<tr><td>${c.requests?.request_type || '-'}</td><td>${c.requests?.iso_number || '-'}</td><td>${String(c.requests?.request_number).padStart(5, '0')}-${c.requests?.sub_number}</td><td>${c.ident_code}</td><td>${c.description || '-'}</td><td>${c.quantity}</td><td>${c.order_date ? new Date(c.order_date).toLocaleDateString() : '-'}</td><td class="${c.order_forecast && new Date(c.order_forecast) < new Date() ? 'overdue' : ''}">${c.order_forecast ? new Date(c.order_forecast).toLocaleDateString() : '-'}</td></tr>`).join('')}
+                    </table></body></html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.print();
+                }}
+                style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+              >🖨️ Print</button>
             </div>
             <div style={{ overflowX: 'auto' }}>{renderOrderedTable(orderedInternal)}</div>
           </div>
           {/* Client Section */}
           <div style={styles.card}>
-            <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA' }}>
+            <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontWeight: '600', color: '#0F766E' }}>👤 Client - Ordered ({orderedClient.length})</h3>
+              <button
+                onClick={() => {
+                  const printWindow = window.open('', '_blank');
+                  printWindow.document.write(`
+                    <html><head><title>Client - Ordered</title>
+                    <style>body { font-family: Arial, sans-serif; padding: 20px; } h1 { color: #0F766E; } table { width: 100%; border-collapse: collapse; margin-top: 20px; } th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; } th { background-color: #F0FDFA; } .overdue { color: #DC2626; }</style></head><body>
+                    <h1>👤 Client - Ordered</h1>
+                    <p>Printed: ${new Date().toLocaleString()} | Total: ${orderedClient.length}</p>
+                    <table><tr><th>Cat</th><th>ISO</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Order Date</th><th>Forecast</th></tr>
+                    ${orderedClient.map(c => `<tr><td>${c.requests?.request_type || '-'}</td><td>${c.requests?.iso_number || '-'}</td><td>${String(c.requests?.request_number).padStart(5, '0')}-${c.requests?.sub_number}</td><td>${c.ident_code}</td><td>${c.description || '-'}</td><td>${c.quantity}</td><td>${c.order_date ? new Date(c.order_date).toLocaleDateString() : '-'}</td><td class="${c.order_forecast && new Date(c.order_forecast) < new Date() ? 'overdue' : ''}">${c.order_forecast ? new Date(c.order_forecast).toLocaleDateString() : '-'}</td></tr>`).join('')}
+                    </table></body></html>
+                  `);
+                  printWindow.document.close();
+                  printWindow.print();
+                }}
+                style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+              >🖨️ Print</button>
             </div>
             <div style={{ overflowX: 'auto' }}>{renderOrderedTable(orderedClient)}</div>
           </div>
@@ -6525,7 +7125,7 @@ function ManagementPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     const { data } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Mng');
     if (data) setComponents(data);
     setLoading(false);
@@ -6560,7 +7160,46 @@ function ManagementPage({ user }) {
       <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="Search code, description, note, request..." />
 
       <div style={styles.card}>
-        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Management - Decisions ({components.length})</h3></div>
+        <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontWeight: '600' }}>Management - Decisions ({components.length})</h3>
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>Management Decisions</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #CA8A04; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                  th { background-color: #FEF9C3; }
+                </style></head><body>
+                <h1>👔 Management - Decisions</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${filteredComponents.length}</p>
+                <table>
+                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Note</th></tr>
+                  ${filteredComponents.map(comp => `<tr>
+                    <td>${comp.requests?.request_type || '-'}</td>
+                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.requests?.iso_number || '-'}</td>
+                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${comp.ident_code}</td>
+                    <td>${comp.description || '-'}</td>
+                    <td>${comp.quantity}</td>
+                    <td>${comp.mng_note || '-'}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
+        </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
             <thead>
@@ -6760,6 +7399,44 @@ function MIRPage({ user }) {
             placeholder="Search MIR#, RK#, Category..."
             style={{ ...styles.input, width: '250px' }}
           />
+          <button
+            onClick={() => {
+              const printWindow = window.open('', '_blank');
+              printWindow.document.write(`
+                <html><head><title>MIR List</title>
+                <style>
+                  body { font-family: Arial, sans-serif; padding: 20px; }
+                  h1 { color: #1F2937; }
+                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 11px; }
+                  th { background-color: #F3F4F6; }
+                  .high { color: #DC2626; font-weight: bold; }
+                  .low { color: #16a34a; }
+                </style></head><body>
+                <h1>📋 Material Issue Reports - ${activeTab === 'open' ? 'Open' : 'Closed'}</h1>
+                <p>Printed: ${new Date().toLocaleString()} | Total: ${displayedMirs.length}</p>
+                <table>
+                  <tr><th>Priority</th><th>Type</th><th>MIR #</th><th>RK #</th><th>Category</th><th>Description</th><th>Forecast</th><th>Status</th></tr>
+                  ${displayedMirs.map(mir => `<tr>
+                    <td class="${mir.priority === 'High' ? 'high' : mir.priority === 'Low' ? 'low' : ''}">${mir.priority}</td>
+                    <td>${mir.mir_type}</td>
+                    <td>${mir.mir_number || '-'}</td>
+                    <td>${mir.rk_number}</td>
+                    <td>${mir.category || '-'}</td>
+                    <td>${mir.description || '-'}</td>
+                    <td>${mir.forecast_date ? new Date(mir.forecast_date).toLocaleDateString() : '-'}</td>
+                    <td>${mir.status}</td>
+                  </tr>`).join('')}
+                </table>
+                </body></html>
+              `);
+              printWindow.document.close();
+              printWindow.print();
+            }}
+            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+          >
+            🖨️ Print
+          </button>
           <button onClick={openCreateModal} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ New MIR</button>
         </div>
       </div>
@@ -7393,7 +8070,7 @@ function LogPage({ user }) {
                       <StatusBadge status={req.status} />
                     </td>
                     <td style={styles.td}>
-                      <ActionButton color={COLORS.gray} onClick={() => openHistory(req.id)} title="View History">👁️</ActionButton>
+                      <ActionButton color={COLORS.gray} onClick={() => openHistory(req.id)} title="View History">ℹ️</ActionButton>
                     </td>
                   </tr>
                 ))}
@@ -7581,18 +8258,68 @@ function DatabasePage({ user }) {
   const [selectedItem, setSelectedItem] = useState(null);
   const [balanceData, setBalanceData] = useState({ yard_qty: '', site_qty: '', lost_qty: '', broken_qty: '', collected_ten_wh: '' });
   const [newItem, setNewItem] = useState({ iso_number: '', ident_code: '', description: '' });
+  
+  // V28.3: Filter states
+  const [isoFilter, setIsoFilter] = useState('');
+  const [identFilter, setIdentFilter] = useState('');
+  const [isoOptions, setIsoOptions] = useState([]);
+  const [identOptions, setIdentOptions] = useState([]);
+  const [showIsoDropdown, setShowIsoDropdown] = useState(false);
+  const [showIdentDropdown, setShowIdentDropdown] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
 
-  useEffect(() => { loadInventory(); }, []);
+  useEffect(() => { loadFilters(); loadInventory(); }, []);
+  useEffect(() => { loadInventory(); }, [isoFilter, identFilter]);
+
+  // V28.3: Load unique ISO and Ident options for autocomplete
+  const loadFilters = async () => {
+    // Get unique ISO numbers
+    const { data: isoData } = await supabase
+      .from('project_materials')
+      .select('iso_number')
+      .not('iso_number', 'is', null)
+      .order('iso_number');
+    
+    if (isoData) {
+      const uniqueIsos = [...new Set(isoData.map(d => d.iso_number).filter(Boolean))];
+      setIsoOptions(uniqueIsos);
+    }
+    
+    // Get unique ident codes
+    const { data: identData } = await supabase
+      .from('project_materials')
+      .select('ident_code')
+      .not('ident_code', 'is', null)
+      .order('ident_code');
+    
+    if (identData) {
+      const uniqueIdents = [...new Set(identData.map(d => d.ident_code).filter(Boolean))];
+      setIdentOptions(uniqueIdents);
+    }
+  };
 
   const loadInventory = async () => {
     setLoading(true);
     
-    // Get project materials - V28.1: one row per ISO + ident_code combination
-    const { data: projectData } = await supabase
+    // V28.3: Build query with filters
+    let query = supabase
       .from('project_materials')
       .select('iso_number, ident_code, description, pos_qty, dia1')
       .order('iso_number')
       .order('ident_code');
+    
+    // Apply filters if set
+    if (isoFilter) {
+      query = query.ilike('iso_number', `%${isoFilter}%`);
+    }
+    if (identFilter) {
+      query = query.ilike('ident_code', `%${identFilter}%`);
+    }
+    
+    // V28.3: Limit to 500 rows
+    query = query.limit(500);
+    
+    const { data: projectData, count } = await query;
     
     // Get inventory data
     const { data: invData } = await supabase
@@ -7640,6 +8367,7 @@ function DatabasePage({ user }) {
       return (a.ident_code || '').localeCompare(b.ident_code || '');
     });
     
+    setTotalCount(merged.length);
     setInventoryData(merged);
     setLoading(false);
   };
@@ -7649,6 +8377,15 @@ function DatabasePage({ user }) {
     item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.iso_number?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // V28.3: Filtered options for autocomplete
+  const filteredIsoOptions = isoOptions.filter(iso => 
+    iso.toLowerCase().includes(isoFilter.toLowerCase())
+  ).slice(0, 20);
+  
+  const filteredIdentOptions = identOptions.filter(ident => 
+    ident.toLowerCase().includes(identFilter.toLowerCase())
+  ).slice(0, 20);
 
   const openBalanceModal = (item) => {
     setSelectedItem(item);
@@ -7754,18 +8491,142 @@ function DatabasePage({ user }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
-        <input
-          type="text"
-          placeholder="🔍 Search code, description, ISO..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ ...styles.input, maxWidth: '400px', flex: 1 }}
-        />
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>📥 Export CSV</button>
-          <button onClick={() => setShowAddModal(true)} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ Add Item</button>
+      {/* V28.3: Filter Section */}
+      <div style={{ 
+        backgroundColor: '#F3F4F6', 
+        padding: '16px', 
+        borderRadius: '8px', 
+        marginBottom: '16px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: '16px',
+        alignItems: 'flex-end'
+      }}>
+        {/* ISO Filter with Autocomplete */}
+        <div style={{ position: 'relative', minWidth: '200px', flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4B5563', marginBottom: '4px' }}>
+            Filter by ISO
+          </label>
+          <input
+            type="text"
+            placeholder="Type to filter ISO..."
+            value={isoFilter}
+            onChange={(e) => { setIsoFilter(e.target.value); setShowIsoDropdown(true); }}
+            onFocus={() => setShowIsoDropdown(true)}
+            onBlur={() => setTimeout(() => setShowIsoDropdown(false), 200)}
+            style={{ ...styles.input, width: '100%' }}
+          />
+          {showIsoDropdown && filteredIsoOptions.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              backgroundColor: 'white',
+              border: '1px solid #D1D5DB',
+              borderRadius: '4px',
+              maxHeight: '200px',
+              overflowY: 'auto',
+              zIndex: 100,
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              {filteredIsoOptions.map(iso => (
+                <div
+                  key={iso}
+                  onClick={() => { setIsoFilter(iso); setShowIsoDropdown(false); }}
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', borderBottom: '1px solid #E5E7EB' }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#F3F4F6'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  {iso}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* Ident Code Filter with Autocomplete */}
+        <div style={{ position: 'relative', minWidth: '200px', flex: 1 }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4B5563', marginBottom: '4px' }}>
+            Filter by Ident Code
+          </label>
+          <input
+            type="text"
+            placeholder="Type to filter Ident..."
+            value={identFilter}
+            onChange={(e) => { setIdentFilter(e.target.value); setShowIdentDropdown(true); }}
+            onFocus={() => setShowIdentDropdown(true)}
+            onBlur={() => setTimeout(() => setShowIdentDropdown(false), 200)}
+            style={{ ...styles.input, width: '100%' }}
+          />
+          {showIdentDropdown && filteredIdentOptions.length > 0 && (
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              right: 0,
+              backgroundColor: 'white',
+              border: '1px solid #D1D5DB',
+              borderRadius: '4px',
+              maxHeight: '200px',
+              overflowY: 'auto',
+              zIndex: 100,
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              {filteredIdentOptions.map(ident => (
+                <div
+                  key={ident}
+                  onClick={() => { setIdentFilter(ident); setShowIdentDropdown(false); }}
+                  style={{ padding: '8px 12px', cursor: 'pointer', fontSize: '13px', fontFamily: 'monospace', borderBottom: '1px solid #E5E7EB' }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#F3F4F6'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                >
+                  {ident}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Clear Filters Button */}
+        <button 
+          onClick={() => { setIsoFilter(''); setIdentFilter(''); }}
+          style={{ ...styles.button, backgroundColor: COLORS.gray, color: 'white', height: '38px' }}
+        >
+          Clear Filters
+        </button>
+
+        {/* Quick Search */}
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4B5563', marginBottom: '4px' }}>
+            Quick Search (in results)
+          </label>
+          <input
+            type="text"
+            placeholder="🔍 Search in results..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            style={{ ...styles.input, width: '100%' }}
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>📥 Export</button>
+          <button onClick={() => setShowAddModal(true)} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ Add</button>
+        </div>
+      </div>
+
+      {/* Info Banner */}
+      <div style={{ 
+        backgroundColor: '#DBEAFE', 
+        padding: '8px 12px', 
+        borderRadius: '6px', 
+        marginBottom: '16px',
+        fontSize: '13px',
+        color: '#1E40AF'
+      }}>
+        ℹ️ Showing {filteredInventory.length} of {totalCount} results (max 500 per query). Use filters above to find specific items.
       </div>
 
       <div style={styles.card}>
