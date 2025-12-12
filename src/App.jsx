@@ -1,8 +1,9 @@
 // ============================================================
-// MATERIALS MANAGER V28.0 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.1 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
-// V28.0: Spare Parts 2-tabs, Orders actions, Forecast alerts,
-//        Mng notes from Eng, Search boxes, Decimal qty (UOM=M)
+// V28.1: ISO separate in Database, WH_Site/WH_Yard columns,
+//        Log with 2 tabs (Movements + Request Tracker),
+//        Over Quantity Notes, Centralized Version
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -14,6 +15,11 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// ============================================================
+// APP VERSION - CENTRALIZED
+// ============================================================
+const APP_VERSION = 'V28.1';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -80,6 +86,53 @@ function OverdueBadge() {
       marginLeft: '8px'
     }}>
       ⚠️ OVERDUE
+    </span>
+  );
+}
+
+// Over Quantity Info Button - shows tooltip with over-qty note on hover
+function OverQtyInfo({ note }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
+  if (!note) return null;
+  
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-block', cursor: 'pointer', marginLeft: '4px' }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <span style={{
+        backgroundColor: COLORS.warning,
+        color: 'white',
+        borderRadius: '50%',
+        width: '18px',
+        height: '18px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '10px',
+        fontWeight: 'bold'
+      }}>!</span>
+      {showTooltip && (
+        <div style={{
+          position: 'absolute',
+          bottom: '100%',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#1f2937',
+          color: 'white',
+          padding: '8px 12px',
+          borderRadius: '6px',
+          fontSize: '12px',
+          whiteSpace: 'nowrap',
+          zIndex: 1000,
+          marginBottom: '4px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.2)'
+        }}>
+          ⚠️ {note}
+        </div>
+      )}
     </span>
   );
 }
@@ -996,7 +1049,7 @@ function LoginScreen({ onLogin }) {
             STR
           </div>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937' }}>MAX STREICHER</h1>
-          <p style={{ color: '#6b7280', marginTop: '4px' }}>Materials Manager V27</p>
+          <p style={{ color: '#6b7280', marginTop: '4px', border: '2px solid #16a34a', borderRadius: '4px', padding: '4px 12px', display: 'inline-block' }}>Materials Manager {APP_VERSION}</p>
         </div>
 
         {error && (
@@ -2479,7 +2532,7 @@ function RequestsPage({ user }) {
 }
 
 // ============================================================
-// WH SITE PAGE
+// WH SITE PAGE - V28.1 with WH_Site/WH_Yard columns
 // ============================================================
 function WHSitePage({ user }) {
   const [components, setComponents] = useState([]);
@@ -2494,6 +2547,7 @@ function WHSitePage({ user }) {
   const [showHistory, setShowHistory] = useState(false);
   const [historyComponentId, setHistoryComponentId] = useState(null);
   const [engChecks, setEngChecks] = useState([]);
+  const [inventoryMap, setInventoryMap] = useState({});
   // Engineering Check Partial state
   const [showCheckPartialModal, setShowCheckPartialModal] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
@@ -2505,6 +2559,15 @@ function WHSitePage({ user }) {
 
   const loadComponents = async () => {
     setLoading(true);
+    
+    // Load inventory for WH_Site and WH_Yard quantities
+    const { data: invData } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
+    const invMap = {};
+    if (invData) {
+      invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
+    }
+    setInventoryMap(invMap);
+    
     // Load components with full request info
     const { data: siteData, error: siteError } = await supabase
       .from('request_components')
@@ -2921,18 +2984,21 @@ function WHSitePage({ user }) {
                 <th style={styles.th}>Spool</th>
                 <th style={styles.th}>HF</th>
                 <th style={styles.th}>TP</th>
-                  <th style={styles.th}>Request</th>
+                <th style={styles.th}>Request</th>
                 <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
-                <th style={styles.th}>Tag</th>
-                <th style={styles.th}>Diam</th>
                 <th style={styles.th}>Qty</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                 <th style={styles.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {components.map(comp => (
-                <tr key={comp.id}>
+              {components.map(comp => {
+                const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+                const isOverQty = comp.quantity > inv.site;
+                return (
+                <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
                   <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
@@ -2943,12 +3009,19 @@ function WHSitePage({ user }) {
                     {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                  <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                    {comp.description ? (comp.description.length > 30 ? comp.description.substring(0, 30) + '...' : comp.description) : '-'}
                   </td>
-                  <td style={styles.td}>{comp.tag || '-'}</td>
-                  <td style={styles.td}>{comp.dia1 || '-'}</td>
-                  <td style={styles.td}>{comp.quantity}</td>
+                  <td style={styles.td}>
+                    {comp.quantity}
+                    {isOverQty && <OverQtyInfo note={`Requested ${comp.quantity}, available ${inv.site}`} />}
+                  </td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
+                    {inv.site}
+                  </td>
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.yard > 0 ? COLORS.success : COLORS.primary }}>
+                    {inv.yard}
+                  </td>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       <ActionDropdown
@@ -2967,7 +3040,8 @@ function WHSitePage({ user }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               {components.length === 0 && (
                 <tr>
                   <td colSpan="13" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
@@ -3105,11 +3179,11 @@ function WHSitePage({ user }) {
 }
 
 // ============================================================
-// WH YARD PAGE - con popup destinazione
+// WH YARD PAGE - V28.1 with WH_Site/WH_Yard columns
 // ============================================================
 function WHYardPage({ user }) {
   const [components, setComponents] = useState([]);
-  const [inventory, setInventory] = useState({});
+  const [inventoryMap, setInventoryMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [showPartialModal, setShowPartialModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
@@ -3129,6 +3203,15 @@ function WHYardPage({ user }) {
 
   const loadComponents = async () => {
     setLoading(true);
+    
+    // Load inventory for WH_Site and WH_Yard quantities
+    const { data: invData } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
+    const invMap = {};
+    if (invData) {
+      invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
+    }
+    setInventoryMap(invMap);
+    
     const { data: yardData } = await supabase
       .from('request_components')
       .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number)`)
@@ -3142,20 +3225,7 @@ function WHYardPage({ user }) {
       .eq('eng_check_sent_to', 'Yard');
 
     if (checksData) setEngChecks(checksData);
-
-    if (yardData) {
-      setComponents(yardData);
-      const codes = [...new Set(yardData.map(c => c.ident_code))];
-      if (codes.length > 0) {
-        const { data: invData } = await supabase
-          .from('inventory')
-          .select('ident_code, yard_qty')
-          .in('ident_code', codes);
-        const invMap = {};
-        invData?.forEach(i => { invMap[i.ident_code] = i.yard_qty || 0; });
-        setInventory(invMap);
-      }
-    }
+    if (yardData) setComponents(yardData);
     setLoading(false);
   };
 
@@ -3172,7 +3242,8 @@ function WHYardPage({ user }) {
   };
 
   const handleAction = async (component, action) => {
-    const available = inventory[component.ident_code] || 0;
+    const inv = inventoryMap[component.ident_code] || { site: 0, yard: 0 };
+    const available = inv.yard;
     
     try {
       switch (action) {
@@ -3582,20 +3653,21 @@ function WHYardPage({ user }) {
                 <th style={styles.th}>Spool</th>
                 <th style={styles.th}>HF</th>
                 <th style={styles.th}>TP</th>
-                  <th style={styles.th}>Request</th>
+                <th style={styles.th}>Request</th>
                 <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
-                <th style={styles.th}>Tag</th>
-                <th style={styles.th}>Diam</th>
                 <th style={styles.th}>Qty</th>
-                <th style={styles.th}>Available</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
+                <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                 <th style={styles.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {components.map(comp => {
-                const available = inventory[comp.ident_code] || 0;
+                const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+                const available = inv.yard;
                 const canFulfill = available >= comp.quantity;
+                const isOverQty = comp.quantity > available;
                 
                 // Build actions list based on conditions
                 const yardActions = [];
@@ -3610,7 +3682,7 @@ function WHYardPage({ user }) {
                 yardActions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
                 
                 return (
-                  <tr key={comp.id}>
+                  <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
                     <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
                     <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
@@ -3621,16 +3693,18 @@ function WHYardPage({ user }) {
                       {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-                      {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                    <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                      {comp.description ? (comp.description.length > 30 ? comp.description.substring(0, 30) + '...' : comp.description) : '-'}
                     </td>
-                    <td style={styles.td}>{comp.tag || '-'}</td>
-                    <td style={styles.td}>{comp.dia1 || '-'}</td>
-                    <td style={styles.td}>{comp.quantity}</td>
                     <td style={styles.td}>
-                      <span style={{ fontWeight: '600', color: canFulfill ? COLORS.success : COLORS.primary }}>
-                        {available}
-                      </span>
+                      {comp.quantity}
+                      {isOverQty && <OverQtyInfo note={`Requested ${comp.quantity}, available ${available}`} />}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
+                      {inv.site}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: available > 0 ? COLORS.success : COLORS.primary }}>
+                      {available}
                     </td>
                     <td style={styles.td}>
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -6470,8 +6544,13 @@ function MIRPage({ user }) {
 // ============================================================
 // LOG PAGE - with Add Movement
 // ============================================================
+// ============================================================
+// LOG PAGE - V28.1 with 2 TABS: Movements + Request Tracker
+// ============================================================
 function LogPage({ user }) {
+  const [activeTab, setActiveTab] = useState('movements');
   const [movements, setMovements] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showIBModal, setShowIBModal] = useState(false);
@@ -6482,14 +6561,25 @@ function LogPage({ user }) {
   const [allUsers, setAllUsers] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyData, setHistoryData] = useState([]);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
+      // Load movements (IB)
       const { data: movData } = await supabase.from('movements').select('*').order('created_at', { ascending: false }).limit(200);
       if (movData) setMovements(movData);
+
+      // Load all request components for Request Tracker
+      const { data: reqData } = await supabase
+        .from('request_components')
+        .select('*, requests(*)')
+        .order('created_at', { ascending: false })
+        .limit(500);
+      if (reqData) setRequests(reqData);
 
       const { data: identData } = await supabase.from('inventory').select('ident_code').order('ident_code');
       if (identData) setAllIdents(identData.map(i => i.ident_code));
@@ -6500,6 +6590,18 @@ function LogPage({ user }) {
       console.error('LogPage loadData error:', error);
     }
     setLoading(false);
+  };
+
+  // Open history modal for a component
+  const openHistory = async (componentId) => {
+    const { data } = await supabase
+      .from('component_history')
+      .select('*')
+      .eq('component_id', componentId)
+      .order('created_at', { ascending: false });
+    
+    setHistoryData(data || []);
+    setShowHistoryModal(true);
   };
 
   // Search ident code for IB
@@ -6658,12 +6760,58 @@ function LogPage({ user }) {
     );
   });
 
+  // Filter requests by search term
+  const filteredRequests = requests.filter(r => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return (
+      (r.ident_code || '').toLowerCase().includes(term) ||
+      (r.description || '').toLowerCase().includes(term) ||
+      String(r.requests?.request_number).includes(term) ||
+      (r.requests?.hf_number || '').toLowerCase().includes(term) ||
+      (r.requests?.test_pack_number || '').toLowerCase().includes(term) ||
+      (r.requests?.created_by_name || '').toLowerCase().includes(term)
+    );
+  });
+
   const canModify = user.role === 'admin' || user.perm_movements === 'modify';
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
   return (
     <div>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        <button
+          onClick={() => setActiveTab('movements')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'movements' ? 'white' : '#e5e7eb',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'movements' ? '600' : '400',
+            boxShadow: activeTab === 'movements' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none'
+          }}
+        >
+          📦 Movements (IB)
+        </button>
+        <button
+          onClick={() => setActiveTab('tracker')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'tracker' ? 'white' : '#e5e7eb',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'tracker' ? '600' : '400',
+            boxShadow: activeTab === 'tracker' ? '0 -2px 4px rgba(0,0,0,0.1)' : 'none'
+          }}
+        >
+          📋 Request Tracker
+        </button>
+      </div>
+
       {/* Search and Actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '200px', maxWidth: '400px' }}>
@@ -6671,70 +6819,148 @@ function LogPage({ user }) {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search by code, operator, type, IB#..."
+            placeholder={activeTab === 'movements' ? "Search IB#, code, operator..." : "Search request, code, requester, HF..."}
             style={styles.input}
           />
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>
-            📥 Export CSV
-          </button>
-          <button onClick={() => setShowIBModal(true)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.orange, color: 'white' }}>
-            📋 IB Request
-          </button>
-        </div>
+        {activeTab === 'movements' && (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>
+              📥 Export CSV
+            </button>
+            <button onClick={() => setShowIBModal(true)} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.orange, color: 'white' }}>
+              + IB Request
+            </button>
+          </div>
+        )}
       </div>
 
-      <div style={styles.card}>
-        <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Movements Log ({filteredMovements.length})</h3></div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Date</th>
-                <th style={styles.th}>Type</th>
-                <th style={styles.th}>IB#</th>
-                <th style={styles.th}>Code</th>
-                <th style={styles.th}>Qty</th>
-                <th style={styles.th}>From → To</th>
-                <th style={styles.th}>Operator</th>
-                <th style={styles.th}>Reason</th>
-                <th style={styles.th}>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredMovements.map((mov, idx) => (
-                <tr key={idx}>
-                  <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
-                  <td style={styles.td}>
-                    <span style={{
-                      ...styles.statusBadge,
-                      backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
-                                      mov.movement_type === 'OUT' ? COLORS.primary :
-                                      mov.movement_type === 'LOST' ? COLORS.orange :
-                                      mov.movement_type === 'BROKEN' ? COLORS.purple :
-                                      mov.movement_type === 'TRANSFER' ? COLORS.info :
-                                      mov.movement_type === 'BAL_IN' ? COLORS.teal :
-                                      mov.movement_type === 'BAL_OUT' ? COLORS.yellow : COLORS.gray
-                    }}>
-                      {mov.movement_type}
-                    </span>
-                  </td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: mov.ib_number ? '600' : 'normal', color: mov.ib_number ? COLORS.orange : 'inherit' }}>
-                    {mov.ib_number || '-'}
-                  </td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
-                  <td style={styles.td}>{mov.quantity}</td>
-                  <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
-                  <td style={styles.td}>{mov.performed_by}</td>
-                  <td style={styles.td}>{mov.reason || '-'}</td>
-                  <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mov.note || '-'}</td>
+      {/* Movements Tab */}
+      {activeTab === 'movements' && (
+        <div style={styles.card}>
+          <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Movements Log ({filteredMovements.length})</h3></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Date</th>
+                  <th style={styles.th}>Type</th>
+                  <th style={styles.th}>IB#</th>
+                  <th style={styles.th}>Code</th>
+                  <th style={styles.th}>Qty</th>
+                  <th style={styles.th}>From → To</th>
+                  <th style={styles.th}>Operator</th>
+                  <th style={styles.th}>Reason</th>
+                  <th style={styles.th}>Note</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredMovements.map((mov, idx) => (
+                  <tr key={idx}>
+                    <td style={styles.td}>{new Date(mov.created_at).toLocaleString()}</td>
+                    <td style={styles.td}>
+                      <span style={{
+                        ...styles.statusBadge,
+                        backgroundColor: mov.movement_type === 'IN' ? COLORS.success :
+                                        mov.movement_type === 'OUT' ? COLORS.primary :
+                                        mov.movement_type === 'LOST' ? COLORS.orange :
+                                        mov.movement_type === 'BROKEN' ? COLORS.purple :
+                                        mov.movement_type === 'TRANSFER' ? COLORS.info :
+                                        mov.movement_type === 'BAL_IN' ? COLORS.teal :
+                                        mov.movement_type === 'BAL_OUT' ? COLORS.yellow : COLORS.gray
+                      }}>
+                        {mov.movement_type}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: mov.ib_number ? '600' : 'normal', color: mov.ib_number ? COLORS.orange : 'inherit' }}>
+                      {mov.ib_number || '-'}
+                    </td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mov.ident_code}</td>
+                    <td style={styles.td}>{mov.quantity}</td>
+                    <td style={styles.td}>{mov.from_location} → {mov.to_location}</td>
+                    <td style={styles.td}>{mov.performed_by}</td>
+                    <td style={styles.td}>{mov.reason || '-'}</td>
+                    <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mov.note || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Request Tracker Tab */}
+      {activeTab === 'tracker' && (
+        <div style={styles.card}>
+          <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Request Tracker ({filteredRequests.length})</h3></div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Request</th>
+                  <th style={styles.th}>Type</th>
+                  <th style={styles.th}>TP#</th>
+                  <th style={styles.th}>HF</th>
+                  <th style={styles.th}>Code</th>
+                  <th style={styles.th}>Description</th>
+                  <th style={styles.th}>Qty</th>
+                  <th style={styles.th}>Requester</th>
+                  <th style={styles.th}>Current Status</th>
+                  <th style={styles.th}>ℹ️</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRequests.map((req, idx) => (
+                  <tr key={idx}>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
+                      {String(req.requests?.request_number).padStart(5, '0')}-{req.requests?.sub_number}
+                    </td>
+                    <td style={styles.td}>{req.requests?.request_type || '-'}</td>
+                    <td style={styles.td}>{req.requests?.test_pack_number || '-'}</td>
+                    <td style={styles.td}>{req.requests?.hf_number || '-'}</td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{req.ident_code}</td>
+                    <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={req.description}>
+                      {req.description ? (req.description.length > 25 ? req.description.substring(0, 25) + '...' : req.description) : '-'}
+                    </td>
+                    <td style={styles.td}>{req.quantity}</td>
+                    <td style={styles.td}>{req.requests?.created_by_name || '-'}</td>
+                    <td style={styles.td}>
+                      <StatusBadge status={req.status} />
+                    </td>
+                    <td style={styles.td}>
+                      <ActionButton color={COLORS.gray} onClick={() => openHistory(req.id)} title="View History">👁️</ActionButton>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal for Request Tracker */}
+      <Modal isOpen={showHistoryModal} onClose={() => setShowHistoryModal(false)} title="📋 Component History">
+        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+          {historyData.length > 0 ? historyData.map((h, idx) => (
+            <div key={idx} style={{ padding: '12px', borderBottom: '1px solid #e5e7eb' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span style={{ fontWeight: '600' }}>{h.action}</span>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>{new Date(h.created_at).toLocaleString()}</span>
+              </div>
+              <div style={{ fontSize: '13px', color: '#6b7280' }}>
+                {h.from_status} → {h.to_status} | by {h.performed_by_name}
+              </div>
+              {h.notes && (
+                <div style={{ fontSize: '12px', color: COLORS.warning, marginTop: '4px', backgroundColor: '#FEF3C7', padding: '4px 8px', borderRadius: '4px' }}>
+                  📝 {h.notes}
+                </div>
+              )}
+            </div>
+          )) : (
+            <p style={{ color: '#9ca3af', textAlign: 'center', padding: '20px' }}>No history available</p>
+          )}
+        </div>
+      </Modal>
 
       {/* IB Request Modal */}
       <Modal isOpen={showIBModal} onClose={() => setShowIBModal(false)} title="📋 Internal Balance Request (IB)">
@@ -6857,7 +7083,7 @@ function LogPage({ user }) {
 }
 
 // ============================================================
-// DATABASE PAGE - Grouped by Ident Code with project + inventory data
+// DATABASE PAGE - V28.1 with ISO separate rows
 // ============================================================
 function DatabasePage({ user }) {
   const [inventoryData, setInventoryData] = useState([]);
@@ -6874,83 +7100,58 @@ function DatabasePage({ user }) {
   const loadInventory = async () => {
     setLoading(true);
     
-    // Get project materials grouped by ident_code
+    // Get project materials - V28.1: one row per ISO + ident_code combination
     const { data: projectData } = await supabase
       .from('project_materials')
-      .select('iso_number, ident_code, description, pos_qty, dia1');
+      .select('iso_number, ident_code, description, pos_qty, dia1')
+      .order('iso_number')
+      .order('ident_code');
     
     // Get inventory data
     const { data: invData } = await supabase
       .from('inventory')
       .select('*');
     
-    // Group project materials by ident_code
-    const groupedProject = {};
-    if (projectData) {
-      projectData.forEach(item => {
-        if (!groupedProject[item.ident_code]) {
-          groupedProject[item.ident_code] = {
-            ident_code: item.ident_code,
-            description: item.description,
-            dia1: item.dia1,
-            iso_numbers: new Set(),
-            pos_qty_total: 0
-          };
-        }
-        groupedProject[item.ident_code].iso_numbers.add(item.iso_number);
-        groupedProject[item.ident_code].pos_qty_total += (item.pos_qty || 0);
-      });
-    }
-    
-    // Create inventory map
+    // Create inventory map by ident_code
     const invMap = {};
     if (invData) {
       invData.forEach(i => { invMap[i.ident_code] = i; });
     }
     
-    // Merge data
-    const merged = [];
-    
-    // First add all items from project_materials
-    Object.values(groupedProject).forEach(proj => {
-      const inv = invMap[proj.ident_code] || {};
-      merged.push({
-        ident_code: proj.ident_code,
-        description: proj.description,
-        dia1: proj.dia1,
-        iso_numbers: Array.from(proj.iso_numbers).join(', '),
-        pos_qty: proj.pos_qty_total,
-        yard_qty: inv.yard_qty || 0,
-        site_qty: inv.site_qty || 0,
-        lost_qty: inv.lost_qty || 0,
-        broken_qty: inv.broken_qty || 0,
-        record_out: inv.record_out || 0,
-        collected_ten_wh: inv.collected_ten_wh || 0,
-        has_inventory: !!inv.ident_code
+    // V28.1: Group by ISO + ident_code (unique combination)
+    const groupedData = {};
+    if (projectData) {
+      projectData.forEach(item => {
+        const key = `${item.iso_number}|${item.ident_code}`;
+        if (!groupedData[key]) {
+          const inv = invMap[item.ident_code] || {};
+          groupedData[key] = {
+            iso_number: item.iso_number,
+            ident_code: item.ident_code,
+            description: item.description,
+            dia1: item.dia1,
+            pos_qty: item.pos_qty || 0,
+            yard_qty: inv.yard_qty || 0,
+            site_qty: inv.site_qty || 0,
+            lost_qty: inv.lost_qty || 0,
+            broken_qty: inv.broken_qty || 0,
+            record_out: inv.record_out || 0,
+            collected_ten_wh: inv.collected_ten_wh || 0
+          };
+        } else {
+          // Sum pos_qty for same ISO + ident_code
+          groupedData[key].pos_qty += (item.pos_qty || 0);
+        }
       });
-      delete invMap[proj.ident_code];
-    });
+    }
     
-    // Add remaining inventory items not in project_materials
-    Object.values(invMap).forEach(inv => {
-      merged.push({
-        ident_code: inv.ident_code,
-        description: inv.description || '',
-        dia1: '',
-        iso_numbers: '',
-        pos_qty: 0,
-        yard_qty: inv.yard_qty || 0,
-        site_qty: inv.site_qty || 0,
-        lost_qty: inv.lost_qty || 0,
-        broken_qty: inv.broken_qty || 0,
-        record_out: inv.record_out || 0,
-        collected_ten_wh: inv.collected_ten_wh || 0,
-        has_inventory: true
-      });
+    // Convert to array and sort by ISO then ident_code
+    const merged = Object.values(groupedData);
+    merged.sort((a, b) => {
+      const isoCompare = (a.iso_number || '').localeCompare(b.iso_number || '');
+      if (isoCompare !== 0) return isoCompare;
+      return (a.ident_code || '').localeCompare(b.ident_code || '');
     });
-    
-    // Sort by ident_code
-    merged.sort((a, b) => a.ident_code.localeCompare(b.ident_code));
     
     setInventoryData(merged);
     setLoading(false);
@@ -6959,7 +7160,7 @@ function DatabasePage({ user }) {
   const filteredInventory = inventoryData.filter(item =>
     item.ident_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.iso_numbers?.toLowerCase().includes(searchTerm.toLowerCase())
+    item.iso_number?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const openBalanceModal = (item) => {
@@ -7038,9 +7239,9 @@ function DatabasePage({ user }) {
   };
 
   const exportCSV = () => {
-    const headers = ['ISO Numbers', 'Ident Code', 'Description', 'Pos Qty', 'Collected TEN', 'YARD', 'SITE', 'LOST', 'BROKEN', 'Record Out'];
+    const headers = ['ISO', 'Ident Code', 'Description', 'Pos Qty', 'Collected TEN', 'YARD', 'SITE', 'LOST', 'BROKEN', 'Record Out'];
     const rows = filteredInventory.map(i => [
-      i.iso_numbers,
+      i.iso_number,
       i.ident_code,
       i.description,
       i.pos_qty || 0,
@@ -7088,7 +7289,7 @@ function DatabasePage({ user }) {
           <table style={styles.table}>
             <thead style={{ position: 'sticky', top: 0 }}>
               <tr>
-                <th style={{ ...styles.th, minWidth: '120px' }}>ISO Numbers</th>
+                <th style={{ ...styles.th, minWidth: '100px' }}>ISO</th>
                 <th style={{ ...styles.th, minWidth: '140px' }}>Ident Code</th>
                 <th style={{ ...styles.th, minWidth: '180px' }}>Description</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>Pos Qty</th>
@@ -7102,10 +7303,10 @@ function DatabasePage({ user }) {
               </tr>
             </thead>
             <tbody>
-              {filteredInventory.map(item => (
-                <tr key={item.ident_code}>
-                  <td style={{ ...styles.td, fontSize: '11px', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.iso_numbers}>
-                    {item.iso_numbers || '-'}
+              {filteredInventory.map((item, idx) => (
+                <tr key={`${item.iso_number}-${item.ident_code}-${idx}`}>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>
+                    {item.iso_number || '-'}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', fontSize: '12px' }}>{item.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '12px' }} title={item.description}>
