@@ -8912,34 +8912,98 @@ function DatabasePage({ user }) {
     ident.toLowerCase().includes(identFilter.toLowerCase())
   ).slice(0, 20);
 
-  const openBalanceModal = (item) => {
+  const openBalanceModal = async (item) => {
+    // V28.5 FIX: Fetch fresh data from inventory table before opening modal
+    const { data: freshInv, error: invError } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('ident_code', item.ident_code)
+      .maybeSingle(); // Use maybeSingle instead of single to avoid error when not found
+    
+    console.log('📦 Opening balance modal for:', item.ident_code);
+    console.log('📦 Fresh inventory data:', freshInv);
+    console.log('📦 Inventory error:', invError);
+    console.log('📦 Item data:', item);
+    
     setSelectedItem(item);
+    
+    // V28.5 FIX: Use freshInv if found, otherwise use item values, ensure numbers
+    const yardVal = freshInv ? (freshInv.yard_qty ?? 0) : (item.yard_qty ?? 0);
+    const siteVal = freshInv ? (freshInv.site_qty ?? 0) : (item.site_qty ?? 0);
+    const lostVal = freshInv ? (freshInv.lost_qty ?? 0) : (item.lost_qty ?? 0);
+    const brokenVal = freshInv ? (freshInv.broken_qty ?? 0) : (item.broken_qty ?? 0);
+    const tenVal = freshInv ? (freshInv.collected_ten_wh ?? 0) : (item.collected_ten_wh ?? 0);
+    
+    console.log('📦 Setting balanceData:', { yard: yardVal, site: siteVal, lost: lostVal, broken: brokenVal, ten: tenVal });
+    
     setBalanceData({
-      yard_qty: item.yard_qty || 0,
-      site_qty: item.site_qty || 0,
-      lost_qty: item.lost_qty || 0,
-      broken_qty: item.broken_qty || 0,
-      collected_ten_wh: item.collected_ten_wh || 0
+      yard_qty: yardVal,
+      site_qty: siteVal,
+      lost_qty: lostVal,
+      broken_qty: brokenVal,
+      collected_ten_wh: tenVal
     });
     setShowBalanceModal(true);
   };
 
   const saveBalance = async () => {
-    // Upsert to inventory
-    const { error } = await supabase.from('inventory').upsert({
+    // V28.5 FIX: Ensure all values are properly parsed as integers
+    const yardQty = parseInt(balanceData.yard_qty, 10);
+    const siteQty = parseInt(balanceData.site_qty, 10);
+    const lostQty = parseInt(balanceData.lost_qty, 10);
+    const brokenQty = parseInt(balanceData.broken_qty, 10);
+    const tenQty = parseInt(balanceData.collected_ten_wh, 10);
+    
+    const dataToSave = {
       ident_code: selectedItem.ident_code,
-      description: selectedItem.description,
-      yard_qty: parseInt(balanceData.yard_qty) || 0,
-      site_qty: parseInt(balanceData.site_qty) || 0,
-      lost_qty: parseInt(balanceData.lost_qty) || 0,
-      broken_qty: parseInt(balanceData.broken_qty) || 0,
-      collected_ten_wh: parseInt(balanceData.collected_ten_wh) || 0
-    }, { onConflict: 'ident_code' });
+      description: selectedItem.description || '',
+      yard_qty: isNaN(yardQty) ? 0 : yardQty,
+      site_qty: isNaN(siteQty) ? 0 : siteQty,
+      lost_qty: isNaN(lostQty) ? 0 : lostQty,
+      broken_qty: isNaN(brokenQty) ? 0 : brokenQty,
+      collected_ten_wh: isNaN(tenQty) ? 0 : tenQty
+    };
+    
+    console.log('📦 balanceData before save:', balanceData);
+    console.log('📦 Saving balance to inventory:', dataToSave);
+    
+    // Check if record exists first
+    const { data: existing } = await supabase
+      .from('inventory')
+      .select('id')
+      .eq('ident_code', selectedItem.ident_code)
+      .maybeSingle();
+    
+    let error;
+    if (existing) {
+      // Update existing record
+      console.log('📦 Updating existing record');
+      const result = await supabase
+        .from('inventory')
+        .update({
+          yard_qty: dataToSave.yard_qty,
+          site_qty: dataToSave.site_qty,
+          lost_qty: dataToSave.lost_qty,
+          broken_qty: dataToSave.broken_qty,
+          collected_ten_wh: dataToSave.collected_ten_wh,
+          description: dataToSave.description
+        })
+        .eq('ident_code', selectedItem.ident_code);
+      error = result.error;
+    } else {
+      // Insert new record
+      console.log('📦 Inserting new record');
+      const result = await supabase.from('inventory').insert(dataToSave);
+      error = result.error;
+    }
 
     if (error) {
+      console.error('📦 Save error:', error);
       alert('Error: ' + error.message);
       return;
     }
+    
+    console.log('📦 Save successful!');
 
     await supabase.from('movements').insert({
       ident_code: selectedItem.ident_code,
