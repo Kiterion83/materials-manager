@@ -2908,29 +2908,6 @@ function WHSitePage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     
-    // Load inventory for WH_Site and WH_Yard quantities
-    const { data: invData, error: invError } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
-    console.log('📦 WH Site - Inventory query result:', { data: invData, error: invError, count: invData?.length });
-    
-    // Debug: show ALL ident_codes returned
-    if (invData) {
-      console.log('📦 WH Site - ALL ident_codes from inventory:', invData.map(i => i.ident_code));
-      console.log('📦 WH Site - Full inventory data:', JSON.stringify(invData, null, 2));
-    }
-    
-    const invMap = {};
-    if (invData) {
-      invData.forEach(i => { 
-        invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; 
-      });
-    }
-    
-    // Debug: check for C1GXTDJK specifically
-    console.log('📦 WH Site - invMap has C1GXTDJK?', 'C1GXTDJK' in invMap);
-    console.log('📦 WH Site - invMap[C1GXTDJK]:', invMap['C1GXTDJK']);
-    
-    setInventoryMap(invMap);
-    
     // V28.5: Load ALL open requests to sum quantities per ident_code
     const openStatuses = ['WH_Site', 'Yard', 'Eng', 'Order', 'Trans', 'ToCollect', 'TP', 'HF', 'Spare', 'Mng'];
     const { data: allOpenData } = await supabase
@@ -2953,14 +2930,6 @@ function WHSitePage({ user }) {
       .eq('status', 'WH_Site');
 
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
-    
-    // Debug: check if component ident_codes exist in inventory
-    if (siteData && siteData.length > 0) {
-      siteData.forEach(comp => {
-        const inv = invMap[comp.ident_code];
-        console.log(`📦 Component ${comp.ident_code}: inventory=`, inv || 'NOT FOUND');
-      });
-    }
 
     // Load Engineering Checks sent to Site (separate section)
     const { data: checksData, error: checksError } = await supabase
@@ -2970,6 +2939,34 @@ function WHSitePage({ user }) {
       .eq('eng_check_sent_to', 'WH_Site');
 
     console.log('WH Site - Loading Engineering Checks:', { checksData, checksError });
+    
+    // V28.5 FIX: Get unique ident_codes from loaded components, then load ONLY those from inventory
+    const allComponents = [...(siteData || []), ...(checksData || [])];
+    const uniqueIdentCodes = [...new Set(allComponents.map(c => c.ident_code).filter(Boolean))];
+    
+    console.log('📦 WH Site - Unique ident_codes to look up:', uniqueIdentCodes);
+    
+    // Load inventory ONLY for the ident_codes we need (not all 52000+!)
+    let invMap = {};
+    if (uniqueIdentCodes.length > 0) {
+      const { data: invData, error: invError } = await supabase
+        .from('inventory')
+        .select('ident_code, site_qty, yard_qty')
+        .in('ident_code', uniqueIdentCodes);
+      
+      console.log('📦 WH Site - Inventory for our components:', { invData, invError });
+      
+      if (invData) {
+        invData.forEach(i => { 
+          invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; 
+        });
+      }
+    }
+    
+    // Debug: verify C1GXTDJK
+    console.log('📦 WH Site - invMap[C1GXTDJK]:', invMap['C1GXTDJK']);
+    
+    setInventoryMap(invMap);
 
     // Load Engineering Notes (legacy)
     const { data: notesData } = await supabase
@@ -3660,14 +3657,6 @@ function WHYardPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     
-    // Load inventory for WH_Site and WH_Yard quantities
-    const { data: invData } = await supabase.from('inventory').select('ident_code, site_qty, yard_qty');
-    const invMap = {};
-    if (invData) {
-      invData.forEach(i => { invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; });
-    }
-    setInventoryMap(invMap);
-    
     // V28.5: Load ALL open requests to sum quantities per ident_code
     const openStatuses = ['WH_Site', 'Yard', 'Eng', 'Order', 'Trans', 'ToCollect', 'TP', 'HF', 'Spare', 'Mng'];
     const { data: allOpenData } = await supabase
@@ -3694,6 +3683,31 @@ function WHYardPage({ user }) {
       .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
       .eq('eng_check_sent_to', 'Yard');
+
+    // V28.5 FIX: Get unique ident_codes from loaded components, then load ONLY those from inventory
+    const allComponents = [...(yardData || []), ...(checksData || [])];
+    const uniqueIdentCodes = [...new Set(allComponents.map(c => c.ident_code).filter(Boolean))];
+    
+    console.log('📦 WH Yard - Unique ident_codes to look up:', uniqueIdentCodes);
+    
+    // Load inventory ONLY for the ident_codes we need
+    let invMap = {};
+    if (uniqueIdentCodes.length > 0) {
+      const { data: invData, error: invError } = await supabase
+        .from('inventory')
+        .select('ident_code, site_qty, yard_qty')
+        .in('ident_code', uniqueIdentCodes);
+      
+      console.log('📦 WH Yard - Inventory for our components:', { invData, invError });
+      
+      if (invData) {
+        invData.forEach(i => { 
+          invMap[i.ident_code] = { site: i.site_qty || 0, yard: i.yard_qty || 0 }; 
+        });
+      }
+    }
+    
+    setInventoryMap(invMap);
 
     if (checksData) setEngChecks(checksData);
     if (yardData) setComponents(yardData);
@@ -8857,24 +8871,31 @@ function DatabasePage({ user }) {
     
     const { data: projectData, count } = await query;
     
-    // Get inventory data
-    const { data: invData, error: invError } = await supabase
-      .from('inventory')
-      .select('*');
+    // V28.5 FIX: Get unique ident_codes from project_materials, then load ONLY those from inventory
+    const uniqueIdentCodes = [...new Set((projectData || []).map(p => p.ident_code).filter(Boolean))];
+    console.log('🔍 DATABASE - Unique ident_codes from project_materials:', uniqueIdentCodes.length);
     
-    console.log('🔍 DATABASE - Inventory raw data:', invData);
-    console.log('🔍 DATABASE - Inventory error:', invError);
-    
-    // Create inventory map by ident_code
-    const invMap = {};
-    if (invData) {
-      invData.forEach(i => { 
-        console.log('🔍 DATABASE - Adding to invMap:', i.ident_code, '→', { yard: i.yard_qty, site: i.site_qty });
-        invMap[i.ident_code] = i; 
-      });
+    // Load inventory ONLY for the ident_codes we need (not all 52000+!)
+    let invMap = {};
+    if (uniqueIdentCodes.length > 0) {
+      const { data: invData, error: invError } = await supabase
+        .from('inventory')
+        .select('*')
+        .in('ident_code', uniqueIdentCodes);
+      
+      console.log('🔍 DATABASE - Inventory for our materials:', { count: invData?.length, error: invError });
+      
+      if (invData) {
+        invData.forEach(i => { 
+          invMap[i.ident_code] = i; 
+        });
+      }
+      
+      // Debug: check for C1GXTDJK
+      if (invMap['C1GXTDJK']) {
+        console.log('🔍 DATABASE - Found C1GXTDJK:', invMap['C1GXTDJK']);
+      }
     }
-    
-    console.log('🔍 DATABASE - invMap keys:', Object.keys(invMap));
     
     // V28.1: Group by ISO + ident_code (unique combination)
     const groupedData = {};
@@ -8883,12 +8904,6 @@ function DatabasePage({ user }) {
         const key = `${item.iso_number}|${item.ident_code}`;
         if (!groupedData[key]) {
           const inv = invMap[item.ident_code] || {};
-          
-          // Debug: check if C1GXTDJK is found
-          if (item.ident_code === 'C1GXTDJK') {
-            console.log('🔍 DATABASE - Looking for C1GXTDJK in invMap:', inv);
-            console.log('🔍 DATABASE - invMap has C1GXTDJK?', invMap.hasOwnProperty('C1GXTDJK'));
-          }
           
           groupedData[key] = {
             iso_number: item.iso_number,
