@@ -6725,6 +6725,13 @@ function MaterialInPage({ user }) {
   const [partialsLog, setPartialsLog] = useState([]);
   const [showPartialsLog, setShowPartialsLog] = useState(false);
   
+  // V28.9: State for new delivery modal
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [selectedPartial, setSelectedPartial] = useState(null);
+  const [deliveryType, setDeliveryType] = useState('complete'); // 'partial' or 'complete'
+  const [deliveryQty, setDeliveryQty] = useState('');
+  const [deliveryDestination, setDeliveryDestination] = useState('site'); // 'site' or 'yard'
+  
   const [loading, setLoading] = useState(true);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -6903,6 +6910,80 @@ function MaterialInPage({ user }) {
       
       alert(`Successfully assigned ${loadedItems.length} items to ${destination}`);
       setLoadedItems([]);
+      loadData();
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  // V28.9: Open delivery modal for partial item
+  const openDeliveryModal = (partial) => {
+    setSelectedPartial(partial);
+    setDeliveryType('complete');
+    setDeliveryQty('');
+    setDeliveryDestination('site');
+    setShowDeliveryModal(true);
+  };
+
+  // V28.9: Process new delivery from partial
+  const processDelivery = async () => {
+    if (!selectedPartial) return;
+    
+    try {
+      const deliverQty = deliveryType === 'complete' 
+        ? selectedPartial.missing_qty 
+        : parseInt(deliveryQty) || 0;
+      
+      if (deliverQty <= 0) {
+        alert('Invalid quantity');
+        return;
+      }
+      
+      if (deliveryType === 'partial' && deliverQty >= selectedPartial.missing_qty) {
+        alert('For partial delivery, quantity must be less than remaining missing quantity');
+        return;
+      }
+      
+      const newMissingQty = selectedPartial.missing_qty - deliverQty;
+      
+      // Update the partial record with new missing qty
+      await supabase
+        .from('material_in_partials')
+        .update({ missing_qty: newMissingQty })
+        .eq('id', selectedPartial.id);
+      
+      // Update inventory - add to yard or site
+      if (deliveryDestination === 'yard') {
+        await supabase.rpc('increment_yard_qty', { 
+          p_ident_code: selectedPartial.ident_code, 
+          p_qty: deliverQty 
+        });
+      } else {
+        await supabase.rpc('increment_site_qty', { 
+          p_ident_code: selectedPartial.ident_code, 
+          p_qty: deliverQty 
+        });
+      }
+      
+      // Also increment collected_ten_wh since this is material arriving from TEN
+      await supabase.rpc('increment_collected_ten_wh', { 
+        p_ident_code: selectedPartial.ident_code, 
+        p_qty: deliverQty 
+      });
+      
+      // Log the movement
+      await supabase.from('movements').insert({
+        ident_code: selectedPartial.ident_code,
+        movement_type: 'IN',
+        quantity: deliverQty,
+        from_location: 'TEN_WH',
+        to_location: deliveryDestination.toUpperCase(),
+        performed_by: user.full_name,
+        note: `Partial delivery from MIR ${selectedPartial.mir_number || '-'}/${selectedPartial.rk_number} - ${deliveryType === 'complete' ? 'Complete' : 'Partial'} (${newMissingQty} still missing)`
+      });
+      
+      alert(`Successfully delivered ${deliverQty} to ${deliveryDestination.toUpperCase()}. ${newMissingQty > 0 ? `${newMissingQty} still missing.` : 'Partial completed!'}`);
+      setShowDeliveryModal(false);
       loadData();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -7343,6 +7424,7 @@ function MaterialInPage({ user }) {
                 <th style={styles.th}>Missing</th>
                 <th style={styles.th}>Note</th>
                 <th style={styles.th}>By</th>
+                <th style={styles.th}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -7360,15 +7442,156 @@ function MaterialInPage({ user }) {
                     {p.note ? <NoteIcon note={p.note} /> : '-'}
                   </td>
                   <td style={{ ...styles.td, fontSize: '12px', color: '#6b7280' }}>{p.created_by_name}</td>
+                  <td style={styles.td}>
+                    {p.missing_qty > 0 && canModify && (
+                      <button
+                        onClick={() => openDeliveryModal(p)}
+                        style={{
+                          ...styles.button,
+                          backgroundColor: COLORS.success,
+                          color: 'white',
+                          padding: '4px 10px',
+                          fontSize: '11px'
+                        }}
+                      >
+                        📦 New Delivery
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {partialsLog.length === 0 && (
-                <tr><td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No partial items recorded</td></tr>
+                <tr><td colSpan="9" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No partial items recorded</td></tr>
               )}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* V28.9: New Delivery Modal */}
+      <Modal isOpen={showDeliveryModal} onClose={() => setShowDeliveryModal(false)} title="📦 New Delivery">
+        {selectedPartial && (
+          <>
+            <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#F3F4F6', borderRadius: '8px' }}>
+              <p style={{ fontWeight: '600', marginBottom: '8px' }}>Item Details:</p>
+              <p><strong>Ident Code:</strong> {selectedPartial.ident_code}</p>
+              <p><strong>MIR/RK:</strong> {selectedPartial.mir_number || '-'}/{selectedPartial.rk_number}</p>
+              <p><strong>Still Missing:</strong> <span style={{ color: COLORS.primary, fontWeight: '600' }}>{selectedPartial.missing_qty}</span></p>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={styles.label}>Delivery Type</label>
+              <select
+                value={deliveryType}
+                onChange={(e) => {
+                  setDeliveryType(e.target.value);
+                  if (e.target.value === 'complete') {
+                    setDeliveryQty('');
+                  }
+                }}
+                style={styles.select}
+              >
+                <option value="complete">Complete (deliver all {selectedPartial.missing_qty})</option>
+                <option value="partial">Partial (deliver some)</option>
+              </select>
+            </div>
+
+            {deliveryType === 'partial' && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={styles.label}>Quantity to Deliver</label>
+                <input
+                  type="number"
+                  value={deliveryQty}
+                  onChange={(e) => setDeliveryQty(e.target.value)}
+                  min="1"
+                  max={selectedPartial.missing_qty - 1}
+                  style={styles.input}
+                  placeholder={`Max ${selectedPartial.missing_qty - 1}`}
+                />
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  Remaining after delivery: {selectedPartial.missing_qty - (parseInt(deliveryQty) || 0)}
+                </p>
+              </div>
+            )}
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={styles.label}>Send To</label>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setDeliveryDestination('site')}
+                  style={{
+                    ...styles.button,
+                    flex: 1,
+                    backgroundColor: deliveryDestination === 'site' ? '#2563EB' : '#E5E7EB',
+                    color: deliveryDestination === 'site' ? 'white' : '#374151',
+                    padding: '12px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    border: deliveryDestination === 'site' ? '2px solid #1D4ED8' : '2px solid #D1D5DB'
+                  }}
+                >
+                  🏭 To SITE
+                </button>
+                <button
+                  onClick={() => setDeliveryDestination('yard')}
+                  style={{
+                    ...styles.button,
+                    flex: 1,
+                    backgroundColor: deliveryDestination === 'yard' ? '#1F2937' : '#E5E7EB',
+                    color: deliveryDestination === 'yard' ? 'white' : '#374151',
+                    padding: '12px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    border: deliveryDestination === 'yard' ? '2px solid #111827' : '2px solid #D1D5DB'
+                  }}
+                >
+                  🏢 To YARD
+                </button>
+              </div>
+            </div>
+
+            <div style={{ 
+              padding: '12px', 
+              backgroundColor: deliveryType === 'complete' ? '#DCFCE7' : '#FEF3C7', 
+              borderRadius: '8px',
+              marginBottom: '16px'
+            }}>
+              <p style={{ fontWeight: '600', color: deliveryType === 'complete' ? '#166534' : '#92400E' }}>
+                Summary:
+              </p>
+              <p style={{ fontSize: '14px' }}>
+                Delivering <strong>{deliveryType === 'complete' ? selectedPartial.missing_qty : (parseInt(deliveryQty) || 0)}</strong> to <strong>{deliveryDestination.toUpperCase()}</strong>
+              </p>
+              {deliveryType === 'partial' && (
+                <p style={{ fontSize: '14px' }}>
+                  Still missing after: <strong>{selectedPartial.missing_qty - (parseInt(deliveryQty) || 0)}</strong>
+                </p>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => setShowDeliveryModal(false)} 
+                style={{ ...styles.button, ...styles.buttonSecondary }}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={processDelivery}
+                disabled={deliveryType === 'partial' && (!deliveryQty || parseInt(deliveryQty) <= 0)}
+                style={{ 
+                  ...styles.button, 
+                  backgroundColor: COLORS.success, 
+                  color: 'white',
+                  opacity: (deliveryType === 'partial' && (!deliveryQty || parseInt(deliveryQty) <= 0)) ? 0.5 : 1
+                }}
+              >
+                ✓ Confirm Delivery
+              </button>
+            </div>
+          </>
+        )}
+      </Modal>
     </div>
   );
 }
