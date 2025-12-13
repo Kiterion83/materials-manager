@@ -5173,49 +5173,6 @@ function EngineeringPage({ user }) {
     loadComponents();
   };
 
-  const submitPartial = async () => {
-    const sendQty = parseInt(partialQty);
-    const remainingQty = selectedComponent.quantity - sendQty;
-    
-    await supabase.from('request_components')
-      .update({ quantity: sendQty, status: 'Spare' })
-      .eq('id', selectedComponent.id);
-
-    await logHistory(selectedComponent.id, 'Partial to Spare', 'Eng', 'Spare', 
-      `Qty ${sendQty} a Spare, ${remainingQty} a Order`);
-
-    const { data: subData } = await supabase
-      .from('requests')
-      .select('sub_number')
-      .eq('request_number', selectedComponent.requests.request_number)
-      .order('sub_number', { ascending: false })
-      .limit(1);
-    
-    const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-    
-    const { data: newReq } = await supabase.from('requests')
-      .insert({
-        request_number: selectedComponent.requests.request_number,
-        sub_number: nextSub,
-        request_type: selectedComponent.requests.request_type,
-        sub_category: selectedComponent.requests.sub_category
-      })
-      .select()
-      .single();
-    
-    await supabase.from('request_components').insert({
-      request_id: newReq.id,
-      ident_code: selectedComponent.ident_code,
-      description: selectedComponent.description,
-      quantity: remainingQty,
-      status: 'Order'
-    });
-
-    setShowPartialModal(false);
-    setPartialQty('');
-    loadComponents();
-  };
-
   // V28: Submit Management Note
   const submitMngNote = async () => {
     await supabase.from('request_components')
@@ -5515,31 +5472,6 @@ function EngineeringPage({ user }) {
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowCheckModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button onClick={sendCheck} style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}>Send</button>
-        </div>
-      </Modal>
-
-      {/* Partial Modal */}
-      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Split - Part to Spare">
-        <p style={{ marginBottom: '16px' }}>
-          <strong>{selectedComponent?.ident_code}</strong> - Total: {selectedComponent?.quantity}
-        </p>
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Qty to Spare Parts</label>
-          <input
-            type="number"
-            value={partialQty}
-            onChange={(e) => setPartialQty(e.target.value)}
-            style={styles.input}
-            min="1"
-            max={selectedComponent?.quantity - 1}
-          />
-          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
-            The rest will go to Orders
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Split</button>
         </div>
       </Modal>
 
@@ -5874,14 +5806,17 @@ function TestPackPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     
-    // V28.9: Load ALL components that have a test_pack_number (any status except Done/Cancelled)
-    const { data } = await supabase
-      .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, requester_user_id, secondary_collector)`)
-      .not('requests.test_pack_number', 'is', null)
-      .not('status', 'in', '("Done","Cancelled","Deleted")');
-    
-    if (data) {
+    try {
+      // V28.9: Load ALL components that have a test_pack_number (any status except Done/Cancelled)
+      const { data } = await supabase
+        .from('request_components')
+        .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, requester_user_id, secondary_collector)`)
+        .not('requests.test_pack_number', 'is', null)
+        .not('status', 'eq', 'Done')
+        .not('status', 'eq', 'Cancelled')
+        .not('status', 'eq', 'Deleted');
+      
+      if (data) {
       // Group by test_pack_number, then by request_number, then by sub_category
       const grouped = {};
       data.forEach(comp => {
@@ -5917,6 +5852,9 @@ function TestPackPage({ user }) {
       });
       
       setTestPacks(grouped);
+    }
+    } catch (error) {
+      console.error('TestPack load error:', error);
     }
     setLoading(false);
   };
