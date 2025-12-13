@@ -4902,18 +4902,9 @@ function SiteInPage({ user }) {
         note: `Returned to ${prevStatus}`
       });
 
-      setOpenDropdown(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
-    }
-  };
-
-  const handleAction = (component, action) => {
-    switch(action) {
-      case 'receive': handleReceive(component); break;
-      case 'delete': handleDelete(component); break;
-      case 'return': handleReturn(component); break;
     }
   };
 
