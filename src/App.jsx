@@ -9820,7 +9820,6 @@ function DatabasePage({ user }) {
       }}>
         ℹ️ Showing {inventoryData.length} of {totalCount} results (max 500 per query). Use filters above to find specific items.
       </div>
-      </div>
 
       <div style={styles.card}>
         <div style={styles.cardHeader}>
