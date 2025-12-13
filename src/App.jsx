@@ -6732,9 +6732,15 @@ function MaterialInPage({ user }) {
   const [deliveryQty, setDeliveryQty] = useState('');
   const [deliveryDestination, setDeliveryDestination] = useState('site'); // 'site' or 'yard'
   
+  // V28.9: State for full Material IN log
+  const [activeTab, setActiveTab] = useState('load'); // 'load' or 'log'
+  const [materialInLog, setMaterialInLog] = useState([]);
+  const [logSearchMir, setLogSearchMir] = useState('');
+  
   const [loading, setLoading] = useState(true);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [identSearchTimeout, setIdentSearchTimeout] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -6756,6 +6762,16 @@ function MaterialInPage({ user }) {
       .order('created_at', { ascending: false })
       .limit(50);
     if (partialsData) setPartialsLog(partialsData);
+    
+    // V28.9: Load full Material IN log from movements
+    const { data: logData } = await supabase
+      .from('movements')
+      .select('*')
+      .eq('movement_type', 'IN')
+      .eq('from_location', 'TEN_WH')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (logData) setMaterialInLog(logData);
     
     setLoading(false);
   };
@@ -6992,26 +7008,68 @@ function MaterialInPage({ user }) {
 
   const canModify = canModifyPage(user, 'material_in');
 
+  // V28.9: Filter log by MIR search
+  const filteredLog = logSearchMir 
+    ? materialInLog.filter(m => m.note && m.note.toLowerCase().includes(logSearchMir.toLowerCase()))
+    : materialInLog;
+
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
   return (
     <div>
-      {/* MIR Selection */}
-      <div style={{ ...styles.card, marginBottom: '20px' }}>
-        <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>📦 Material IN - Load from TEN Warehouse</h3>
-          <button 
-            onClick={() => setShowPartialsLog(!showPartialsLog)}
-            style={{ ...styles.button, ...styles.buttonSecondary }}
-          >
-            📋 {showPartialsLog ? 'Hide' : 'Show'} Partial/Note Log
-          </button>
-        </div>
-        <div style={{ padding: '20px' }}>
-          {/* Step 1: Select MIR */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ ...styles.label, fontSize: '16px', fontWeight: '600', color: COLORS.info }}>
-              Step 1: Select MIR (Piping Only)
+      {/* V28.9: Tab Navigation */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '20px' }}>
+        <button
+          onClick={() => setActiveTab('load')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'load' ? COLORS.primary : '#E5E7EB',
+            color: activeTab === 'load' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          📦 Load Material
+        </button>
+        <button
+          onClick={() => setActiveTab('log')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'log' ? COLORS.info : '#E5E7EB',
+            color: activeTab === 'log' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          📋 Material IN Log ({materialInLog.length})
+        </button>
+      </div>
+
+      {/* TAB 1: Load Material */}
+      {activeTab === 'load' && (
+        <>
+          {/* MIR Selection */}
+          <div style={{ ...styles.card, marginBottom: '20px' }}>
+            <div style={styles.cardHeader}>
+              <h3 style={{ fontWeight: '600' }}>📦 Material IN - Load from TEN Warehouse</h3>
+              <button 
+                onClick={() => setShowPartialsLog(!showPartialsLog)}
+                style={{ ...styles.button, ...styles.buttonSecondary }}
+              >
+                📋 {showPartialsLog ? 'Hide' : 'Show'} Partial/Note Log
+              </button>
+            </div>
+            <div style={{ padding: '20px' }}>
+              {/* Step 1: Select MIR */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={{ ...styles.label, fontSize: '16px', fontWeight: '600', color: COLORS.info }}>
+                  Step 1: Select MIR (Piping Only)
             </label>
             <select
               value={selectedMir?.id || ''}
@@ -7465,6 +7523,92 @@ function MaterialInPage({ user }) {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+        </>
+      )}
+
+      {/* TAB 2: Material IN Log */}
+      {activeTab === 'log' && (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#DBEAFE' }}>
+            <h3 style={{ fontWeight: '600', color: COLORS.info }}>📋 Material IN Log - All Loaded Items</h3>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={logSearchMir}
+                onChange={(e) => setLogSearchMir(e.target.value)}
+                placeholder="Search by MIR..."
+                style={{ ...styles.input, width: '200px', marginBottom: 0 }}
+              />
+              {logSearchMir && (
+                <button
+                  onClick={() => setLogSearchMir('')}
+                  style={{ ...styles.button, backgroundColor: '#6B7280', color: 'white', padding: '6px 12px' }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* Results info */}
+          <div style={{ padding: '12px 16px', backgroundColor: '#F3F4F6', borderBottom: '1px solid #E5E7EB' }}>
+            <span style={{ fontSize: '13px', color: '#6B7280' }}>
+              Showing {filteredLog.length} of {materialInLog.length} records
+              {logSearchMir && <span> (filtered by: "{logSearchMir}")</span>}
+            </span>
+          </div>
+
+          <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
+            <table style={styles.table}>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: 'white' }}>
+                <tr>
+                  <th style={styles.th}>Date/Time</th>
+                  <th style={styles.th}>MIR Info</th>
+                  <th style={styles.th}>Ident Code</th>
+                  <th style={styles.th}>Qty</th>
+                  <th style={styles.th}>Destination</th>
+                  <th style={styles.th}>Operator</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredLog.map(m => (
+                  <tr key={m.id} style={{ backgroundColor: m.to_location === 'SITE' ? '#EFF6FF' : '#F9FAFB' }}>
+                    <td style={{ ...styles.td, fontSize: '12px' }}>
+                      {new Date(m.created_at).toLocaleDateString()}<br/>
+                      <span style={{ color: '#9CA3AF' }}>{new Date(m.created_at).toLocaleTimeString()}</span>
+                    </td>
+                    <td style={{ ...styles.td, fontSize: '12px' }}>
+                      {m.note || '-'}
+                    </td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{m.ident_code}</td>
+                    <td style={{ ...styles.td, fontWeight: '600', color: COLORS.success }}>{m.quantity}</td>
+                    <td style={styles.td}>
+                      <span style={{
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        backgroundColor: m.to_location === 'SITE' ? '#2563EB' : '#1F2937',
+                        color: 'white'
+                      }}>
+                        {m.to_location === 'SITE' ? '🏭 SITE' : '🏢 YARD'}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, fontSize: '12px', color: '#6B7280' }}>{m.performed_by}</td>
+                  </tr>
+                ))}
+                {filteredLog.length === 0 && (
+                  <tr>
+                    <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF', padding: '40px' }}>
+                      {logSearchMir ? `No results for "${logSearchMir}"` : 'No Material IN records yet'}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
