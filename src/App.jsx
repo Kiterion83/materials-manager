@@ -5046,34 +5046,46 @@ function EngineeringPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     
-    // Waiting for Check: items sent to Site/Yard for verification
-    const { data: waitingData } = await supabase
-      .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
-      .eq('has_eng_check', true);
-    
-    // To Process: items in Eng status without pending check
-    const { data: processData } = await supabase
-      .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
-      .eq('status', 'Eng')
-      .eq('has_eng_check', false);
-    
-    // V28.9: Load inventory for WH_Site and WH_Yard columns
-    const { data: invData } = await supabase
-      .from('inventory')
-      .select('ident_code, site_qty, yard_qty');
-    
-    const invMap = {};
-    if (invData) {
-      invData.forEach(inv => {
-        invMap[inv.ident_code] = { site: inv.site_qty || 0, yard: inv.yard_qty || 0 };
-      });
+    try {
+      // Waiting for Check: items sent to Site/Yard for verification
+      const { data: waitingData } = await supabase
+        .from('request_components')
+        .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+        .eq('has_eng_check', true);
+      
+      // To Process: items in Eng status without pending check
+      const { data: processData } = await supabase
+        .from('request_components')
+        .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+        .eq('status', 'Eng')
+        .eq('has_eng_check', false);
+      
+      // V28.9: Load inventory ONLY for the ident_codes we need (not all 237k!)
+      const allComps = [...(waitingData || []), ...(processData || [])];
+      const uniqueIdentCodes = [...new Set(allComps.map(c => c.ident_code).filter(Boolean))];
+      
+      const invMap = {};
+      if (uniqueIdentCodes.length > 0) {
+        const { data: invData } = await supabase
+          .from('inventory')
+          .select('ident_code, site_qty, yard_qty')
+          .in('ident_code', uniqueIdentCodes);
+        
+        if (invData) {
+          invData.forEach(inv => {
+            invMap[inv.ident_code] = { site: inv.site_qty || 0, yard: inv.yard_qty || 0 };
+          });
+        }
+      }
+      setInventoryMap(invMap);
+      
+      if (waitingData) setWaitingForCheck(waitingData);
+      if (processData) setToProcess(processData);
+    } catch (error) {
+      console.error('Engineering load error:', error);
+      alert('Error loading Engineering data: ' + error.message);
     }
-    setInventoryMap(invMap);
     
-    if (waitingData) setWaitingForCheck(waitingData);
-    if (processData) setToProcess(processData);
     setLoading(false);
   };
 
@@ -8299,6 +8311,27 @@ function MIRPage({ user }) {
     loadMirs();
   };
 
+  // V28.9: Delete MIR
+  const deleteMir = async (mir) => {
+    if (!window.confirm(`Delete MIR ${mir.mir_number || mir.rk_number}? This cannot be undone.`)) return;
+    
+    await supabase.from('mirs').delete().eq('id', mir.id);
+    
+    loadMirs();
+  };
+
+  // V28.9: Handle MIR actions
+  const handleMirAction = (mir, action) => {
+    switch (action) {
+      case 'close':
+        closeMir(mir);
+        break;
+      case 'delete':
+        deleteMir(mir);
+        break;
+    }
+  };
+
   const canModify = canModifyPage(user, 'mir');
 
   // Filter MIRs by tab and search
@@ -8462,19 +8495,15 @@ function MIRPage({ user }) {
                 <td style={styles.td}>{new Date(mir.created_at).toLocaleDateString()}</td>
                 {activeTab === 'open' && (
                   <td style={styles.td}>
-                    <button
-                      onClick={() => closeMir(mir)}
+                    <ActionDropdown
+                      actions={[
+                        { id: 'close', icon: '✓', label: 'Close' },
+                        { id: 'delete', icon: '🗑️', label: 'Delete' }
+                      ]}
+                      onExecute={(action) => handleMirAction(mir, action)}
                       disabled={!canModify}
-                      style={{ 
-                        ...styles.button, 
-                        backgroundColor: COLORS.success, 
-                        color: 'white',
-                        padding: '6px 12px',
-                        fontSize: '12px'
-                      }}
-                    >
-                      ✓ Close
-                    </button>
+                      componentId={mir.id}
+                    />
                   </td>
                 )}
                 {activeTab === 'closed' && (
