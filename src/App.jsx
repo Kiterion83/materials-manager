@@ -1,6 +1,12 @@
 // ============================================================
-// MATERIALS MANAGER V28.7 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.8 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V28.8 Changes:
+//   - Engineering Checks: Added WH_Site and WH_Yard columns
+//   - Engineering Checks: Actions conditional on inventory availability
+//   - Engineering Checks: Added "To Yard" / "To Site" options
+//   - Removed redundant "Notes from Engineering" section in WH Site
+//   - Partial modals: Show both SITE and YARD availability
 // V28.7 Changes:
 //   - Split Partial Modal: Complete redesign like "Rilascio Parziale"
 //   - Actions To HF/TestPack: Only visible if HF/TP columns are not empty
@@ -34,7 +40,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.7';
+const APP_VERSION = 'V28.8';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -2921,7 +2927,6 @@ function RequestsPage({ user }) {
 // ============================================================
 function WHSitePage({ user }) {
   const [components, setComponents] = useState([]);
-  const [engNotes, setEngNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showPartialModal, setShowPartialModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
@@ -3009,16 +3014,8 @@ function WHSitePage({ user }) {
     
     setInventoryMap(invMap);
 
-    // Load Engineering Notes (legacy)
-    const { data: notesData } = await supabase
-      .from('request_components')
-      .select(`*, requests (request_number, sub_number, description)`)
-      .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'WH_Site');
-
     if (siteData) setComponents(siteData);
     if (checksData) setEngChecks(checksData);
-    if (notesData) setEngNotes(notesData);
     setLoading(false);
   };
 
@@ -3239,6 +3236,19 @@ function WHSitePage({ user }) {
           .eq('id', check.id);
         await logHistory(check.id, 'Check - To TestPack', 'WH_Site', 'TP', 'Sent to TestPack from Engineering check');
         loadComponents();
+      } else if (action === 'check_to_yard') {
+        // V28.8: Send to Yard for checking there
+        await supabase.from('request_components')
+          .update({ 
+            status: 'Yard', 
+            current_location: 'YARD',
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - To Yard', 'WH_Site', 'Yard', 'Sent to Yard from Engineering check (no stock in Site)');
+        loadComponents();
       } else if (action === 'check_partial') {
         // Open partial modal
         setSelectedCheck(check);
@@ -3341,37 +3351,7 @@ function WHSitePage({ user }) {
 
   return (
     <div>
-      {/* Engineering Notes */}
-      {engNotes.length > 0 && (
-        <div style={{
-          backgroundColor: '#F3E8FF',
-          border: '1px solid #A855F7',
-          borderRadius: '8px',
-          padding: '16px',
-          marginBottom: '24px'
-        }}>
-          <h4 style={{ fontWeight: '600', color: '#7C3AED', marginBottom: '12px' }}>
-            📝 Notes from Engineering ({engNotes.length})
-          </h4>
-          {engNotes.map(note => (
-            <div key={note.id} style={{
-              backgroundColor: 'white',
-              padding: '12px',
-              borderRadius: '6px',
-              marginBottom: '8px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <div>
-                <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{note.ident_code}</span>
-                <span style={{ marginLeft: '12px', color: '#6b7280' }}>{note.eng_check_message}</span>
-              </div>
-              <ActionButton color={COLORS.success} onClick={() => handleAction(note, 'ack')} disabled={!canModify} title="Confirm">✓</ActionButton>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* V28.8: Removed Engineering Notes section - message already in Engineering Checks table */}
 
       {/* Engineering Checks Section - Separate from regular components */}
       {engChecks.length > 0 && (
@@ -3398,15 +3378,19 @@ function WHSitePage({ user }) {
                   <th style={styles.th}>Request</th>
                   <th style={styles.th}>Code</th>
                   <th style={styles.th}>Description</th>
-                  <th style={styles.th}>Tag</th>
-                  <th style={styles.th}>Diam</th>
                   <th style={styles.th}>Qty</th>
+                  <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
+                  <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                   <th style={styles.th}>Message</th>
                   <th style={styles.th}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {engChecks.map(check => (
+                {engChecks.map(check => {
+                  const inv = inventoryMap[check.ident_code] || { site: 0, yard: 0 };
+                  const hasSiteQty = inv.site > 0;
+                  const hasYardQty = inv.yard > 0;
+                  return (
                   <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
                     <td style={styles.td}>{check.requests?.request_type || '-'}</td>
                     <td style={styles.td}>{check.requests?.sub_category || '-'}</td>
@@ -3418,30 +3402,49 @@ function WHSitePage({ user }) {
                       {String(check.requests?.request_number).padStart(5, '0')}-{check.requests?.sub_number}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
-                    <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
-                      {check.description ? (check.description.length > 50 ? check.description.substring(0, 50) + '...' : check.description) : '-'}
+                    <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
+                      {check.description ? (check.description.length > 30 ? check.description.substring(0, 30) + '...' : check.description) : '-'}
                     </td>
-                    <td style={styles.td}>{check.tag || '-'}</td>
-                    <td style={styles.td}>{check.dia1 || '-'}</td>
                     <td style={styles.td}>{check.quantity}</td>
-                    <td style={{ ...styles.td, color: '#B45309', fontStyle: 'italic' }}>{check.eng_check_message || '-'}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
+                      {inv.site}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.yard > 0 ? COLORS.success : COLORS.primary }}>
+                      {inv.yard}
+                    </td>
+                    <td style={{ ...styles.td, color: '#B45309', fontStyle: 'italic', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.eng_check_message || ''}>
+                      {check.eng_check_message || '-'}
+                    </td>
                     <td style={styles.td}>
                       <ActionDropdown
                         actions={(() => {
-                          // V28.6: Build actions dynamically based on origin
-                          const actions = [
-                            { id: 'check_found', icon: '✓', label: 'Found (All)' },
-                            { id: 'check_partial', icon: '✂️', label: 'Partial' }
-                          ];
-                          // If component was from HF (has hf_number or previous_status was HF)
-                          if (check.requests?.hf_number || check.previous_status === 'HF') {
+                          // V28.8: Build actions based on inventory in THIS warehouse (Site)
+                          const actions = [];
+                          
+                          // Found/Partial only if site_qty > 0 (this is WH Site page)
+                          if (hasSiteQty) {
+                            actions.push({ id: 'check_found', icon: '✓', label: 'Found (All)' });
+                            actions.push({ id: 'check_partial', icon: '✂️', label: 'Partial' });
+                          }
+                          
+                          // To HF only if site_qty > 0 AND has hf_number
+                          if (hasSiteQty && (check.requests?.hf_number || check.previous_status === 'HF')) {
                             actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                           }
-                          // If component was from TestPack (has test_pack_number or previous_status was TP)
-                          if (check.requests?.test_pack_number || check.previous_status === 'TP') {
+                          
+                          // To TestPack only if site_qty > 0 AND has test_pack_number
+                          if (hasSiteQty && (check.requests?.test_pack_number || check.previous_status === 'TP')) {
                             actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
                           }
+                          
+                          // To Yard always available if yard has qty
+                          if (hasYardQty) {
+                            actions.push({ id: 'check_to_yard', icon: '🏢', label: 'To Yard' });
+                          }
+                          
+                          // Not Found always available
                           actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
+                          
                           return actions;
                         })()}
                         onExecute={(action) => handleCheckAction(check, action)}
@@ -3450,7 +3453,8 @@ function WHSitePage({ user }) {
                       />
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -3728,8 +3732,14 @@ function WHSitePage({ user }) {
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedCheck?.ident_code}</span>
           </p>
-          <p style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '8px' }}>
             <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
+          </p>
+          <p style={{ marginBottom: '4px' }}>
+            <strong>Disponibile in SITE:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.site || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.site || 0}</span>
+          </p>
+          <p style={{ marginBottom: '16px' }}>
+            <strong>Disponibile in YARD:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.yard || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
           </p>
         </div>
         
@@ -4161,6 +4171,19 @@ function WHYardPage({ user }) {
           .eq('id', check.id);
         await logHistory(check.id, 'Check - To TestPack', 'Yard', 'TP', 'Sent to TestPack from Engineering check');
         loadComponents();
+      } else if (action === 'check_to_site') {
+        // V28.8: Send to Site for checking there
+        await supabase.from('request_components')
+          .update({ 
+            status: 'WH_Site', 
+            current_location: 'SITE',
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - To Site', 'Yard', 'WH_Site', 'Sent to Site from Engineering check (no stock in Yard)');
+        loadComponents();
       } else if (action === 'check_partial') {
         // Open partial modal
         setSelectedCheck(check);
@@ -4302,18 +4325,19 @@ function WHYardPage({ user }) {
                   <th style={styles.th}>Request</th>
                   <th style={styles.th}>Code</th>
                   <th style={styles.th}>Description</th>
-                  <th style={styles.th}>Tag</th>
-                  <th style={styles.th}>Diam</th>
                   <th style={styles.th}>Qty</th>
-                  <th style={styles.th}>Available</th>
+                  <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
+                  <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                   <th style={styles.th}>Message</th>
                   <th style={styles.th}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {engChecks.map(check => {
-                  const available = inventoryMap[check?.ident_code]?.yard || 0;
-                  const canFulfill = available >= check.quantity;
+                  const inv = inventoryMap[check.ident_code] || { site: 0, yard: 0 };
+                  const hasSiteQty = inv.site > 0;
+                  const hasYardQty = inv.yard > 0;
+                  const canFulfill = inv.yard >= check.quantity;
                   return (
                     <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
                       <td style={styles.td}>{check.requests?.request_type || '-'}</td>
@@ -4321,43 +4345,58 @@ function WHYardPage({ user }) {
                       <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
                       <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.full_spool_number || check.full_spool_number || '-'}</td>
                       <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
-                    <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
+                      <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                         {String(check.requests?.request_number).padStart(5, '0')}-{check.requests?.sub_number}
                       </td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
-                      <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
-                        {check.description ? (check.description.length > 50 ? check.description.substring(0, 50) + '...' : check.description) : '-'}
+                      <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
+                        {check.description ? (check.description.length > 30 ? check.description.substring(0, 30) + '...' : check.description) : '-'}
                       </td>
-                      <td style={styles.td}>{check.tag || '-'}</td>
-                      <td style={styles.td}>{check.dia1 || '-'}</td>
                       <td style={styles.td}>{check.quantity}</td>
-                      <td style={styles.td}>
-                        <span style={{ fontWeight: '600', color: canFulfill ? COLORS.success : COLORS.primary }}>
-                          {available}
-                        </span>
+                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
+                        {inv.site}
                       </td>
-                      <td style={{ ...styles.td, color: '#B45309', fontStyle: 'italic' }}>{check.eng_check_message || '-'}</td>
+                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.yard > 0 ? COLORS.success : COLORS.primary }}>
+                        {inv.yard}
+                      </td>
+                      <td style={{ ...styles.td, color: '#B45309', fontStyle: 'italic', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.eng_check_message || ''}>
+                        {check.eng_check_message || '-'}
+                      </td>
                       <td style={styles.td}>
                         <ActionDropdown
                           actions={(() => {
-                            // V28.6: Build actions dynamically based on origin and availability
+                            // V28.8: Build actions based on inventory in THIS warehouse (Yard)
                             const actions = [];
+                            
+                            // Found only if yard_qty >= requested (this is WH Yard page)
                             if (canFulfill) {
                               actions.push({ id: 'check_found', icon: '✓', label: 'Found (All) → Site IN' });
                             }
-                            if (available > 0) {
+                            
+                            // Partial only if yard_qty > 0
+                            if (hasYardQty) {
                               actions.push({ id: 'check_partial', icon: '✂️', label: 'Partial' });
                             }
-                            // If component was from HF (has hf_number or previous_status was HF)
-                            if (check.requests?.hf_number || check.previous_status === 'HF') {
+                            
+                            // To HF only if yard_qty > 0 AND has hf_number
+                            if (hasYardQty && (check.requests?.hf_number || check.previous_status === 'HF')) {
                               actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                             }
-                            // If component was from TestPack (has test_pack_number or previous_status was TP)
-                            if (check.requests?.test_pack_number || check.previous_status === 'TP') {
+                            
+                            // To TestPack only if yard_qty > 0 AND has test_pack_number
+                            if (hasYardQty && (check.requests?.test_pack_number || check.previous_status === 'TP')) {
                               actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
                             }
+                            
+                            // To Site always available if site has qty
+                            if (hasSiteQty) {
+                              actions.push({ id: 'check_to_site', icon: '🏭', label: 'To Site' });
+                            }
+                            
+                            // Not Found always available
                             actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
+                            
                             return actions;
                           })()}
                           onExecute={(action) => handleCheckAction(check, action)}
@@ -4470,9 +4509,12 @@ function WHYardPage({ user }) {
                 }
                 // Engineering always available
                 yardActions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
-                // HF and TestPack require yard_qty > 0
-                if (hasYardQty) {
+                // V28.8: HF only if yard_qty > 0 AND has hf_number
+                if (hasYardQty && comp.requests?.hf_number) {
                   yardActions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
+                }
+                // V28.8: TestPack only if yard_qty > 0 AND has test_pack_number
+                if (hasYardQty && comp.requests?.test_pack_number) {
                   yardActions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
                 }
                 // Return to Site requires site_qty > 0 (material must be available at site)
@@ -4649,8 +4691,11 @@ function WHYardPage({ user }) {
           <p style={{ marginBottom: '8px' }}>
             <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
           </p>
+          <p style={{ marginBottom: '4px' }}>
+            <strong>Disponibile in SITE:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.site || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.site || 0}</span>
+          </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Disponibile in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
+            <strong>Disponibile in YARD:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.yard || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
           </p>
         </div>
         
