@@ -2636,8 +2636,8 @@ function RequestsPage({ user }) {
                 </div>
               )}
 
-              {/* V28.9: HF Number (optional) for TestPack - just for info */}
-              {missingType === 'Material' && (
+              {/* V28.9: HF Number (optional) for TestPack Erection only - just for info */}
+              {missingType === 'Material' && subCategory === 'Erection' && (
                 <div style={{ marginBottom: '20px' }}>
                   <label style={styles.label}>HF Number (optional - for reference only)</label>
                   <input
