@@ -1,6 +1,11 @@
 // ============================================================
-// MATERIALS MANAGER V28.6 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.7 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V28.7 Changes:
+//   - Split Partial Modal: Complete redesign like "Rilascio Parziale"
+//   - Actions To HF/TestPack: Only visible if HF/TP columns are not empty
+//   - To Collect page: Renamed from "To Be Collected", dropdown fix
+//   - Partial destinations include HF/TP options conditionally
 // V28.6 Changes:
 //   - MIR Alert: ⚠️ column when forecast_date is overdue
 //   - Engineering Check: To HF/TestPack options if originated from HF/TP
@@ -11,7 +16,7 @@
 //   - Dashboard navigation: clickable boxes go to respective pages
 //   - IB movements fix: SQL functions create movements + update inventory
 //   - Site IN actions: Receive/Delete/Return dropdown with previous_status
-//   - To Be Collected actions: Collect/Delete/Return dropdown
+//   - To Collect actions: Collect/Delete/Return dropdown
 //   - Over quantity logic: sum ALL open requests vs available inventory
 //   - P121 filter: ISO search limited to P121 project
 // ============================================================
@@ -29,7 +34,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.6';
+const APP_VERSION = 'V28.7';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -1421,7 +1426,7 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
     { id: 'engineering', icon: '⚙️', label: 'Engineering', perm: 'perm_engineering' },
     { id: 'hfPage', icon: '🔩', label: 'HF', perm: 'perm_wh_site' },
     { id: 'testPackPage', icon: '📋', label: 'TestPack', perm: 'perm_wh_site' },
-    { id: 'toBeCollected', icon: '✅', label: 'To Be Collected', perm: 'perm_wh_site' },
+    { id: 'toBeCollected', icon: '✅', label: 'To Collect', perm: 'perm_wh_site' },
     { id: 'spareParts', icon: '🔧', label: 'Spare Parts', perm: 'perm_spare_parts' },
     { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders' },
     { id: 'log', icon: '📄', label: 'Log', perm: 'perm_movements' },
@@ -1668,7 +1673,7 @@ function Dashboard({ user, setActivePage }) {
           onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>To Be Collected</p>
+          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>To Collect</p>
           <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.toCollect}</p>
         </div>
         <div 
@@ -2921,6 +2926,9 @@ function WHSitePage({ user }) {
   const [showPartialModal, setShowPartialModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [partialQty, setPartialQty] = useState('');
+  // V28.7: New state for improved Split Partial modal
+  const [partialFoundDest, setPartialFoundDest] = useState('ToCollect');
+  const [partialNotFoundDest, setPartialNotFoundDest] = useState('Eng');
   const [showNotePopup, setShowNotePopup] = useState(false);
   const [showDestPopup, setShowDestPopup] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -3121,18 +3129,23 @@ function WHSitePage({ user }) {
       return;
     }
     
-    const sendQty = parseInt(partialQty);
-    const remainingQty = selectedComponent.quantity - sendQty;
+    const foundQty = parseInt(partialQty);
+    const notFoundQty = selectedComponent.quantity - foundQty;
     
-    // Update original
+    // V28.7: Update original component with found quantity and destination
     await supabase.from('request_components')
-      .update({ quantity: sendQty, status: 'ToCollect' })
+      .update({ 
+        quantity: foundQty, 
+        status: partialFoundDest,
+        previous_status: 'WH_Site',
+        current_location: partialFoundDest === 'Yard' ? 'YARD' : 'SITE'
+      })
       .eq('id', selectedComponent.id);
     
-    await logHistory(selectedComponent.id, 'Partial Split', 'WH_Site', 'ToCollect', 
-      `Qty ${sendQty} ready, ${remainingQty} remaining  in queue`);
+    await logHistory(selectedComponent.id, 'Partial Split', 'WH_Site', partialFoundDest, 
+      `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
     
-    // Create new for remaining
+    // Create new sub-request for not found items
     const { data: subData } = await supabase
       .from('requests')
       .select('sub_number')
@@ -3147,22 +3160,31 @@ function WHSitePage({ user }) {
         request_number: selectedComponent.requests.request_number,
         sub_number: nextSub,
         request_type: selectedComponent.requests.request_type,
-        sub_category: selectedComponent.requests.sub_category
+        sub_category: selectedComponent.requests.sub_category,
+        iso_number: selectedComponent.requests.iso_number,
+        full_spool_number: selectedComponent.requests.full_spool_number,
+        hf_number: selectedComponent.requests.hf_number,
+        test_pack_number: selectedComponent.requests.test_pack_number
       })
       .select()
       .single();
     
+    // V28.7: Create component for not found quantity with selected destination
     await supabase.from('request_components').insert({
       request_id: newReq.id,
       ident_code: selectedComponent.ident_code,
       description: selectedComponent.description,
-      quantity: remainingQty,
-      status: 'WH_Site',
-      current_location: 'SITE'
+      tag: selectedComponent.tag,
+      dia1: selectedComponent.dia1,
+      quantity: notFoundQty,
+      status: partialNotFoundDest,
+      current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
     });
 
     setShowPartialModal(false);
     setPartialQty('');
+    setPartialFoundDest('ToCollect');
+    setPartialNotFoundDest('Eng');
     loadComponents();
   };
 
@@ -3555,9 +3577,12 @@ function WHSitePage({ user }) {
                         }
                         // Engineering always available
                         actions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
-                        // HF and TestPack require site_qty > 0
-                        if (hasSiteQty) {
+                        // V28.7: HF only if hf_number is not empty
+                        if (hasSiteQty && comp.requests?.hf_number) {
                           actions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
+                        }
+                        // V28.7: TestPack only if test_pack_number is not empty
+                        if (hasSiteQty && comp.requests?.test_pack_number) {
                           actions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
                         }
                         // Delete always available
@@ -3600,13 +3625,22 @@ function WHSitePage({ user }) {
         title="Where to send the material?"
       />
 
-      {/* Partial Modal */}
-      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Split Partial">
-        <p style={{ marginBottom: '16px' }}>
-          <strong>{selectedComponent?.ident_code}</strong> - Total Qty: {selectedComponent?.quantity}
-        </p>
+      {/* Partial Modal - V28.7: Improved like Rilascio Parziale */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Rilascio Parziale">
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Available Quantity</label>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
+          </p>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Totale Richiesto:</strong> {selectedComponent?.quantity}
+          </p>
+          <p style={{ marginBottom: '16px' }}>
+            <strong>Disponibile in SITE:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.site || 0}</span>
+          </p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Quantità Trovata</label>
           <input
             type="number"
             value={partialQty}
@@ -3614,14 +3648,77 @@ function WHSitePage({ user }) {
             style={styles.input}
             min="1"
             max={selectedComponent?.quantity - 1}
+            placeholder="Inserisci quantità trovata"
           />
-          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
-            Remaining {(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)}  in queue
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>✅ Trovati ({partialQty || 0} pz) vanno a:</label>
+          <select
+            value={partialFoundDest}
+            onChange={(e) => setPartialFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="ToCollect">→ To Collect</option>
+            <option value="WH_Site">→ WH Site</option>
+            <option value="Eng">→ Engineering</option>
+            {selectedComponent?.requests?.hf_number && (
+              <option value="HF">→ HF</option>
+            )}
+            {selectedComponent?.requests?.test_pack_number && (
+              <option value="TP">→ TestPack</option>
+            )}
+          </select>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>❌ Non Trovati ({(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz) vanno a:</label>
+          <select
+            value={partialNotFoundDest}
+            onChange={(e) => setPartialNotFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="Eng">→ Engineering</option>
+            <option value="Yard">→ WH Yard</option>
+            <option value="WH_Site">→ WH Site</option>
+            {selectedComponent?.requests?.hf_number && (
+              <option value="HF">→ HF</option>
+            )}
+            {selectedComponent?.requests?.test_pack_number && (
+              <option value="TP">→ TestPack</option>
+            )}
+          </select>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: '#FEF3C7', 
+          border: '1px solid #F59E0B', 
+          borderRadius: '8px', 
+          padding: '12px',
+          marginBottom: '16px'
+        }}>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{partialQty || 0} pz</strong> → {partialFoundDest === 'ToCollect' ? 'To Collect' : partialFoundDest} (Richiesta originale)
+          </p>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz</strong> → {partialNotFoundDest} (Nuova sub-richiesta)
           </p>
         </div>
+        
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Split</button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button 
+            onClick={submitPartial} 
+            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: COLORS.warning, 
+              color: 'white',
+              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity) ? 0.5 : 1
+            }}
+          >
+            SPLIT
+          </button>
         </div>
       </Modal>
 
@@ -3727,6 +3824,9 @@ function WHYardPage({ user }) {
   const [showPartialModal, setShowPartialModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [partialQty, setPartialQty] = useState('');
+  // V28.7: New state for improved Split Partial modal
+  const [partialFoundDest, setPartialFoundDest] = useState('Trans');
+  const [partialNotFoundDest, setPartialNotFoundDest] = useState('Eng');
   const [showDestPopup, setShowDestPopup] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [historyComponentId, setHistoryComponentId] = useState(null);
@@ -3926,22 +4026,29 @@ function WHYardPage({ user }) {
       return;
     }
     
-    const sendQty = parseInt(partialQty);
-    const remainingQty = selectedComponent.quantity - sendQty;
+    const foundQty = parseInt(partialQty);
+    const notFoundQty = selectedComponent.quantity - foundQty;
     
+    // V28.7: Update original component with found quantity and destination
     await supabase.from('request_components')
-      .update({ quantity: sendQty, status: 'Trans' })
+      .update({ 
+        quantity: foundQty, 
+        status: partialFoundDest,
+        previous_status: 'Yard',
+        current_location: partialFoundDest === 'Yard' ? 'YARD' : 'SITE'
+      })
       .eq('id', selectedComponent.id);
     
+    // Decrement yard inventory for found items
     await supabase.rpc('decrement_yard_qty', { 
       p_ident_code: selectedComponent.ident_code, 
-      p_qty: sendQty 
+      p_qty: foundQty 
     });
 
-    await logHistory(selectedComponent.id, 'Partial Found', 'Yard', 'Trans', 
-      `Qty ${sendQty} sent, ${remainingQty} goes to Order`);
+    await logHistory(selectedComponent.id, 'Partial Found', 'Yard', partialFoundDest, 
+      `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
 
-    // Create new for remaining -> Order
+    // Create new sub-request for not found items
     const { data: subData } = await supabase
       .from('requests')
       .select('sub_number')
@@ -3956,32 +4063,41 @@ function WHYardPage({ user }) {
         request_number: selectedComponent.requests.request_number,
         sub_number: nextSub,
         request_type: selectedComponent.requests.request_type,
-        sub_category: selectedComponent.requests.sub_category
+        sub_category: selectedComponent.requests.sub_category,
+        iso_number: selectedComponent.requests.iso_number,
+        full_spool_number: selectedComponent.requests.full_spool_number,
+        hf_number: selectedComponent.requests.hf_number,
+        test_pack_number: selectedComponent.requests.test_pack_number
       })
       .select()
       .single();
     
+    // V28.7: Create component for not found quantity with selected destination
     await supabase.from('request_components').insert({
       request_id: newReq.id,
       ident_code: selectedComponent.ident_code,
       description: selectedComponent.description,
-      quantity: remainingQty,
-      status: 'Order',
-      current_location: 'YARD'
+      tag: selectedComponent.tag,
+      dia1: selectedComponent.dia1,
+      quantity: notFoundQty,
+      status: partialNotFoundDest,
+      current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
     });
 
     await supabase.from('movements').insert({
       ident_code: selectedComponent.ident_code,
       movement_type: 'TRANSFER',
-      quantity: sendQty,
+      quantity: foundQty,
       from_location: 'YARD',
-      to_location: 'TRANSIT',
+      to_location: partialFoundDest === 'Trans' ? 'TRANSIT' : partialFoundDest,
       performed_by: user.full_name,
-      note: `Partial - ${remainingQty} to order`
+      note: `Partial - ${notFoundQty} to ${partialNotFoundDest}`
     });
 
     setShowPartialModal(false);
     setPartialQty('');
+    setPartialFoundDest('Trans');
+    setPartialNotFoundDest('Eng');
     loadComponents();
   };
 
@@ -4427,29 +4543,100 @@ function WHYardPage({ user }) {
         title="Where to send the found material?"
       />
 
-      {/* Partial Modal */}
-      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="Send Partial">
-        <p style={{ marginBottom: '16px' }}>
-          <strong>{selectedComponent?.ident_code}</strong><br />
-          Requested: {selectedComponent?.quantity} | Available: {inventoryMap[selectedComponent?.ident_code]?.yard || 0}
-        </p>
+      {/* Partial Modal - V28.7: Improved like Rilascio Parziale */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Rilascio Parziale">
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantity to send</label>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
+          </p>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Totale Richiesto:</strong> {selectedComponent?.quantity}
+          </p>
+          <p style={{ marginBottom: '16px' }}>
+            <strong>Disponibile in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.yard || 0}</span>
+          </p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Quantità Trovata</label>
           <input
             type="number"
             value={partialQty}
             onChange={(e) => setPartialQty(e.target.value)}
             style={styles.input}
             min="1"
-            max={inventoryMap[selectedComponent?.ident_code]?.yard || 0}
+            max={Math.min(selectedComponent?.quantity - 1, inventoryMap[selectedComponent?.ident_code]?.yard || 0)}
+            placeholder="Inserisci quantità trovata"
           />
-          <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '6px' }}>
-            The rest will go to Orders
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>✅ Trovati ({partialQty || 0} pz) vanno a:</label>
+          <select
+            value={partialFoundDest}
+            onChange={(e) => setPartialFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="Trans">→ Site IN (Transit)</option>
+            <option value="WH_Site">→ WH Site</option>
+            <option value="Eng">→ Engineering</option>
+            {selectedComponent?.requests?.hf_number && (
+              <option value="HF">→ HF</option>
+            )}
+            {selectedComponent?.requests?.test_pack_number && (
+              <option value="TP">→ TestPack</option>
+            )}
+          </select>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>❌ Non Trovati ({(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz) vanno a:</label>
+          <select
+            value={partialNotFoundDest}
+            onChange={(e) => setPartialNotFoundDest(e.target.value)}
+            style={styles.input}
+          >
+            <option value="Eng">→ Engineering</option>
+            <option value="Order">→ Orders</option>
+            <option value="WH_Site">→ WH Site</option>
+            {selectedComponent?.requests?.hf_number && (
+              <option value="HF">→ HF</option>
+            )}
+            {selectedComponent?.requests?.test_pack_number && (
+              <option value="TP">→ TestPack</option>
+            )}
+          </select>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: '#FEF3C7', 
+          border: '1px solid #F59E0B', 
+          borderRadius: '8px', 
+          padding: '12px',
+          marginBottom: '16px'
+        }}>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{partialQty || 0} pz</strong> → {partialFoundDest === 'Trans' ? 'Site IN' : partialFoundDest} (Richiesta originale)
+          </p>
+          <p style={{ fontSize: '13px', color: '#92400E' }}>
+            • <strong>{(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz</strong> → {partialNotFoundDest} (Nuova sub-richiesta)
           </p>
         </div>
+        
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          <button onClick={submitPartial} style={{ ...styles.button, backgroundColor: COLORS.warning, color: 'white' }}>Send Partial</button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button 
+            onClick={submitPartial} 
+            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || parseInt(partialQty) > (inventoryMap[selectedComponent?.ident_code]?.yard || 0)}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: COLORS.warning, 
+              color: 'white',
+              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || parseInt(partialQty) > (inventoryMap[selectedComponent?.ident_code]?.yard || 0)) ? 0.5 : 1
+            }}
+          >
+            SPLIT
+          </button>
         </div>
       </Modal>
 
@@ -5861,7 +6048,6 @@ function ToBeCollectedPage({ user }) {
   const [collectorName, setCollectorName] = useState('');
   const [allUsers, setAllUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
-  const [showActionMenu, setShowActionMenu] = useState(null);
 
   useEffect(() => { loadComponents(); loadUsers(); }, []);
 
@@ -5897,7 +6083,6 @@ function ToBeCollectedPage({ user }) {
     setCollectorName('');
     setFilteredUsers([]);
     setShowCollectModal(true);
-    setShowActionMenu(null);
   };
 
   const handleCollectorSearch = (value) => {
@@ -5974,9 +6159,8 @@ function ToBeCollectedPage({ user }) {
         .update({ status: 'Cancelled', previous_status: 'ToCollect' })
         .eq('id', comp.id);
       
-      await logHistory(comp.id, 'Request Deleted', 'ToCollect', 'Cancelled', 'Deleted from To Be Collected');
+      await logHistory(comp.id, 'Request Deleted', 'ToCollect', 'Cancelled', 'Deleted from To Collect');
       
-      setShowActionMenu(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -5997,7 +6181,6 @@ function ToBeCollectedPage({ user }) {
       
       await logHistory(comp.id, 'Returned from ToCollect', 'ToCollect', prevStatus, `Returned to ${prevStatus}`);
       
-      setShowActionMenu(null);
       loadComponents();
     } catch (error) {
       alert('Error: ' + error.message);
@@ -6017,7 +6200,7 @@ function ToBeCollectedPage({ user }) {
     <div>
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>✅ To Be Collected</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>✅ To Collect</h2>
           <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
             Material ready for pickup - Enter collector name when collecting
           </p>
@@ -6027,7 +6210,7 @@ function ToBeCollectedPage({ user }) {
             onClick={() => {
               const printWindow = window.open('', '_blank');
               printWindow.document.write(`
-                <html><head><title>To Be Collected</title>
+                <html><head><title>To Collect</title>
                 <style>
                   body { font-family: Arial, sans-serif; padding: 20px; }
                   h1 { color: #16A34A; }
@@ -6035,7 +6218,7 @@ function ToBeCollectedPage({ user }) {
                   th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
                   th { background-color: #D1FAE5; }
                 </style></head><body>
-                <h1>✅ To Be Collected</h1>
+                <h1>✅ To Collect</h1>
                 <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
                 <table>
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
@@ -6099,91 +6282,23 @@ function ToBeCollectedPage({ user }) {
                     {comp.description ? (comp.description.length > 40 ? comp.description.substring(0, 40) + '...' : comp.description) : '-'}
                   </td>
                   <td style={styles.td}>{comp.quantity}</td>
-                  <td style={{ ...styles.td, position: 'relative' }}>
+                  <td style={styles.td}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                       {canModify ? (
-                        <div style={{ position: 'relative' }}>
-                          <button
-                            onClick={() => setShowActionMenu(showActionMenu === comp.id ? null : comp.id)}
-                            style={{ 
-                              ...styles.button, 
-                              backgroundColor: COLORS.success, 
-                              color: 'white',
-                              padding: '6px 12px',
-                              fontSize: '12px'
-                            }}
-                          >
-                            ⚡ Actions ▼
-                          </button>
-                          {showActionMenu === comp.id && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '100%',
-                              right: 0,
-                              backgroundColor: 'white',
-                              border: '1px solid #e5e7eb',
-                              borderRadius: '8px',
-                              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                              zIndex: 1000,
-                              minWidth: '150px'
-                            }}>
-                              <button
-                                onClick={() => openCollectModal(comp)}
-                                style={{
-                                  display: 'block',
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  textAlign: 'left',
-                                  border: 'none',
-                                  background: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: '13px',
-                                  borderBottom: '1px solid #e5e7eb'
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#D1FAE5'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                              >
-                                ✅ Collect
-                              </button>
-                              <button
-                                onClick={() => handleDelete(comp)}
-                                style={{
-                                  display: 'block',
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  textAlign: 'left',
-                                  border: 'none',
-                                  background: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: '13px',
-                                  borderBottom: '1px solid #e5e7eb',
-                                  color: COLORS.primary
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#FEE2E2'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                              >
-                                🗑️ Delete
-                              </button>
-                              <button
-                                onClick={() => handleReturn(comp)}
-                                style={{
-                                  display: 'block',
-                                  width: '100%',
-                                  padding: '10px 16px',
-                                  textAlign: 'left',
-                                  border: 'none',
-                                  background: 'none',
-                                  cursor: 'pointer',
-                                  fontSize: '13px'
-                                }}
-                                onMouseOver={(e) => e.target.style.backgroundColor = '#f3f4f6'}
-                                onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
-                              >
-                                ↩️ Return
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <ActionDropdown
+                          actions={[
+                            { id: 'collect', icon: '✅', label: 'Collect' },
+                            { id: 'delete', icon: '🗑️', label: 'Delete' },
+                            { id: 'return', icon: '↩️', label: 'Return' }
+                          ]}
+                          onExecute={(action) => {
+                            if (action === 'collect') openCollectModal(comp);
+                            else if (action === 'delete') handleDelete(comp);
+                            else if (action === 'return') handleReturn(comp);
+                          }}
+                          disabled={!canModify}
+                          componentId={comp.id}
+                        />
                       ) : (
                         <span style={{ color: '#9ca3af', fontSize: '12px' }}>View only</span>
                       )}
@@ -9674,7 +9789,7 @@ export default function App() {
     engineering: 'Engineering',
     hfPage: 'HF - Flanged Joints',
     testPackPage: 'TestPack Materials',
-    toBeCollected: 'To Be Collected',
+    toBeCollected: 'To Collect',
     spareParts: 'Spare Parts',
     orders: 'Orders',
     log: 'Log Movimenti',
