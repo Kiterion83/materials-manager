@@ -2272,10 +2272,11 @@ function RequestsPage({ user }) {
           sub_number: 0,
           requester_user_id: user.id,
           request_type: requestType,
-          sub_category: requestType === 'Piping' ? subCategory : null,
+          sub_category: requestType === 'Piping' ? subCategory : (requestType === 'TestPack' && missingType === 'Material' ? subCategory : null),
           iso_number: requestType !== 'TestPack' ? (isoNumber || null) : null,
           full_spool_number: requestType !== 'TestPack' ? (spoolNumber || null) : null,
-          hf_number: (requestType === 'Piping' && subCategory === 'Erection') ? (hfNumber || null) : null,
+          hf_number: (requestType === 'Piping' && subCategory === 'Erection') ? (hfNumber || null) : 
+                     (requestType === 'TestPack' && missingType === 'Material' && hfNumber) ? hfNumber : null,
           test_pack_number: requestType === 'TestPack' ? testPackNumber : null,
           missing_type: requestType === 'TestPack' ? missingType : null,
           description: requestType === 'TestPack' 
@@ -2616,6 +2617,89 @@ function RequestsPage({ user }) {
                   </label>
                 </div>
               </div>
+
+              {/* V28.9: Sub-Category for TestPack Material */}
+              {missingType === 'Material' && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={styles.label}>Sub-Category *</label>
+                  <select
+                    value={subCategory}
+                    onChange={(e) => setSubCategory(e.target.value)}
+                    style={styles.input}
+                    disabled={!canModify}
+                  >
+                    <option value="Bulk">Bulk</option>
+                    <option value="Erection">Erection</option>
+                    <option value="Instrument">Instrument</option>
+                    <option value="Support">Support</option>
+                  </select>
+                </div>
+              )}
+
+              {/* V28.9: HF Number (optional) for TestPack - just for info */}
+              {missingType === 'Material' && (
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={styles.label}>HF Number (optional - for reference only)</label>
+                  <input
+                    type="text"
+                    value={hfNumber}
+                    onChange={async (e) => {
+                      setHfNumber(e.target.value);
+                      // Check for duplicate HF
+                      if (e.target.value && e.target.value.length >= 8) {
+                        const { data: existing } = await supabase
+                          .from('requests')
+                          .select('request_number, requester_user_id, created_at')
+                          .eq('hf_number', e.target.value)
+                          .limit(1)
+                          .single();
+                        if (existing) {
+                          const { data: userData } = await supabase
+                            .from('users')
+                            .select('full_name')
+                            .eq('id', existing.requester_user_id)
+                            .single();
+                          setHfError({
+                            request_number: existing.request_number,
+                            requester: userData?.full_name || 'Unknown',
+                            date: new Date(existing.created_at).toLocaleDateString()
+                          });
+                        } else {
+                          setHfError(null);
+                        }
+                      } else {
+                        setHfError(null);
+                      }
+                    }}
+                    style={{ 
+                      ...styles.input, 
+                      borderColor: hfError ? COLORS.danger : undefined,
+                      backgroundColor: hfError ? '#FEE2E2' : undefined
+                    }}
+                    placeholder="Es: HF123456 (optional)"
+                    disabled={!canModify}
+                  />
+                  {hfError && (
+                    <div style={{ 
+                      marginTop: '8px', 
+                      padding: '12px', 
+                      backgroundColor: '#FEE2E2', 
+                      borderRadius: '6px',
+                      border: '1px solid #F87171'
+                    }}>
+                      <p style={{ color: '#B91C1C', fontWeight: '600' }}>⚠️ HF già richiesto!</p>
+                      <p style={{ color: '#7F1D1D', fontSize: '13px', marginTop: '4px' }}>
+                        Request: <strong>{String(hfError.request_number).padStart(5, '0')}</strong><br/>
+                        Richiedente: <strong>{hfError.requester}</strong><br/>
+                        Data: <strong>{hfError.date}</strong>
+                      </p>
+                    </div>
+                  )}
+                  <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                    In TestPack, HF è solo informativo. La richiesta segue il flusso TestPack.
+                  </p>
+                </div>
+              )}
 
               {missingType === 'Spool' && (
                 <div style={{ marginBottom: '20px' }}>
@@ -9296,7 +9380,6 @@ function LogPage({ user }) {
 function DatabasePage({ user }) {
   const [inventoryData, setInventoryData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -9436,12 +9519,6 @@ function DatabasePage({ user }) {
     setInventoryData(merged);
     setLoading(false);
   };
-
-  const filteredInventory = inventoryData.filter(item =>
-    item.ident_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.iso_number?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   // V28.3: Filtered options for autocomplete
   const filteredIsoOptions = isoOptions.filter(iso => 
@@ -9593,7 +9670,7 @@ function DatabasePage({ user }) {
 
   const exportCSV = () => {
     const headers = ['ISO', 'Ident Code', 'Description', 'Pos Qty', 'Collected TEN', 'YARD', 'SITE', 'LOST', 'BROKEN', 'Record Out'];
-    const rows = filteredInventory.map(i => [
+    const rows = inventoryData.map(i => [
       i.iso_number,
       i.ident_code,
       i.description,
@@ -9725,20 +9802,6 @@ function DatabasePage({ user }) {
           Clear Filters
         </button>
 
-        {/* Quick Search */}
-        <div style={{ flex: 1, minWidth: '200px' }}>
-          <label style={{ display: 'block', fontSize: '12px', fontWeight: '600', color: '#4B5563', marginBottom: '4px' }}>
-            Quick Search (in results)
-          </label>
-          <input
-            type="text"
-            placeholder="🔍 Search in results..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ ...styles.input, width: '100%' }}
-          />
-        </div>
-
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={exportCSV} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}>📥 Export</button>
@@ -9755,12 +9818,13 @@ function DatabasePage({ user }) {
         fontSize: '13px',
         color: '#1E40AF'
       }}>
-        ℹ️ Showing {filteredInventory.length} of {totalCount} results (max 500 per query). Use filters above to find specific items.
+        ℹ️ Showing {inventoryData.length} of {totalCount} results (max 500 per query). Use filters above to find specific items.
+      </div>
       </div>
 
       <div style={styles.card}>
         <div style={styles.cardHeader}>
-          <h3 style={{ fontWeight: '600' }}>Inventory Database ({filteredInventory.length})</h3>
+          <h3 style={{ fontWeight: '600' }}>Inventory Database ({inventoryData.length})</h3>
         </div>
         <div style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto' }}>
           <table style={styles.table}>
@@ -9780,7 +9844,7 @@ function DatabasePage({ user }) {
               </tr>
             </thead>
             <tbody>
-              {filteredInventory.map((item, idx) => (
+              {inventoryData.map((item, idx) => (
                 <tr key={`${item.iso_number}-${item.ident_code}-${idx}`}>
                   <td style={{ ...styles.td, fontSize: '11px' }}>
                     {item.iso_number || '-'}
