@@ -1,6 +1,19 @@
 // ============================================================
-// MATERIALS MANAGER V28.9 - APP.JSX COMPLETE
+// MATERIALS MANAGER V28.12 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V28.12 Changes:
+//   - TestPack Spool: New sub-category 'Spool' for ordering spools from supplier
+//   - Engineering: "Sent to Site" action for Spool items → status = 'TP_Spool_Sent'
+//   - TestPack: 🔧 Spool section shows spool status (In Engineering / Sent to Site)
+//   - No inventory decrement for Spool items (they come from external supplier)
+//   - Sub-category abbreviation: SP for Spool
+//   - Request form: Add button disabled if description empty
+//   - TestPack: Can add both Materials and Spools in same request
+//   - Sub-request numbering: Creates new sub-request when partial delivery
+// V28.11 Changes:
+//   - TestPack: Request number display shows sub_number (00051-0)
+//   - TestPack: Components removed from TP when delivered/sent to site
+//   - TestPack: Inventory decrement on delivery
 // V28.9 Changes:
 //   - Engineering Page: Added WH_Site and WH_Yard columns, removed Partial action
 //   - Site IN: Fixed dropdown (uses ActionDropdown, no scrollbar)
@@ -48,7 +61,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.11';
+const APP_VERSION = 'V28.12';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -99,7 +112,8 @@ function abbrevSubCategory(sub) {
     'Erection': 'E',
     'Support': 'S',
     'Instrument': 'I',
-    'Bulk': 'B'
+    'Bulk': 'B',
+    'Spool': 'SP'  // V28.11: Spool sub-category
   };
   return map[sub] || sub.substring(0, 1).toUpperCase();
 }
@@ -1553,7 +1567,7 @@ function Dashboard({ user, setActivePage }) {
 
   const loadDashboard = async () => {
     // Load all component counts by status
-    const statuses = ['Yard', 'WH_Site', 'Eng', 'Mng', 'Spare', 'Order', 'Trans', 'ToCollect', 'TP', 'HF'];
+    const statuses = ['Yard', 'WH_Site', 'Eng', 'Mng', 'Spare', 'Order', 'Trans', 'ToCollect', 'TP', 'HF', 'TP_Spool_Sent'];
     const counts = {};
     
     for (const status of statuses) {
@@ -2253,39 +2267,41 @@ function RequestsPage({ user }) {
       }
       if (requestType === 'TestPack') {
         if (!testPackNumber) throw new Error('Test Pack Number required');
+        // V28.11: Handle 'Both' case
         if (missingType === 'Material' && materials.length === 0) {
           throw new Error('Add at least one material');
         }
         if (missingType === 'Spool' && selectedSpools.length === 0) {
           throw new Error('Add at least one spool');
         }
+        if (missingType === 'Both' && materials.length === 0 && selectedSpools.length === 0) {
+          throw new Error('Add at least one material or spool');
+        }
       }
 
-      // For TestPack Spool: Gather all materials from all selected spools
+      // For TestPack: Handle materials and spools separately
       let combinedMaterials = [...materials];
-      if (requestType === 'TestPack' && missingType === 'Spool' && selectedSpools.length > 0) {
-        // Fetch materials from all selected spools
+      
+      // V28.11: For Spool type, add spool as a component with sub_category='Spool'
+      // (NOT fetching materials from spool - spool is a separate item to be ordered from supplier)
+      if (requestType === 'TestPack' && (missingType === 'Spool' || missingType === 'Both') && selectedSpools.length > 0) {
+        // Add each selected spool as a separate component
         for (const spoolNum of selectedSpools) {
-          const { data: spoolMats } = await supabase
-            .from('project_materials')
-            .select('ident_code, description, pos_qty, tag_number')
-            .eq('full_spool_number', spoolNum);
-          
-          if (spoolMats) {
-            // Add each material from the spool (with qty = pos_qty)
-            spoolMats.forEach(mat => {
-              combinedMaterials.push({
-                ident_code: mat.ident_code,
-                description: mat.description || '',
-                qty: mat.pos_qty || 1,
-                tag: mat.tag_number || '',
-                from_spool: spoolNum
-              });
-            });
-          }
+          combinedMaterials.push({
+            ident_code: 'SPOOL', // Placeholder - spools don't have ident_code
+            description: spoolNum, // Spool name goes in description
+            dia1: '',
+            qty: 1,
+            tag: '',
+            from_spool: spoolNum,
+            sub_category: 'Spool' // NEW sub-category for spools
+          });
         }
-        // Set description to list of spools
-        setDescription(selectedSpools.join(', '));
+        
+        // Set description to list of spools if only spools
+        if (missingType === 'Spool') {
+          setDescription(selectedSpools.join(', '));
+        }
       }
 
       // Get next request number
@@ -2300,15 +2316,18 @@ function RequestsPage({ user }) {
           sub_number: 0,
           requester_user_id: user.id,
           request_type: requestType,
-          sub_category: requestType === 'Piping' ? subCategory : (requestType === 'TestPack' && missingType === 'Material' ? subCategory : null),
+          sub_category: requestType === 'Piping' ? subCategory : 
+                       (requestType === 'TestPack' && (missingType === 'Material' || missingType === 'Both') ? subCategory : null),
           iso_number: requestType !== 'TestPack' ? (isoNumber || null) : null,
           full_spool_number: requestType !== 'TestPack' ? (spoolNumber || null) : null,
           hf_number: (requestType === 'Piping' && subCategory === 'Erection') ? (hfNumber || null) : 
-                     (requestType === 'TestPack' && missingType === 'Material' && hfNumber) ? hfNumber : null,
+                     (requestType === 'TestPack' && (missingType === 'Material' || missingType === 'Both') && hfNumber) ? hfNumber : null,
           test_pack_number: requestType === 'TestPack' ? testPackNumber : null,
           missing_type: requestType === 'TestPack' ? missingType : null,
           description: requestType === 'TestPack' 
-            ? (missingType === 'Spool' ? `Spools: ${selectedSpools.join(', ')}` : (componentDescription || null))
+            ? (missingType === 'Spool' ? `Spools: ${selectedSpools.join(', ')}` : 
+               missingType === 'Both' ? `Materials + Spools: ${selectedSpools.join(', ')}` : 
+               (componentDescription || null))
             : (description || null)
         })
         .select()
@@ -2333,8 +2352,8 @@ function RequestsPage({ user }) {
           current_location: destination === 'yard' ? 'YARD' : 'SITE'
         });
       } else {
-        // Use combinedMaterials for TestPack Spool, otherwise use materials
-        const matsToInsert = (requestType === 'TestPack' && missingType === 'Spool') 
+        // Use combinedMaterials for TestPack Spool or Both, otherwise use materials
+        const matsToInsert = (requestType === 'TestPack' && (missingType === 'Spool' || missingType === 'Both')) 
           ? combinedMaterials 
           : materials;
           
@@ -2621,35 +2640,46 @@ function RequestsPage({ user }) {
               </div>
 
               <div style={{ marginBottom: '20px' }}>
-                <label style={styles.label}>Missing Type</label>
+                <label style={styles.label}>Add Items From</label>
                 <div style={{ display: 'flex', gap: '24px' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                     <input
-                      type="radio"
-                      name="missingType"
-                      value="Material"
-                      checked={missingType === 'Material'}
-                      onChange={(e) => setMissingType(e.target.value)}
+                      type="checkbox"
+                      checked={missingType === 'Material' || missingType === 'Both'}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setMissingType(missingType === 'Spool' ? 'Both' : 'Material');
+                        } else {
+                          setMissingType(missingType === 'Both' ? 'Spool' : 'Material');
+                        }
+                      }}
                       style={{ width: '18px', height: '18px' }}
                     />
-                    <span style={{ fontWeight: missingType === 'Material' ? '600' : '400' }}>Material</span>
+                    <span style={{ fontWeight: (missingType === 'Material' || missingType === 'Both') ? '600' : '400' }}>📦 Materials</span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                     <input
-                      type="radio"
-                      name="missingType"
-                      value="Spool"
-                      checked={missingType === 'Spool'}
-                      onChange={(e) => setMissingType(e.target.value)}
+                      type="checkbox"
+                      checked={missingType === 'Spool' || missingType === 'Both'}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setMissingType(missingType === 'Material' ? 'Both' : 'Spool');
+                        } else {
+                          setMissingType(missingType === 'Both' ? 'Material' : 'Spool');
+                        }
+                      }}
                       style={{ width: '18px', height: '18px' }}
                     />
-                    <span style={{ fontWeight: missingType === 'Spool' ? '600' : '400' }}>Spool</span>
+                    <span style={{ fontWeight: (missingType === 'Spool' || missingType === 'Both') ? '600' : '400' }}>🔧 Spools</span>
                   </label>
                 </div>
+                <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                  Select one or both to add materials and/or entire spools
+                </p>
               </div>
 
-              {/* V28.9: Sub-Category for TestPack Material */}
-              {missingType === 'Material' && (
+              {/* V28.11: Sub-Category for TestPack Material - always show when Materials checked */}
+              {(missingType === 'Material' || missingType === 'Both') && (
                 <div style={{ marginBottom: '20px' }}>
                   <label style={styles.label}>Sub-Category *</label>
                   <select
@@ -2667,7 +2697,7 @@ function RequestsPage({ user }) {
               )}
 
               {/* V28.9: HF Number (optional) for TestPack Erection only - just for info */}
-              {missingType === 'Material' && subCategory === 'Erection' && (
+              {(missingType === 'Material' || missingType === 'Both') && subCategory === 'Erection' && (
                 <div style={{ marginBottom: '20px' }}>
                   <label style={styles.label}>HF Number (optional - for reference only)</label>
                   <input
@@ -2731,7 +2761,7 @@ function RequestsPage({ user }) {
                 </div>
               )}
 
-              {missingType === 'Spool' && (
+              {(missingType === 'Spool' || missingType === 'Both') && (
                 <div style={{ marginBottom: '20px' }}>
                   <label style={styles.label}>Full Spool Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 6+ chars)</span></label>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
@@ -2819,7 +2849,7 @@ function RequestsPage({ user }) {
           )}
 
           {/* =============== MATERIALS SECTION =============== */}
-          {requestType !== 'Mechanical' && (requestType !== 'TestPack' || missingType === 'Material') && (
+          {requestType !== 'Mechanical' && (requestType !== 'TestPack' || missingType === 'Material' || missingType === 'Both') && (
             <div style={{
               marginTop: '24px',
               padding: '20px',
@@ -2874,8 +2904,15 @@ function RequestsPage({ user }) {
                 </div>
                 <button
                   onClick={addMaterial}
-                  style={{ ...styles.button, ...styles.buttonPrimary, height: '42px', justifyContent: 'center' }}
-                  disabled={!canModify || !currentMaterial.ident_code || !currentMaterial.qty}
+                  style={{ 
+                    ...styles.button, 
+                    ...styles.buttonPrimary, 
+                    height: '42px', 
+                    justifyContent: 'center',
+                    opacity: (!canModify || !currentMaterial.ident_code || !currentMaterial.qty || !currentMaterial.description) ? 0.5 : 1
+                  }}
+                  disabled={!canModify || !currentMaterial.ident_code || !currentMaterial.qty || !currentMaterial.description}
+                  title={!currentMaterial.description ? 'Select an item with description first' : ''}
                 >
                   + Add
                 </button>
@@ -5526,6 +5563,23 @@ function EngineeringPage({ user }) {
             await logHistory(component.id, 'Cancelled', 'Eng', 'Cancelled', '');
           }
           break;
+        // V28.11: Spool "Sent to Site" action - no inventory, just status change
+        case 'spool_sent':
+          await supabase.from('request_components')
+            .update({ status: 'TP_Spool_Sent' })
+            .eq('id', component.id);
+          await logHistory(component.id, 'Spool Sent to Site', 'Eng', 'TP_Spool_Sent', 'Spool ordered from supplier');
+          // Log movement (no qty change, just tracking)
+          await supabase.from('movements').insert({
+            ident_code: component.ident_code || 'SPOOL',
+            movement_type: 'SPOOL_SENT',
+            quantity: component.quantity || 1,
+            from_location: 'ENGINEERING',
+            to_location: 'SITE',
+            performed_by: user.full_name,
+            note: `Spool ${component.description} sent to site`
+          });
+          break;
       }
       loadComponents();
     } catch (error) {
@@ -5587,14 +5641,25 @@ function EngineeringPage({ user }) {
 
   // Helper to render component row
   const renderComponentRow = (comp, section) => {
+    // V28.11: Check if this is a Spool item (from TestPack)
+    const isSpool = (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL');
+    
     // V28.9: Remove Partial from Engineering actions
     const engActions = [];
     if (section === 'toProcess') {
-      engActions.push({ id: 'check', icon: '🔍', label: 'Send Check' });
-      engActions.push({ id: 'spare', icon: '🔧', label: 'Spare Parts' });
-      engActions.push({ id: 'mng', icon: '👔', label: 'Management' });
-      engActions.push({ id: 'return', icon: '↩️', label: 'Return to Site' });
-      engActions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
+      if (isSpool) {
+        // V28.11: Spool items only have "Sent to Site" action
+        engActions.push({ id: 'spool_sent', icon: '🚚', label: 'Sent to Site' });
+        engActions.push({ id: 'return', icon: '↩️', label: 'Return' });
+        engActions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
+      } else {
+        // Regular material actions
+        engActions.push({ id: 'check', icon: '🔍', label: 'Send Check' });
+        engActions.push({ id: 'spare', icon: '🔧', label: 'Spare Parts' });
+        engActions.push({ id: 'mng', icon: '👔', label: 'Management' });
+        engActions.push({ id: 'return', icon: '↩️', label: 'Return to Site' });
+        engActions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
+      }
     }
     
     const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
@@ -6192,13 +6257,14 @@ function TestPackPage({ user }) {
     setLoading(true);
     
     try {
-      // V28.11: Load only components with status 'TP' (items actively in TestPack queue)
-      // Exclude Trans (sent to Site IN), ToCollect (delivered), Done, Cancelled, Deleted
+      // V28.11: Load components with status 'TP' or 'TP_Spool_Sent'
+      // - TP: Materials waiting in TestPack queue
+      // - TP_Spool_Sent: Spools that have been sent to site (ready for delivery)
       const { data } = await supabase
         .from('request_components')
         .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, requester_user_id, secondary_collector)`)
         .not('requests.test_pack_number', 'is', null)
-        .eq('status', 'TP'); // Only show items with status 'TP'
+        .in('status', ['TP', 'TP_Spool_Sent']); // Include both TP and Spool ready
       
       if (data) {
         // V28.11: Get unique ident_codes and load inventory
@@ -6276,7 +6342,13 @@ function TestPackPage({ user }) {
 
   // V28.11: Check if a component is ready based on inventory availability
   // Ready = qty_requested <= WH_Site + WH_Yard
+  // For Spools: Ready = status is 'TP_Spool_Sent'
   const isReady = (comp) => {
+    // V28.11: Spool items are ready when status = TP_Spool_Sent
+    if (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL') {
+      return comp.status === 'TP_Spool_Sent';
+    }
+    // Regular materials: check inventory
     const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
     const totalAvailable = inv.site + inv.yard;
     return totalAvailable >= comp.quantity;
@@ -6284,6 +6356,10 @@ function TestPackPage({ user }) {
   
   // V28.11: Check if partial ready (some but not all qty available)
   const isPartialReady = (comp) => {
+    // Spools don't have partial - they're either sent or not
+    if (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL') {
+      return false;
+    }
     const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
     const totalAvailable = inv.site + inv.yard;
     return totalAvailable > 0 && totalAvailable < comp.quantity;
@@ -6306,73 +6382,98 @@ function TestPackPage({ user }) {
   };
 
   // Deliver a single sub-category
-  const handleDeliverSubCategory = async (tpNum, reqNum, subCat, destination) => {
+  const handleDeliverSubCategory = async (tpNum, request, subCat, destination) => {
     // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
     const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
     
+    // Get all sub-categories for this request
+    const allSubCats = Object.values(request.subCategories);
+    const otherSubCats = allSubCats.filter(sc => sc.name !== subCat.name);
+    
+    // Collect ALL components from OTHER sub-categories (they need to move to new sub-request)
+    const componentsToMove = [];
+    for (const otherSc of otherSubCats) {
+      for (const comp of otherSc.components) {
+        componentsToMove.push(comp);
+      }
+    }
+    
+    // If there are components to move, create a new sub-request for them
+    if (componentsToMove.length > 0) {
+      try {
+        // Get the original request to copy its data
+        const firstComp = subCat.components[0];
+        const originalRequestId = firstComp.request_id;
+        
+        // Get original request data
+        const { data: originalRequest } = await supabase
+          .from('requests')
+          .select('*')
+          .eq('id', originalRequestId)
+          .single();
+        
+        if (originalRequest) {
+          // Find the next available sub_number
+          const { data: existingSubs } = await supabase
+            .from('requests')
+            .select('sub_number')
+            .eq('request_number', originalRequest.request_number)
+            .order('sub_number', { ascending: false })
+            .limit(1);
+          
+          const nextSubNumber = (existingSubs?.[0]?.sub_number || 0) + 1;
+          
+          // Create new sub-request
+          const { data: newRequest, error: insertError } = await supabase
+            .from('requests')
+            .insert({
+              request_number: originalRequest.request_number,
+              sub_number: nextSubNumber,
+              requester_user_id: originalRequest.requester_user_id,
+              request_type: originalRequest.request_type,
+              sub_category: originalRequest.sub_category,
+              iso_number: originalRequest.iso_number,
+              full_spool_number: originalRequest.full_spool_number,
+              hf_number: originalRequest.hf_number,
+              test_pack_number: originalRequest.test_pack_number,
+              status: 'Open',
+              description: `Split from ${originalRequest.request_number}-${originalRequest.sub_number} (partial TP delivery)`
+            })
+            .select()
+            .single();
+          
+          if (newRequest && !insertError) {
+            // Move ALL components from other sub-categories to the new sub-request
+            for (const comp of componentsToMove) {
+              await supabase
+                .from('request_components')
+                .update({ request_id: newRequest.id })
+                .eq('id', comp.id);
+              
+              await logHistory(comp.id, 
+                'Moved to Sub-Request', 
+                comp.status, comp.status, 
+                `Moved to ${originalRequest.request_number}-${nextSubNumber} (partial TP delivery)`
+              );
+            }
+            
+            console.log(`Created sub-request ${originalRequest.request_number}-${nextSubNumber} with ${componentsToMove.length} components`);
+          }
+        }
+      } catch (error) {
+        console.error('Error creating sub-request:', error);
+      }
+    }
+    
+    // Now deliver the ready components from this sub-category
     for (const comp of subCat.components) {
       if (!isReady(comp)) continue; // Only deliver ready items
       
-      // V28.11: Decrement inventory when delivering
-      const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+      // V28.11: Check if this is a Spool item (no inventory to decrement)
+      const isSpool = (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL');
       
-      // Determine which warehouse to decrement (prefer Site, then Yard)
-      let decrementSite = 0;
-      let decrementYard = 0;
-      let remaining = comp.quantity;
-      
-      if (inv.site >= remaining) {
-        decrementSite = remaining;
-      } else {
-        decrementSite = inv.site;
-        remaining -= inv.site;
-        decrementYard = Math.min(inv.yard, remaining);
-      }
-      
-      // Decrement inventory
-      if (decrementSite > 0) {
-        await supabase.rpc('decrement_site_qty', { p_ident_code: comp.ident_code, p_qty: decrementSite });
-      }
-      if (decrementYard > 0) {
-        await supabase.rpc('decrement_yard_qty', { p_ident_code: comp.ident_code, p_qty: decrementYard });
-      }
-      
-      // Update component status
-      await supabase.from('request_components')
-        .update({ status: newStatus })
-        .eq('id', comp.id);
-      
-      await logHistory(comp.id, 
-        destination === 'toSite' ? 'TP SubCat - To Site IN' : 'TP SubCat - To Collect',
-        'TP', newStatus, 
-        `TestPack ${tpNum} - ${subCat.name} completed`
-      );
-
-      // Log movement
-      await supabase.from('movements').insert({
-        ident_code: comp.ident_code,
-        movement_type: 'OUT',
-        quantity: comp.quantity,
-        from_location: 'TP',
-        to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
-        performed_by: user.full_name,
-        note: `TP ${tpNum} - ${subCat.name}`
-      });
-    }
-    
-    loadComponents();
-  };
-
-  // Deliver all ready items in a request
-  const handleDeliverAll = async (tpNum, request, destination) => {
-    // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
-    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
-    
-    for (const subCat of Object.values(request.subCategories)) {
-      for (const comp of subCat.components) {
-        if (!isReady(comp)) continue;
-        
-        // V28.11: Decrement inventory when delivering
+      if (!isSpool) {
+        // V28.11: Decrement inventory when delivering (only for non-spool items)
         const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
         
         // Determine which warehouse to decrement (prefer Site, then Yard)
@@ -6395,6 +6496,79 @@ function TestPackPage({ user }) {
         if (decrementYard > 0) {
           await supabase.rpc('decrement_yard_qty', { p_ident_code: comp.ident_code, p_qty: decrementYard });
         }
+      }
+      
+      // Update component status
+      await supabase.from('request_components')
+        .update({ status: newStatus })
+        .eq('id', comp.id);
+      
+      await logHistory(comp.id, 
+        isSpool 
+          ? (destination === 'toSite' ? 'TP Spool - To Site IN' : 'TP Spool - To Collect')
+          : (destination === 'toSite' ? 'TP SubCat - To Site IN' : 'TP SubCat - To Collect'),
+        isSpool ? 'TP_Spool_Sent' : 'TP', newStatus, 
+        `TestPack ${tpNum} - ${subCat.name} completed`
+      );
+
+      // Log movement
+      await supabase.from('movements').insert({
+        ident_code: comp.ident_code,
+        movement_type: isSpool ? 'SPOOL_DELIVERED' : 'OUT',
+        quantity: comp.quantity,
+        from_location: 'TP',
+        to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
+        performed_by: user.full_name,
+        note: `TP ${tpNum} - ${subCat.name}`
+      });
+    }
+    
+    // Update completed requests counters
+    setCompletedRequests(prev => ({
+      total: componentsToMove.length === 0 ? prev.total + 1 : prev.total,
+      partial: componentsToMove.length > 0 ? prev.partial + 1 : prev.partial
+    }));
+    
+    loadComponents();
+  };
+
+  // Deliver all ready items in a request
+  const handleDeliverAll = async (tpNum, request, destination) => {
+    // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
+    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
+    
+    for (const subCat of Object.values(request.subCategories)) {
+      for (const comp of subCat.components) {
+        if (!isReady(comp)) continue;
+        
+        // V28.11: Check if this is a Spool item (no inventory to decrement)
+        const isSpool = (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL');
+        
+        if (!isSpool) {
+          // V28.11: Decrement inventory when delivering (only for non-spool items)
+          const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+          
+          // Determine which warehouse to decrement (prefer Site, then Yard)
+          let decrementSite = 0;
+          let decrementYard = 0;
+          let remaining = comp.quantity;
+          
+          if (inv.site >= remaining) {
+            decrementSite = remaining;
+          } else {
+            decrementSite = inv.site;
+            remaining -= inv.site;
+            decrementYard = Math.min(inv.yard, remaining);
+          }
+          
+          // Decrement inventory
+          if (decrementSite > 0) {
+            await supabase.rpc('decrement_site_qty', { p_ident_code: comp.ident_code, p_qty: decrementSite });
+          }
+          if (decrementYard > 0) {
+            await supabase.rpc('decrement_yard_qty', { p_ident_code: comp.ident_code, p_qty: decrementYard });
+          }
+        }
         
         // Update component status
         await supabase.from('request_components')
@@ -6403,14 +6577,14 @@ function TestPackPage({ user }) {
         
         await logHistory(comp.id, 
           destination === 'toSite' ? 'TP Complete - To Site IN' : 'TP Complete - To Collect',
-          'TP', newStatus, 
+          isSpool ? 'TP_Spool_Sent' : 'TP', newStatus, 
           `TestPack ${tpNum} completed`
         );
 
         // Log movement
         await supabase.from('movements').insert({
           ident_code: comp.ident_code,
-          movement_type: 'OUT',
+          movement_type: isSpool ? 'SPOOL_DELIVERED' : 'OUT',
           quantity: comp.quantity,
           from_location: 'TP',
           to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
@@ -6684,17 +6858,21 @@ function TestPackPage({ user }) {
                     {allSubCats.map(subCat => {
                       const subReady = isSubCategoryReady(subCat);
                       const subReadyCount = getReadyCount(subCat);
+                      // V28.11: Check if this is the Spool sub-category
+                      const isSpoolCategory = subCat.name === 'Spool';
                       
                       return (
                         <div key={subCat.name} style={{ 
                           marginBottom: '16px',
-                          border: '1px solid #e5e7eb',
+                          border: isSpoolCategory ? '2px solid #7C3AED' : '1px solid #e5e7eb',
                           borderRadius: '6px',
                           overflow: 'hidden'
                         }}>
                           {/* Sub-Category Header */}
                           <div style={{
-                            backgroundColor: subReady ? '#DCFCE7' : '#FEF9C3',
+                            backgroundColor: isSpoolCategory 
+                              ? (subReady ? '#F3E8FF' : '#FDF4FF') 
+                              : (subReady ? '#DCFCE7' : '#FEF9C3'),
                             padding: '10px 14px',
                             display: 'flex',
                             justifyContent: 'space-between',
@@ -6703,33 +6881,45 @@ function TestPackPage({ user }) {
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                               <span style={{ fontWeight: '600' }}>
-                                {subReady ? '🟢' : '🟡'} {subCat.name}
+                                {isSpoolCategory ? '🔧' : (subReady ? '🟢' : '🟡')} {subCat.name}
                               </span>
                               <span style={{ 
                                 fontSize: '12px', 
-                                color: subReady ? COLORS.success : '#92400E',
+                                color: isSpoolCategory ? COLORS.purple : (subReady ? COLORS.success : '#92400E'),
                                 fontWeight: '500'
                               }}>
                                 ({subReadyCount}/{subCat.components.length} ready)
                               </span>
                             </div>
-                            {subReady && (
+                            {subReady && !isSpoolCategory && (
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
-                                  onClick={() => handleDeliverSubCategory(tp.test_pack_number, request.request_number, subCat, 'toSite')}
+                                  onClick={() => handleDeliverSubCategory(tp.test_pack_number, request, subCat, 'toSite')}
                                   disabled={!canModify}
                                   style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontSize: '11px', padding: '4px 8px' }}
                                 >
                                   🚚 To Site
                                 </button>
                                 <button
-                                  onClick={() => handleDeliverSubCategory(tp.test_pack_number, request.request_number, subCat, 'delivered')}
+                                  onClick={() => handleDeliverSubCategory(tp.test_pack_number, request, subCat, 'delivered')}
                                   disabled={!canModify}
                                   style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', fontSize: '11px', padding: '4px 8px' }}
                                 >
                                   ✅ Deliver
                                 </button>
                               </div>
+                            )}
+                            {subReady && isSpoolCategory && (
+                              <span style={{ 
+                                padding: '4px 12px', 
+                                backgroundColor: COLORS.success, 
+                                color: 'white', 
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '600'
+                              }}>
+                                ✅ Spool Ready
+                              </span>
                             )}
                           </div>
                           
@@ -6752,22 +6942,32 @@ function TestPackPage({ user }) {
                                 const totalAvail = inv.site + inv.yard;
                                 const compReady = isReady(comp);
                                 const compPartial = isPartialReady(comp);
+                                // V28.11: Check if this is a Spool item
+                                const isSpool = (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL');
                                 
                                 return (
                                 <tr key={comp.id} style={{ backgroundColor: compReady ? '#F0FDF4' : compPartial ? '#FFFBEB' : '#FEE2E2' }}>
-                                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
+                                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>
+                                    {isSpool ? '🔧 SPOOL' : comp.ident_code}
+                                  </td>
                                   <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {comp.description || '-'}
                                   </td>
                                   <td style={styles.td}>{comp.quantity}</td>
-                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site >= comp.quantity ? COLORS.success : '#6b7280' }}>
-                                    {inv.site}
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (inv.site >= comp.quantity ? COLORS.success : '#6b7280') }}>
+                                    {isSpool ? '-' : inv.site}
                                   </td>
-                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.yard > 0 ? COLORS.secondary : '#6b7280' }}>
-                                    {inv.yard}
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (inv.yard > 0 ? COLORS.secondary : '#6b7280') }}>
+                                    {isSpool ? '-' : inv.yard}
                                   </td>
                                   <td style={styles.td}>
-                                    {compReady ? (
+                                    {isSpool ? (
+                                      compReady ? (
+                                        <span style={{ ...styles.statusBadge, backgroundColor: COLORS.success }}>✅ Sent to Site</span>
+                                      ) : (
+                                        <span style={{ ...styles.statusBadge, backgroundColor: COLORS.purple }}>⏳ In Engineering</span>
+                                      )
+                                    ) : compReady ? (
                                       <span style={{ ...styles.statusBadge, backgroundColor: COLORS.success }}>✅ Ready</span>
                                     ) : compPartial ? (
                                       <span style={{ ...styles.statusBadge, backgroundColor: COLORS.warning }}>⚠️ Partial ({totalAvail}/{comp.quantity})</span>
