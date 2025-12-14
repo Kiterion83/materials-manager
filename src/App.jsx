@@ -7522,18 +7522,7 @@ function TestPackPage({ user }) {
       }
     }
     
-    // V29.0: Update completed requests counters
-    // handleDeliverAll delivers ALL items, so it's always a Fully Completed
-    const firstComp = Object.values(request.subCategories)[0]?.components[0];
-    if (firstComp?.request_id) {
-      // Check if this request was already partially completed
-      const { data: allReqComponents } = await supabase
-        .from('request_components')
-        .select('status')
-        .eq('request_id', firstComp.request_id);
-      
     // V30.0: Counters will be recalculated on loadComponents
-    
     loadComponents();
   };
 
