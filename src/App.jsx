@@ -3648,7 +3648,7 @@ function WHSitePage({ user }) {
                           const isTestPackItem = check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP';
                           if (isTestPackItem) {
                             // Only show To TestPack if full qty available
-                            if (siteQty >= check.quantity) {
+                            if (inv.site >= check.quantity) {
                               actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
                             }
                             // Partial is already added above, so user can use Partial if not full qty
