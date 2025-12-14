@@ -97,12 +97,14 @@ function canModifyPage(user, page) {
       return role === 'foreman';
     case 'wh_site':
     case 'site_in':
-    case 'hf':
-    case 'testpack':
     case 'to_be_collected':
       return role === 'wh_site';
     case 'wh_yard':
       return role === 'wh_yard';
+    // V28.10: Both WH Site and WH Yard can access HF and TestPack
+    case 'hf':
+    case 'testpack':
+      return role === 'wh_site' || role === 'wh_yard';
     case 'orders':
       return role === 'buyer';
     default:
@@ -1542,17 +1544,18 @@ function Dashboard({ user, setActivePage }) {
     }
     
     // V28.5 FIX: Also count Engineering Checks sent to WH_Site and Yard
+    // V28.10: Include "Both" in both Site and Yard counts
     const { data: engChecksSite } = await supabase
       .from('request_components')
       .select('id')
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'WH_Site');
+      .in('eng_check_sent_to', ['WH_Site', 'Both']);
     
     const { data: engChecksYard } = await supabase
       .from('request_components')
       .select('id')
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'Yard');
+      .in('eng_check_sent_to', ['Yard', 'Both']);
     
     // Load Open MIRs count
     const { data: mirData } = await supabase.from('mirs').select('id').eq('status', 'Open');
@@ -2188,13 +2191,15 @@ function RequestsPage({ user }) {
     const selected = identOptions.find(o => o.ident_code === currentMaterial.ident_code);
     const materialDesc = currentMaterial.description || selected?.description || '';
     
+    // V28.10: Include sub_category with each material
     setMaterials([...materials, {
       ident_code: currentMaterial.ident_code,
       tag: currentMaterial.tag,
       description: materialDesc,
       dia1: currentMaterial.dia1 || '',
       qty: currentMaterial.qty,
-      pos_qty: selected?.pos_qty || 0
+      pos_qty: selected?.pos_qty || 0,
+      sub_category: subCategory || null  // Save current sub_category with material
     }]);
     setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '', dia1: '' });
     setTagOptions([]);
@@ -2326,7 +2331,8 @@ function RequestsPage({ user }) {
               description: mat.description,
               quantity: parseInt(mat.qty) || 1,
               status: status,
-              current_location: destination === 'yard' ? 'YARD' : 'SITE'
+              current_location: destination === 'yard' ? 'YARD' : 'SITE',
+              sub_category: mat.sub_category || subCategory || null  // V28.10: Use material's sub_category
             })
             .select()
             .single();
@@ -3070,11 +3076,12 @@ function WHSitePage({ user }) {
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
 
     // Load Engineering Checks sent to Site (separate section)
+    // V28.10: Include "Both" in filter
     const { data: checksData, error: checksError } = await supabase
       .from('request_components')
       .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'WH_Site');
+      .in('eng_check_sent_to', ['WH_Site', 'Both']);
 
     console.log('WH Site - Loading Engineering Checks:', { checksData, checksError });
     
@@ -3348,6 +3355,26 @@ function WHSitePage({ user }) {
         setCheckFoundDest('ToCollect');
         setCheckNotFoundDest('Eng');
         setShowCheckPartialModal(true);
+      } else if (action === 'check_return') {
+        // V28.10: Return to Engineering
+        await supabase.from('request_components')
+          .update({ 
+            status: 'Eng', 
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - Returned', 'WH_Site', 'Eng', 'Returned to Engineering from check');
+        loadComponents();
+      } else if (action === 'check_delete') {
+        // V28.10: Delete component
+        if (!confirm('Are you sure you want to delete this item?')) return;
+        await supabase.from('request_components')
+          .update({ status: 'Deleted' })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Deleted from Check', 'WH_Site', 'Deleted', 'Item deleted from Engineering check');
+        loadComponents();
       }
     } catch (error) {
       alert('Error: ' + error.message);
@@ -3485,7 +3512,7 @@ function WHSitePage({ user }) {
                   return (
                   <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
                     <td style={styles.td}>{check.requests?.request_type || '-'}</td>
-                    <td style={styles.td}>{check.requests?.sub_category || '-'}</td>
+                    <td style={styles.td}>{check.sub_category || check.requests?.sub_category || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.full_spool_number || check.full_spool_number || '-'}</td>
                     <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
@@ -3524,8 +3551,8 @@ function WHSitePage({ user }) {
                             actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                           }
                           
-                          // To TestPack only if site_qty > 0 AND has test_pack_number
-                          if (hasSiteQty && (check.requests?.test_pack_number || check.previous_status === 'TP')) {
+                          // To TestPack only if site_qty > 0 AND has test_pack_number OR is TestPack category
+                          if (hasSiteQty && (check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP')) {
                             actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
                           }
                           
@@ -3536,6 +3563,10 @@ function WHSitePage({ user }) {
                           
                           // Not Found always available
                           actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
+                          
+                          // V28.10: Return and Delete always available
+                          actions.push({ id: 'check_return', icon: '↩️', label: 'Return to Eng' });
+                          actions.push({ id: 'check_delete', icon: '🗑️', label: 'Delete' });
                           
                           return actions;
                         })()}
@@ -3581,7 +3612,7 @@ function WHSitePage({ user }) {
                     const isOverQty = totalRequested > totalAvailable;
                     return `<tr>
                       <td>${comp.requests?.request_type || '-'}</td>
-                      <td>${comp.requests?.sub_category || '-'}</td>
+                      <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -3635,7 +3666,7 @@ function WHSitePage({ user }) {
                 return (
                 <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
@@ -3966,11 +3997,12 @@ function WHYardPage({ user }) {
       .eq('status', 'Yard');
 
     // Load Engineering Checks sent to Yard
+    // V28.10: Include "Both" in filter
     const { data: checksData } = await supabase
       .from('request_components')
       .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'Yard');
+      .in('eng_check_sent_to', ['Yard', 'Both']);
 
     // V28.5 FIX: Get unique ident_codes from loaded components, then load ONLY those from inventory
     const allComponents = [...(yardData || []), ...(checksData || [])];
@@ -4283,6 +4315,26 @@ function WHYardPage({ user }) {
         setCheckFoundDest('Trans');
         setCheckNotFoundDest('Eng');
         setShowCheckPartialModal(true);
+      } else if (action === 'check_return') {
+        // V28.10: Return to Engineering
+        await supabase.from('request_components')
+          .update({ 
+            status: 'Eng', 
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Check - Returned', 'Yard', 'Eng', 'Returned to Engineering from check');
+        loadComponents();
+      } else if (action === 'check_delete') {
+        // V28.10: Delete component
+        if (!confirm('Are you sure you want to delete this item?')) return;
+        await supabase.from('request_components')
+          .update({ status: 'Deleted' })
+          .eq('id', check.id);
+        await logHistory(check.id, 'Deleted from Check', 'Yard', 'Deleted', 'Item deleted from Engineering check');
+        loadComponents();
       }
     } catch (error) {
       alert('Error: ' + error.message);
@@ -4433,7 +4485,7 @@ function WHYardPage({ user }) {
                   return (
                     <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
                       <td style={styles.td}>{check.requests?.request_type || '-'}</td>
-                      <td style={styles.td}>{check.requests?.sub_category || '-'}</td>
+                      <td style={styles.td}>{check.sub_category || check.requests?.sub_category || '-'}</td>
                       <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
                       <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.full_spool_number || check.full_spool_number || '-'}</td>
                       <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
@@ -4476,8 +4528,8 @@ function WHYardPage({ user }) {
                               actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                             }
                             
-                            // To TestPack only if yard_qty > 0 AND has test_pack_number
-                            if (hasYardQty && (check.requests?.test_pack_number || check.previous_status === 'TP')) {
+                            // To TestPack only if yard_qty > 0 AND has test_pack_number OR is TestPack category
+                            if (hasYardQty && (check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP')) {
                               actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
                             }
                             
@@ -4488,6 +4540,10 @@ function WHYardPage({ user }) {
                             
                             // Not Found always available
                             actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
+                            
+                            // V28.10: Return and Delete always available
+                            actions.push({ id: 'check_return', icon: '↩️', label: 'Return to Eng' });
+                            actions.push({ id: 'check_delete', icon: '🗑️', label: 'Delete' });
                             
                             return actions;
                           })()}
@@ -4532,7 +4588,7 @@ function WHYardPage({ user }) {
                     const isOverQty = totalRequested > totalAvailable;
                     return `<tr>
                       <td>${comp.requests?.request_type || '-'}</td>
-                      <td>${comp.requests?.sub_category || '-'}</td>
+                      <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -4619,7 +4675,7 @@ function WHYardPage({ user }) {
                 return (
                   <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
                     <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                    <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                    <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
                     <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
@@ -5019,7 +5075,7 @@ function SiteInPage({ user }) {
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
                   ${components.map(comp => `<tr>
                     <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -5061,7 +5117,7 @@ function SiteInPage({ user }) {
               {components.map(comp => (
                 <tr key={comp.id}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
@@ -5233,21 +5289,14 @@ function EngineeringPage({ user }) {
 
   // Send Check - supporta Site, Yard, o Both
   const sendCheck = async () => {
-    const destinations = checkDestination === 'Both' ? ['WH_Site', 'Yard'] : [checkDestination];
-    
-    for (const dest of destinations) {
-      if (checkDestination === 'Both') {
-        // Clone component for second destination
-        // For simplicity, we just set the check on current component for both
-      }
-      await supabase.from('request_components')
-        .update({ 
-          has_eng_check: true, 
-          eng_check_message: checkMessage,
-          eng_check_sent_to: dest
-        })
-        .eq('id', selectedComponent.id);
-    }
+    // V28.10: Fix - when "Both" is selected, save "Both" directly instead of looping
+    await supabase.from('request_components')
+      .update({ 
+        has_eng_check: true, 
+        eng_check_message: checkMessage,
+        eng_check_sent_to: checkDestination  // "WH_Site", "Yard", or "Both"
+      })
+      .eq('id', selectedComponent.id);
     
     await logHistory(selectedComponent.id, `Check sent to ${checkDestination}`, 'Eng', 'Eng', checkMessage);
     
@@ -5307,7 +5356,7 @@ function EngineeringPage({ user }) {
     return (
       <tr key={comp.id}>
         <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-        <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+        <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
         <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
         <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
         <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
@@ -5391,7 +5440,7 @@ function EngineeringPage({ user }) {
                     <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Sent To</th></tr>
                     ${filteredWaiting.map(comp => `<tr>
                       <td>${comp.requests?.request_type || '-'}</td>
-                      <td>${comp.requests?.sub_category || '-'}</td>
+                      <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${comp.requests?.hf_number || '-'}</td>
@@ -5473,7 +5522,7 @@ function EngineeringPage({ user }) {
                   ${allComps.map(comp => `<tr>
                     <td>${comp.has_eng_check ? 'Waiting Check' : 'To Process'}</td>
                     <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -5489,7 +5538,7 @@ function EngineeringPage({ user }) {
             }}
             style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
           >
-            🖨️ Print All
+            🖨️ Print
           </button>
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -5810,7 +5859,7 @@ function HFPage({ user }) {
                         disabled={!canModify}
                         style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
                       >
-                        ✅ Deliver
+                        📦 To Collect
                       </button>
                     </>
                   ) : (
@@ -6536,7 +6585,7 @@ function ToBeCollectedPage({ user }) {
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
                   ${components.map(comp => `<tr>
                     <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${comp.requests?.hf_number || '-'}</td>
@@ -6581,7 +6630,7 @@ function ToBeCollectedPage({ user }) {
               {components.map(comp => (
                 <tr key={comp.id}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
@@ -7901,7 +7950,7 @@ function SparePartsPage({ user }) {
           return (
             <tr key={comp.id} style={{ backgroundColor: overdue ? COLORS.alertRed : 'transparent' }}>
               <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-              <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+              <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || '-'}</td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -7973,7 +8022,7 @@ function SparePartsPage({ user }) {
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
                   ${filteredInternal.map(comp => `<tr>
                     <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -8021,7 +8070,7 @@ function SparePartsPage({ user }) {
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
                   ${filteredClient.map(comp => `<tr>
                     <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -8542,7 +8591,7 @@ function ManagementPage({ user }) {
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Note</th></tr>
                   ${filteredComponents.map(comp => `<tr>
                     <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.requests?.sub_category || '-'}</td>
+                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -8586,7 +8635,7 @@ function ManagementPage({ user }) {
               {filteredComponents.map(comp => (
                 <tr key={comp.id}>
                   <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
