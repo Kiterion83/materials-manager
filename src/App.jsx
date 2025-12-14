@@ -6192,14 +6192,13 @@ function TestPackPage({ user }) {
     setLoading(true);
     
     try {
-      // V28.9: Load ALL components that have a test_pack_number (any status except Done/Cancelled)
+      // V28.11: Load only components with status 'TP' (items actively in TestPack queue)
+      // Exclude Trans (sent to Site IN), ToCollect (delivered), Done, Cancelled, Deleted
       const { data } = await supabase
         .from('request_components')
         .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, requester_user_id, secondary_collector)`)
         .not('requests.test_pack_number', 'is', null)
-        .not('status', 'eq', 'Done')
-        .not('status', 'eq', 'Cancelled')
-        .not('status', 'eq', 'Deleted');
+        .eq('status', 'TP'); // Only show items with status 'TP'
       
       if (data) {
         // V28.11: Get unique ident_codes and load inventory
@@ -6308,37 +6307,57 @@ function TestPackPage({ user }) {
 
   // Deliver a single sub-category
   const handleDeliverSubCategory = async (tpNum, reqNum, subCat, destination) => {
-    const newStatus = destination === 'toSite' ? 'Trans' : 'Done';
+    // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
+    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
     
     for (const comp of subCat.components) {
       if (!isReady(comp)) continue; // Only deliver ready items
       
+      // V28.11: Decrement inventory when delivering
+      const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+      
+      // Determine which warehouse to decrement (prefer Site, then Yard)
+      let decrementSite = 0;
+      let decrementYard = 0;
+      let remaining = comp.quantity;
+      
+      if (inv.site >= remaining) {
+        decrementSite = remaining;
+      } else {
+        decrementSite = inv.site;
+        remaining -= inv.site;
+        decrementYard = Math.min(inv.yard, remaining);
+      }
+      
+      // Decrement inventory
+      if (decrementSite > 0) {
+        await supabase.rpc('decrement_site_qty', { p_ident_code: comp.ident_code, p_qty: decrementSite });
+      }
+      if (decrementYard > 0) {
+        await supabase.rpc('decrement_yard_qty', { p_ident_code: comp.ident_code, p_qty: decrementYard });
+      }
+      
+      // Update component status
       await supabase.from('request_components')
         .update({ status: newStatus })
         .eq('id', comp.id);
       
       await logHistory(comp.id, 
-        destination === 'toSite' ? 'TP SubCat - To Site' : 'TP SubCat - Delivered',
-        comp.status, newStatus, 
+        destination === 'toSite' ? 'TP SubCat - To Site IN' : 'TP SubCat - To Collect',
+        'TP', newStatus, 
         `TestPack ${tpNum} - ${subCat.name} completed`
       );
 
-      if (destination === 'delivered') {
-        await supabase.rpc('increment_record_out', { 
-          p_ident_code: comp.ident_code, 
-          p_qty: comp.quantity 
-        });
-        
-        await supabase.from('movements').insert({
-          ident_code: comp.ident_code,
-          movement_type: 'OUT',
-          quantity: comp.quantity,
-          from_location: 'TP',
-          to_location: 'DELIVERED',
-          performed_by: user.full_name,
-          note: `TP ${tpNum} - ${subCat.name}`
-        });
-      }
+      // Log movement
+      await supabase.from('movements').insert({
+        ident_code: comp.ident_code,
+        movement_type: 'OUT',
+        quantity: comp.quantity,
+        from_location: 'TP',
+        to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
+        performed_by: user.full_name,
+        note: `TP ${tpNum} - ${subCat.name}`
+      });
     }
     
     loadComponents();
@@ -6346,38 +6365,58 @@ function TestPackPage({ user }) {
 
   // Deliver all ready items in a request
   const handleDeliverAll = async (tpNum, request, destination) => {
-    const newStatus = destination === 'toSite' ? 'Trans' : 'Done';
+    // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
+    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
     
     for (const subCat of Object.values(request.subCategories)) {
       for (const comp of subCat.components) {
         if (!isReady(comp)) continue;
         
+        // V28.11: Decrement inventory when delivering
+        const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+        
+        // Determine which warehouse to decrement (prefer Site, then Yard)
+        let decrementSite = 0;
+        let decrementYard = 0;
+        let remaining = comp.quantity;
+        
+        if (inv.site >= remaining) {
+          decrementSite = remaining;
+        } else {
+          decrementSite = inv.site;
+          remaining -= inv.site;
+          decrementYard = Math.min(inv.yard, remaining);
+        }
+        
+        // Decrement inventory
+        if (decrementSite > 0) {
+          await supabase.rpc('decrement_site_qty', { p_ident_code: comp.ident_code, p_qty: decrementSite });
+        }
+        if (decrementYard > 0) {
+          await supabase.rpc('decrement_yard_qty', { p_ident_code: comp.ident_code, p_qty: decrementYard });
+        }
+        
+        // Update component status
         await supabase.from('request_components')
           .update({ status: newStatus })
           .eq('id', comp.id);
         
         await logHistory(comp.id, 
-          destination === 'toSite' ? 'TP Complete - To Site' : 'TP Complete - Delivered',
-          comp.status, newStatus, 
+          destination === 'toSite' ? 'TP Complete - To Site IN' : 'TP Complete - To Collect',
+          'TP', newStatus, 
           `TestPack ${tpNum} completed`
         );
 
-        if (destination === 'delivered') {
-          await supabase.rpc('increment_record_out', { 
-            p_ident_code: comp.ident_code, 
-            p_qty: comp.quantity 
-          });
-          
-          await supabase.from('movements').insert({
-            ident_code: comp.ident_code,
-            movement_type: 'OUT',
-            quantity: comp.quantity,
-            from_location: 'TP',
-            to_location: 'DELIVERED',
-            performed_by: user.full_name,
-            note: `TP ${tpNum}`
-          });
-        }
+        // Log movement
+        await supabase.from('movements').insert({
+          ident_code: comp.ident_code,
+          movement_type: 'OUT',
+          quantity: comp.quantity,
+          from_location: 'TP',
+          to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
+          performed_by: user.full_name,
+          note: `TP ${tpNum}`
+        });
       }
     }
     
@@ -6463,7 +6502,7 @@ function TestPackPage({ user }) {
               ${tpList.map(tp => `
                 <h2>TestPack: ${tp.test_pack_number}</h2>
                 ${Object.values(tp.requests).map(req => `
-                  <h3>Request ${String(req.request_number).padStart(5, '0')}</h3>
+                  <h3>Request ${String(req.request_number).padStart(5, '0')}-${req.sub_number || 0}</h3>
                   ${Object.values(req.subCategories).map(subCat => `
                     <p><strong>${subCat.name}</strong> (${getReadyCount(subCat)}/${subCat.components.length} ready)</p>
                     <table>
@@ -6602,7 +6641,7 @@ function TestPackPage({ user }) {
                   }}>
                     <div>
                       <span style={{ fontWeight: '600' }}>
-                        Request {String(request.request_number).padStart(5, '0')}
+                        Request {String(request.request_number).padStart(5, '0')}-{request.sub_number || 0}
                       </span>
                       <span style={{ marginLeft: '12px', color: '#6b7280', fontSize: '13px' }}>
                         {readyCount}/{allComponents.length} ready
