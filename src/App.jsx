@@ -2,6 +2,12 @@
 // MATERIALS MANAGER V29.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
 // V29.0 Changes:
+//   - Dashboard: Fixed TestPack/HF counts to match Sidebar badges
+//   - Labels: New 🏷️ column in Site IN, To Collect, Orders (Ordered tab)
+//   - Labels: Print popup with all request info, status, partial indicator
+//   - Labels: Added Requester name to printed label
+//   - Request Tracker: Fixed Requester column (loads names for old requests without created_by_name)
+//   - All Pages: Enriched old requests with requester names from users table
 //   - WH Yard: Removed "To HF" / "To TestPack" - material must go through Site IN first
 //   - WH Yard: "Found → Site IN" available for ALL items including HF/TP
 //   - WH Site: "To HF" / "To TP" only if qty_site >= qty_requested
@@ -775,6 +781,246 @@ function StatBox({ title, value, color, subtitle }) {
       <p style={{ fontSize: '32px', fontWeight: 'bold' }}>{value}</p>
       {subtitle && <p style={{ fontSize: '12px', opacity: 0.75, marginTop: '4px' }}>{subtitle}</p>}
     </div>
+  );
+}
+
+// ============================================================
+// V29.0 LABEL PRINT MODAL - Print labels for materials
+// ============================================================
+function LabelPrintModal({ isOpen, onClose, component }) {
+  if (!isOpen || !component) return null;
+
+  const printLabel = () => {
+    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    const labelContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Material Label</title>
+        <style>
+          @page { size: 100mm 70mm; margin: 0; }
+          body { 
+            font-family: Arial, sans-serif; 
+            padding: 10px;
+            margin: 0;
+            width: 100mm;
+            height: 70mm;
+            box-sizing: border-box;
+          }
+          .label-container {
+            border: 2px solid #000;
+            padding: 8px;
+            height: calc(100% - 4px);
+            box-sizing: border-box;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #000;
+            padding-bottom: 6px;
+            margin-bottom: 6px;
+          }
+          .logo { font-weight: bold; font-size: 14px; color: #E31E24; }
+          .status { 
+            padding: 3px 8px; 
+            background: ${component.status === 'Trans' ? '#2563EB' : component.status === 'ToCollect' ? '#16a34a' : '#D97706'}; 
+            color: white; 
+            border-radius: 4px; 
+            font-size: 11px;
+            font-weight: bold;
+          }
+          .request-num { 
+            font-size: 20px; 
+            font-weight: bold; 
+            text-align: center; 
+            margin: 8px 0;
+            font-family: monospace;
+          }
+          .info-grid { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 4px; 
+            font-size: 10px;
+            margin-bottom: 6px;
+          }
+          .info-item { 
+            padding: 3px 5px; 
+            background: #f3f4f6; 
+            border-radius: 3px;
+          }
+          .info-label { font-weight: bold; color: #666; }
+          .code { 
+            font-family: monospace; 
+            font-size: 11px; 
+            font-weight: bold;
+            background: #1F2937;
+            color: white;
+            padding: 4px 6px;
+            border-radius: 4px;
+            text-align: center;
+            margin: 4px 0;
+          }
+          .description {
+            font-size: 9px;
+            color: #374151;
+            text-align: center;
+            margin: 4px 0;
+            max-height: 24px;
+            overflow: hidden;
+          }
+          .qty { 
+            font-size: 24px; 
+            font-weight: bold; 
+            text-align: center;
+            color: #E31E24;
+          }
+          .partial { 
+            background: #FEF3C7; 
+            border: 1px solid #F59E0B;
+            padding: 2px 6px;
+            font-size: 10px;
+            text-align: center;
+            border-radius: 3px;
+            color: #92400E;
+            margin-top: 4px;
+          }
+          .footer {
+            font-size: 8px;
+            color: #9ca3af;
+            text-align: center;
+            margin-top: 6px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="label-container">
+          <div class="header">
+            <span class="logo">MAX STREICHER</span>
+            <span class="status">${component.status === 'Trans' ? 'SITE IN' : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}</span>
+          </div>
+          
+          <div class="request-num">${String(component.requests?.request_number || component.request_number || '').padStart(5, '0')}-${component.requests?.sub_number ?? component.sub_number ?? 0}</div>
+          
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label">Cat:</span> ${component.requests?.request_type || component.request_type || '-'}</div>
+            <div class="info-item"><span class="info-label">Sub:</span> ${component.sub_category || component.requests?.sub_category || '-'}</div>
+            <div class="info-item"><span class="info-label">ISO:</span> ${component.requests?.iso_number || component.iso_number || '-'}</div>
+            <div class="info-item"><span class="info-label">Spool:</span> ${component.requests?.full_spool_number || component.full_spool_number || '-'}</div>
+            ${component.requests?.hf_number ? `<div class="info-item"><span class="info-label">HF:</span> ${component.requests.hf_number}</div>` : ''}
+            ${component.requests?.test_pack_number ? `<div class="info-item"><span class="info-label">TP:</span> ${component.requests.test_pack_number}</div>` : ''}
+          </div>
+          
+          <div style="font-size: 9px; text-align: center; margin-bottom: 4px; color: #374151;">
+            <span style="font-weight: bold;">Requester:</span> ${component.requests?.created_by_name || '-'}
+          </div>
+          
+          <div class="code">${component.ident_code || '-'}</div>
+          <div class="description">${component.description ? (component.description.length > 60 ? component.description.substring(0, 60) + '...' : component.description) : '-'}</div>
+          
+          <div class="qty">QTY: ${component.quantity || 0}</div>
+          
+          ${component.is_partial || component.requests?.is_partial ? '<div class="partial">⚠️ PARTIAL DELIVERY</div>' : ''}
+          
+          <div class="footer">Printed: ${new Date().toLocaleString()}</div>
+        </div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(labelContent);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="🏷️ Print Label">
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ 
+          border: '2px solid #d1d5db', 
+          borderRadius: '8px', 
+          padding: '16px',
+          marginBottom: '16px',
+          backgroundColor: '#f9fafb'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <span style={{ fontWeight: 'bold', color: COLORS.primary }}>MAX STREICHER</span>
+            <span style={{ 
+              padding: '4px 12px', 
+              backgroundColor: component.status === 'Trans' ? COLORS.info : component.status === 'ToCollect' ? COLORS.success : COLORS.warning,
+              color: 'white',
+              borderRadius: '4px',
+              fontSize: '12px',
+              fontWeight: 'bold'
+            }}>
+              {component.status === 'Trans' ? 'SITE IN' : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}
+            </span>
+          </div>
+          
+          <div style={{ fontSize: '24px', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '12px' }}>
+            {String(component.requests?.request_number || '').padStart(5, '0')}-{component.requests?.sub_number ?? 0}
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', marginBottom: '12px' }}>
+            <div style={{ padding: '4px 8px', backgroundColor: '#e5e7eb', borderRadius: '4px' }}>
+              <strong>Cat:</strong> {component.requests?.request_type || '-'}
+            </div>
+            <div style={{ padding: '4px 8px', backgroundColor: '#e5e7eb', borderRadius: '4px' }}>
+              <strong>Sub:</strong> {component.sub_category || component.requests?.sub_category || '-'}
+            </div>
+          </div>
+          
+          <div style={{ fontSize: '11px', textAlign: 'center', marginBottom: '8px', color: '#374151' }}>
+            <strong>Requester:</strong> {component.requests?.created_by_name || '-'}
+          </div>
+          
+          <div style={{ 
+            backgroundColor: COLORS.secondary, 
+            color: 'white', 
+            padding: '8px', 
+            borderRadius: '4px',
+            fontFamily: 'monospace',
+            fontWeight: 'bold',
+            marginBottom: '8px'
+          }}>
+            {component.ident_code}
+          </div>
+          
+          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '12px' }}>
+            {component.description ? (component.description.length > 50 ? component.description.substring(0, 50) + '...' : component.description) : '-'}
+          </div>
+          
+          <div style={{ fontSize: '28px', fontWeight: 'bold', color: COLORS.primary }}>
+            QTY: {component.quantity}
+          </div>
+          
+          {(component.is_partial || component.requests?.is_partial) && (
+            <div style={{ 
+              marginTop: '8px',
+              padding: '4px 12px', 
+              backgroundColor: '#FEF3C7',
+              border: '1px solid #F59E0B',
+              borderRadius: '4px',
+              color: '#92400E',
+              fontSize: '12px'
+            }}>
+              ⚠️ PARTIAL DELIVERY
+            </div>
+          )}
+        </div>
+        
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <button onClick={onClose} style={{ ...styles.button, ...styles.buttonSecondary }}>
+            Cancel
+          </button>
+          <button onClick={printLabel} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>
+            🖨️ Print Label
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1600,6 +1846,42 @@ function Dashboard({ user, setActivePage }) {
       .eq('has_eng_check', true)
       .in('eng_check_sent_to', ['Yard', 'Both']);
     
+    // V29.0: Count unique test_pack_numbers with pending items (same as sidebar badge)
+    const { data: tpData } = await supabase
+      .from('requests')
+      .select('test_pack_number')
+      .not('test_pack_number', 'is', null);
+    let tpCount = 0;
+    if (tpData) {
+      const uniqueTPs = [...new Set(tpData.map(r => r.test_pack_number).filter(Boolean))];
+      for (const tpNum of uniqueTPs) {
+        const { data: comps } = await supabase
+          .from('request_components')
+          .select('id, requests!inner(test_pack_number)')
+          .eq('requests.test_pack_number', tpNum)
+          .in('status', ['TP', 'Eng', 'TP_Spool_Sent']);
+        if (comps && comps.length > 0) tpCount++;
+      }
+    }
+    
+    // V29.0: Count unique hf_numbers with pending items (same as sidebar badge)
+    const { data: hfData } = await supabase
+      .from('requests')
+      .select('hf_number')
+      .not('hf_number', 'is', null);
+    let hfCount = 0;
+    if (hfData) {
+      const uniqueHFs = [...new Set(hfData.map(r => r.hf_number).filter(Boolean))];
+      for (const hfNum of uniqueHFs) {
+        const { data: comps } = await supabase
+          .from('request_components')
+          .select('id, requests!inner(hf_number)')
+          .eq('requests.hf_number', hfNum)
+          .in('status', ['HF', 'Eng']);
+        if (comps && comps.length > 0) hfCount++;
+      }
+    }
+    
     // Load Open MIRs count
     const { data: mirData } = await supabase.from('mirs').select('id').eq('status', 'Open');
     
@@ -1623,8 +1905,8 @@ function Dashboard({ user, setActivePage }) {
       order: counts['Order'] || 0,
       siteIn: counts['Trans'] || 0,
       toCollect: counts['ToCollect'] || 0,
-      tp: counts['TP'] || 0,
-      hf: counts['HF'] || 0,
+      tp: tpCount,
+      hf: hfCount,
       mirOpen: mirData?.length || 0,
       lost: totalLost,
       broken: totalBroken
@@ -2389,6 +2671,7 @@ function RequestsPage({ user }) {
           request_number: reqNumber,
           sub_number: 0,
           requester_user_id: user.id,
+          created_by_name: user.full_name,  // V29.0: Store requester name
           request_type: requestType,
           sub_category: requestType === 'Piping' ? subCategory : 
                        (requestType === 'TestPack' && (missingType === 'Material' || missingType === 'Both') ? subCategory : null),
@@ -5347,6 +5630,9 @@ function WHYardPage({ user }) {
 function SiteInPage({ user }) {
   const [components, setComponents] = useState([]);
   const [loading, setLoading] = useState(true);
+  // V29.0: Label print modal
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [selectedForLabel, setSelectedForLabel] = useState(null);
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -5354,9 +5640,26 @@ function SiteInPage({ user }) {
     setLoading(true);
     const { data } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
       .eq('status', 'Trans');
-    if (data) setComponents(data);
+    
+    // V29.0: Enrich with requester names for old requests
+    if (data) {
+      const userIdsToLookup = [...new Set(
+        data.filter(r => r.requests?.requester_user_id && !r.requests?.created_by_name)
+            .map(r => r.requests.requester_user_id)
+      )];
+      let userNameMap = {};
+      if (userIdsToLookup.length > 0) {
+        const { data: usersData } = await supabase.from('users').select('id, full_name').in('id', userIdsToLookup);
+        if (usersData) userNameMap = Object.fromEntries(usersData.map(u => [u.id, u.full_name]));
+      }
+      const enriched = data.map(r => ({
+        ...r,
+        requests: r.requests ? { ...r.requests, created_by_name: r.requests.created_by_name || userNameMap[r.requests.requester_user_id] || null } : null
+      }));
+      setComponents(enriched);
+    }
     setLoading(false);
   };
 
@@ -5534,6 +5837,7 @@ function SiteInPage({ user }) {
                 <th style={styles.th}>Diam</th>
                 <th style={styles.th}>Qty</th>
                 <th style={styles.th}>Actions</th>
+                <th style={styles.th}>🏷️</th>
               </tr>
             </thead>
             <tbody>
@@ -5568,11 +5872,28 @@ function SiteInPage({ user }) {
                       componentId={comp.id}
                     />
                   </td>
+                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                    <button
+                      onClick={() => { setSelectedForLabel(comp); setShowLabelModal(true); }}
+                      style={{ 
+                        padding: '4px 8px', 
+                        border: 'none', 
+                        borderRadius: '4px', 
+                        backgroundColor: COLORS.info, 
+                        color: 'white', 
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                      title="Print Label"
+                    >
+                      🏷️
+                    </button>
+                  </td>
                 </tr>
               ))}
               {components.length === 0 && (
                 <tr>
-                  <td colSpan="13" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="14" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                     No materials in transit
                   </td>
                 </tr>
@@ -5581,6 +5902,13 @@ function SiteInPage({ user }) {
           </table>
         </div>
       </div>
+      
+      {/* V29.0: Label Print Modal */}
+      <LabelPrintModal
+        isOpen={showLabelModal}
+        onClose={() => { setShowLabelModal(false); setSelectedForLabel(null); }}
+        component={selectedForLabel}
+      />
     </div>
   );
 }
@@ -7440,6 +7768,9 @@ function ToBeCollectedPage({ user }) {
   const [collectorName, setCollectorName] = useState('');
   const [allUsers, setAllUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
+  // V29.0: Label print modal
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [selectedForLabel, setSelectedForLabel] = useState(null);
 
   useEffect(() => { loadComponents(); loadUsers(); }, []);
 
@@ -7447,9 +7778,26 @@ function ToBeCollectedPage({ user }) {
     setLoading(true);
     const { data } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, requester_user_id, request_type, sub_category, iso_number, full_spool_number, hf_number, test_pack_number)`)
+      .select(`*, requests (request_number, sub_number, requester_user_id, request_type, sub_category, iso_number, full_spool_number, hf_number, test_pack_number, created_by_name)`)
       .eq('status', 'ToCollect');
-    if (data) setComponents(data);
+    
+    // V29.0: Enrich with requester names for old requests
+    if (data) {
+      const userIdsToLookup = [...new Set(
+        data.filter(r => r.requests?.requester_user_id && !r.requests?.created_by_name)
+            .map(r => r.requests.requester_user_id)
+      )];
+      let userNameMap = {};
+      if (userIdsToLookup.length > 0) {
+        const { data: usersData } = await supabase.from('users').select('id, full_name').in('id', userIdsToLookup);
+        if (usersData) userNameMap = Object.fromEntries(usersData.map(u => [u.id, u.full_name]));
+      }
+      const enriched = data.map(r => ({
+        ...r,
+        requests: r.requests ? { ...r.requests, created_by_name: r.requests.created_by_name || userNameMap[r.requests.requester_user_id] || null } : null
+      }));
+      setComponents(enriched);
+    }
     setLoading(false);
   };
 
@@ -7655,6 +8003,7 @@ function ToBeCollectedPage({ user }) {
                 <th style={styles.th}>Description</th>
                 <th style={styles.th}>Qty</th>
                 <th style={styles.th}>Actions</th>
+                <th style={styles.th}>🏷️</th>
               </tr>
             </thead>
             <tbody>
@@ -7703,11 +8052,28 @@ function ToBeCollectedPage({ user }) {
                       </ActionButton>
                     </div>
                   </td>
+                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                    <button
+                      onClick={() => { setSelectedForLabel(comp); setShowLabelModal(true); }}
+                      style={{ 
+                        padding: '4px 8px', 
+                        border: 'none', 
+                        borderRadius: '4px', 
+                        backgroundColor: COLORS.success, 
+                        color: 'white', 
+                        cursor: 'pointer',
+                        fontSize: '14px'
+                      }}
+                      title="Print Label"
+                    >
+                      🏷️
+                    </button>
+                  </td>
                 </tr>
               ))}
               {components.length === 0 && (
                 <tr>
-                  <td colSpan="11" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  <td colSpan="12" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                     No materials to collect
                   </td>
                 </tr>
@@ -7777,6 +8143,13 @@ function ToBeCollectedPage({ user }) {
       </Modal>
 
       <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
+      
+      {/* V29.0: Label Print Modal */}
+      <LabelPrintModal
+        isOpen={showLabelModal}
+        onClose={() => { setShowLabelModal(false); setSelectedForLabel(null); }}
+        component={selectedForLabel}
+      />
     </div>
   );
 }
@@ -9463,19 +9836,39 @@ function OrdersPage({ user }) {
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [expectedDate, setExpectedDate] = useState('');
+  // V29.0: Label print modal
+  const [showLabelModal, setShowLabelModal] = useState(false);
+  const [selectedForLabel, setSelectedForLabel] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     setLoading(true);
     const { data: toOrder } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
       .eq('status', 'Order');
     const { data: ordered } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
       .eq('status', 'Ordered');
-    if (toOrder) setToOrderComponents(toOrder);
-    if (ordered) setOrderedComponents(ordered);
+    
+    // V29.0: Enrich with requester names for old requests
+    const allData = [...(toOrder || []), ...(ordered || [])];
+    const userIdsToLookup = [...new Set(
+      allData.filter(r => r.requests?.requester_user_id && !r.requests?.created_by_name)
+             .map(r => r.requests.requester_user_id)
+    )];
+    let userNameMap = {};
+    if (userIdsToLookup.length > 0) {
+      const { data: usersData } = await supabase.from('users').select('id, full_name').in('id', userIdsToLookup);
+      if (usersData) userNameMap = Object.fromEntries(usersData.map(u => [u.id, u.full_name]));
+    }
+    const enrichRequest = (r) => ({
+      ...r,
+      requests: r.requests ? { ...r.requests, created_by_name: r.requests.created_by_name || userNameMap[r.requests.requester_user_id] || null } : null
+    });
+    
+    if (toOrder) setToOrderComponents(toOrder.map(enrichRequest));
+    if (ordered) setOrderedComponents(ordered.map(enrichRequest));
     setLoading(false);
   };
 
@@ -9673,6 +10066,7 @@ function OrdersPage({ user }) {
           <th style={styles.th}>Order Date</th>
           <th style={styles.th}>Forecast</th>
           <th style={styles.th}>Actions</th>
+          <th style={styles.th}>🏷️</th>
         </tr>
       </thead>
       <tbody>
@@ -9715,11 +10109,28 @@ function OrdersPage({ user }) {
                   />
                 </div>
               </td>
+              <td style={{ ...styles.td, textAlign: 'center' }}>
+                <button
+                  onClick={() => { setSelectedForLabel({...comp, status: 'Ordered'}); setShowLabelModal(true); }}
+                  style={{ 
+                    padding: '4px 8px', 
+                    border: 'none', 
+                    borderRadius: '4px', 
+                    backgroundColor: COLORS.warning, 
+                    color: 'white', 
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                  title="Print Label"
+                >
+                  🏷️
+                </button>
+              </td>
             </tr>
           );
         })}
         {components.length === 0 && (
-          <tr><td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No items</td></tr>
+          <tr><td colSpan="11" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No items</td></tr>
         )}
       </tbody>
     </table>
@@ -9858,6 +10269,13 @@ function OrdersPage({ user }) {
           <button onClick={submitOrder} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Confirm Order</button>
         </div>
       </Modal>
+      
+      {/* V29.0: Label Print Modal */}
+      <LabelPrintModal
+        isOpen={showLabelModal}
+        onClose={() => { setShowLabelModal(false); setSelectedForLabel(null); }}
+        component={selectedForLabel}
+      />
     </div>
   );
 }
@@ -10453,7 +10871,39 @@ function LogPage({ user }) {
         .select('*, requests(*)')
         .order('created_at', { ascending: false })
         .limit(500);
-      if (reqData) setRequests(reqData);
+      
+      // V29.0: Load user names for old requests that don't have created_by_name
+      if (reqData) {
+        // Get unique requester_user_ids that need name lookup
+        const userIdsToLookup = [...new Set(
+          reqData
+            .filter(r => r.requests?.requester_user_id && !r.requests?.created_by_name)
+            .map(r => r.requests.requester_user_id)
+        )];
+        
+        // Load user names
+        let userNameMap = {};
+        if (userIdsToLookup.length > 0) {
+          const { data: usersData } = await supabase
+            .from('users')
+            .select('id, full_name')
+            .in('id', userIdsToLookup);
+          if (usersData) {
+            userNameMap = Object.fromEntries(usersData.map(u => [u.id, u.full_name]));
+          }
+        }
+        
+        // Enrich requests with requester names
+        const enrichedData = reqData.map(r => ({
+          ...r,
+          requests: r.requests ? {
+            ...r.requests,
+            created_by_name: r.requests.created_by_name || userNameMap[r.requests.requester_user_id] || null
+          } : null
+        }));
+        
+        setRequests(enrichedData);
+      }
 
       // V28.2: Load active requests for IB linking
       const { data: activeReqData } = await supabase
