@@ -7218,11 +7218,21 @@ function MaterialInPage({ user }) {
 
   // V28.11: MIR Documents functions
   const extractMirInfo = (note) => {
-    // Extract MIR and RK from note like "MIR 123/RK 456 - ..."
-    const match = note?.match(/MIR\s*(\d+)\s*\/\s*RK\s*(\d+)/i);
-    if (match) {
-      return { mir: match[1], rk: match[2] };
-    }
+    if (!note) return { mir: null, rk: null };
+    
+    // Try different patterns:
+    // 1. "MIR 1111/RK 2222" or "MIR 1111 / RK 2222"
+    let match = note.match(/MIR\s*(\d+)\s*\/\s*RK\s*(\d+)/i);
+    if (match) return { mir: match[1], rk: match[2] };
+    
+    // 2. "MIR 1111/2222" (MIR/RK without "RK" text)
+    match = note.match(/MIR\s*(\d+)\s*\/\s*(\d+)/i);
+    if (match) return { mir: match[1], rk: match[2] };
+    
+    // 3. "MIR 1111" (just MIR number)
+    match = note.match(/MIR\s*(\d+)/i);
+    if (match) return { mir: match[1], rk: null };
+    
     return { mir: null, rk: null };
   };
 
@@ -8194,21 +8204,29 @@ function MaterialInPage({ user }) {
                     </td>
                     <td style={{ ...styles.td, fontSize: '12px', color: '#6B7280' }}>{m.performed_by}</td>
                     <td style={styles.td}>
-                      <button
-                        onClick={() => openDocsModal(m)}
-                        style={{
-                          ...styles.button,
-                          backgroundColor: extractMirInfo(m.note).mir ? COLORS.info : '#9CA3AF',
-                          color: 'white',
-                          padding: '4px 8px',
-                          fontSize: '11px',
-                          cursor: extractMirInfo(m.note).mir ? 'pointer' : 'not-allowed'
-                        }}
-                        disabled={!extractMirInfo(m.note).mir}
-                        title={extractMirInfo(m.note).mir ? 'Manage documents' : 'No MIR info available'}
-                      >
-                        📎
-                      </button>
+                      {(() => {
+                        const mirInfo = extractMirInfo(m.note);
+                        const hasMir = !!mirInfo.mir;
+                        return (
+                          <button
+                            onClick={() => openDocsModal(m)}
+                            style={{
+                              ...styles.button,
+                              backgroundColor: hasMir ? COLORS.info : '#E5E7EB',
+                              color: hasMir ? 'white' : '#9CA3AF',
+                              padding: '6px 10px',
+                              fontSize: '12px',
+                              cursor: hasMir ? 'pointer' : 'not-allowed',
+                              border: hasMir ? 'none' : '1px solid #D1D5DB',
+                              opacity: hasMir ? 1 : 0.6
+                            }}
+                            disabled={!hasMir}
+                            title={hasMir ? `📎 Documents for MIR ${mirInfo.mir}` : 'No MIR number found'}
+                          >
+                            📎 {hasMir ? 'Docs' : '-'}
+                          </button>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}
