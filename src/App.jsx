@@ -1,15 +1,26 @@
 // ============================================================
-// MATERIALS MANAGER V28.12 - APP.JSX COMPLETE
+// MATERIALS MANAGER V29.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V29.0 Changes:
+//   - WH Yard: Removed "To HF" / "To TestPack" - material must go through Site IN first
+//   - WH Yard: "Found → Site IN" available for ALL items including HF/TP
+//   - WH Site: "To HF" / "To TP" only if qty_site >= qty_requested
+//   - WH Yard: "Partial" if qty_yard < qty_requested
+//   - Request Form: Redesigned like Material IN (inline search results)
+//   - Request Form: Clears completely after + Add
+//   - TestPack Badge: Counts unique test_pack_numbers (not components/requests)
+//   - HF Badge: Counts unique hf_numbers (not components/requests)
+//   - Partial Split: Already validates max = available inventory
 // V28.12 Changes:
 //   - TestPack Spool: New sub-category 'Spool' for ordering spools from supplier
 //   - Engineering: "Sent to Site" action for Spool items → status = 'TP_Spool_Sent'
 //   - TestPack: 🔧 Spool section shows spool status (In Engineering / Sent to Site)
 //   - No inventory decrement for Spool items (they come from external supplier)
 //   - Sub-category abbreviation: SP for Spool
-//   - Request form: Add button disabled if description empty
-//   - TestPack: Can add both Materials and Spools in same request
-//   - Sub-request numbering: Creates new sub-request when partial delivery
+//   - HF Page: Complete redesign like TestPack (Materials/Log tabs, inventory columns)
+//   - HF Page: Shows items in Engineering for monitoring
+//   - HF Page: Delivery only when ALL components ready (no partial)
+//   - WH Site/Yard: "Ready" DISABLED for HF/TP items - must use "To HF" / "To TP"
 // V28.11 Changes:
 //   - TestPack: Request number display shows sub_number (00051-0)
 //   - TestPack: Components removed from TP when delivered/sent to site
@@ -61,7 +72,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.12';
+const APP_VERSION = 'V29.0';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -1782,7 +1793,7 @@ function RequestsPage({ user }) {
   const [testPackNumber, setTestPackNumber] = useState('');
   const [missingType, setMissingType] = useState('Material');
   const [materials, setMaterials] = useState([]);
-  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '', description: '' });
+  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '', description: '', dia1: '' });
   const [isoOptions, setIsoOptions] = useState([]);
   const [spoolOptions, setSpoolOptions] = useState([]);
   const [identOptions, setIdentOptions] = useState([]);
@@ -1798,6 +1809,10 @@ function RequestsPage({ user }) {
   // V27: Multi-spool support for TestPack
   const [selectedSpools, setSelectedSpools] = useState([]);
   const [currentSpoolInput, setCurrentSpoolInput] = useState('');
+  // V29.0: Search results for ident code (like Material IN)
+  const [identSearchResults, setIdentSearchResults] = useState([]);
+  const [showIdentResults, setShowIdentResults] = useState(false);
+  const [identSearchTimeout, setIdentSearchTimeout] = useState(null);
 
   useEffect(() => {
     loadNextNumber();
@@ -2169,6 +2184,62 @@ function RequestsPage({ user }) {
     return [];
   };
 
+  // V29.0: Search ident code for Request form (like Material IN)
+  const searchIdentForRequest = (searchTerm) => {
+    // Clear previous timeout
+    if (identSearchTimeout) clearTimeout(identSearchTimeout);
+    
+    // Clear description/dia1 when typing
+    setCurrentMaterial(prev => ({ ...prev, ident_code: searchTerm, description: '', dia1: '' }));
+    
+    if (searchTerm.length < 3) {
+      setIdentSearchResults([]);
+      setShowIdentResults(false);
+      return;
+    }
+    
+    // Debounce search
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase
+        .from('project_materials')
+        .select('ident_code, description, dia1')
+        .ilike('ident_code', `%${searchTerm}%`)
+        .order('ident_code')
+        .limit(50);
+      
+      if (data) {
+        // Remove duplicates
+        const seen = new Set();
+        const results = [];
+        data.forEach(d => {
+          if (!seen.has(d.ident_code)) {
+            seen.add(d.ident_code);
+            results.push(d);
+          }
+        });
+        setIdentSearchResults(results);
+        setShowIdentResults(results.length > 0);
+      } else {
+        setIdentSearchResults([]);
+        setShowIdentResults(false);
+      }
+    }, 500);
+    setIdentSearchTimeout(timeout);
+  };
+
+  // V29.0: Select ident code from search results
+  const selectIdentForRequest = (item) => {
+    setCurrentMaterial(prev => ({
+      ...prev,
+      ident_code: item.ident_code,
+      description: item.description || '',
+      dia1: item.dia1 || ''
+    }));
+    setShowIdentResults(false);
+    setIdentSearchResults([]);
+    loadTagsForIdent(item.ident_code);
+  };
+
   const handleIdentCodeChange = async (identCodeOrObject) => {
     // Handle both string and object (from AsyncSearchInput with description)
     let identCode = identCodeOrObject;
@@ -2238,8 +2309,11 @@ function RequestsPage({ user }) {
       pos_qty: selected?.pos_qty || 0,
       sub_category: subCategory || null  // Save current sub_category with material
     }]);
+    // V29.0: Clear form completely including search results
     setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '', dia1: '' });
     setTagOptions([]);
+    setIdentSearchResults([]);
+    setShowIdentResults(false);
   };
 
   const removeMaterial = (index) => {
@@ -2860,22 +2934,57 @@ function RequestsPage({ user }) {
               <h4 style={{ fontWeight: '600', marginBottom: '16px' }}>📦 Add Materials</h4>
               
               <div style={{ display: 'flex', gap: '12px', alignItems: 'end' }}>
-                <div style={{ flex: 1 }}>
+                {/* V29.0: Ident Code with search like Material IN */}
+                <div style={{ flex: 1, position: 'relative' }}>
                   <label style={styles.label}>
                     Ident Code * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 3+ chars)</span>
                   </label>
-                  <AsyncSearchInput
+                  <input
+                    type="text"
                     value={currentMaterial.ident_code}
-                    onChange={(val) => {
-                      const valStr = typeof val === 'object' ? val.value : val;
-                      setCurrentMaterial({ ...currentMaterial, ident_code: valStr });
-                    }}
-                    onSearch={searchIdentCodeGlobal}
-                    onSelect={(val) => handleIdentCodeChange(val)}
-                    minChars={3}
+                    onChange={(e) => searchIdentForRequest(e.target.value)}
+                    onFocus={() => identSearchResults.length > 0 && setShowIdentResults(true)}
+                    onBlur={() => setTimeout(() => setShowIdentResults(false), 200)}
+                    style={styles.input}
                     placeholder="Type 3+ chars to search..."
                     disabled={!canModify}
                   />
+                  {showIdentResults && identSearchResults.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      backgroundColor: 'white',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                      zIndex: 100
+                    }}>
+                      {identSearchResults.map((item, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => selectIdentForRequest(item)}
+                          style={{
+                            padding: '10px 12px',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #f3f4f6',
+                            fontSize: '13px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f3f4f6'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                        >
+                          <div style={{ fontWeight: '600', fontFamily: 'monospace' }}>{item.ident_code}</div>
+                          <div style={{ color: '#6b7280', fontSize: '12px', marginTop: '2px' }}>
+                            📦 {item.description ? item.description.substring(0, 50) + (item.description.length > 50 ? '...' : '') : '(no description)'}
+                            {item.dia1 && <span style={{ marginLeft: '8px', color: '#3b82f6' }}>[Ø{item.dia1}]</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {/* Description (auto-filled) */}
                 <div style={{ flex: 2 }}>
@@ -3822,13 +3931,22 @@ function WHSitePage({ user }) {
                     <ActionDropdown
                       actions={(() => {
                         // V28.6: Build actions dynamically based on inventory quantities
+                        // V29.0: For HF/TP items, disable Ready - must go to HF/TP page
+                        // V29.0: To HF/TP only if qty >= requested
                         const actions = [];
                         const hasSiteQty = inv.site > 0;
                         const hasYardQty = inv.yard > 0;
+                        const hasEnoughSite = inv.site >= comp.quantity;
+                        const isHF = !!comp.requests?.hf_number;
+                        const isTP = !!comp.requests?.test_pack_number;
                         
-                        // Actions requiring site_qty > 0
-                        if (hasSiteQty) {
+                        // V29.0: Ready and Partial only for non-HF and non-TP items
+                        if (hasSiteQty && !isHF && !isTP) {
                           actions.push({ id: 'ready', icon: '✓', label: 'Ready' });
+                          actions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
+                        }
+                        // V29.0: For HF/TP: Partial always available, To HF/TP only if qty is enough
+                        if (hasSiteQty && (isHF || isTP)) {
                           actions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
                         }
                         // To Yard requires yard_qty > 0 (no point sending to yard if nothing there)
@@ -3837,12 +3955,12 @@ function WHSitePage({ user }) {
                         }
                         // Engineering always available
                         actions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
-                        // V28.7: HF only if hf_number is not empty
-                        if (hasSiteQty && comp.requests?.hf_number) {
+                        // V29.0: HF only if qty_site >= qty_requested AND has hf_number
+                        if (hasEnoughSite && isHF) {
                           actions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
                         }
-                        // V28.7: TestPack only if test_pack_number is not empty
-                        if (hasSiteQty && comp.requests?.test_pack_number) {
+                        // V29.0: TestPack only if qty_site >= qty_requested AND has test_pack_number
+                        if (hasEnoughSite && isTP) {
                           actions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
                         }
                         // Delete always available
@@ -3887,6 +4005,11 @@ function WHSitePage({ user }) {
 
       {/* Partial Modal - V28.11: Translated to English + Request Number */}
       <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Partial Split">
+        {(() => {
+          const availableQty = inventoryMap[selectedComponent?.ident_code]?.site || 0;
+          const isOverLimit = parseInt(partialQty) > availableQty;
+          return (
+        <>
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: COLORS.info }}>
             📋 Request: {String(selectedComponent?.requests?.request_number).padStart(5, '0')}-{selectedComponent?.requests?.sub_number}
@@ -3898,7 +4021,7 @@ function WHSitePage({ user }) {
             <strong>Total Requested:</strong> {selectedComponent?.quantity}
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Available in SITE:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.site || 0}</span>
+            <strong>Available in SITE:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{availableQty}</span>
           </p>
         </div>
         
@@ -3908,11 +4031,16 @@ function WHSitePage({ user }) {
             type="number"
             value={partialQty}
             onChange={(e) => setPartialQty(e.target.value)}
-            style={styles.input}
+            style={{ ...styles.input, borderColor: isOverLimit ? COLORS.primary : undefined }}
             min="1"
-            max={selectedComponent?.quantity - 1}
+            max={Math.min(availableQty, selectedComponent?.quantity - 1)}
             placeholder="Enter found quantity"
           />
+          {isOverLimit && (
+            <p style={{ color: COLORS.primary, fontSize: '12px', marginTop: '4px' }}>
+              ⚠️ Cannot exceed available quantity ({availableQty})
+            </p>
+          )}
         </div>
         
         <div style={{ marginBottom: '16px' }}>
@@ -3972,17 +4100,20 @@ function WHSitePage({ user }) {
           <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={submitPartial} 
-            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity}
+            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit}
             style={{ 
               ...styles.button, 
               backgroundColor: COLORS.warning, 
               color: 'white',
-              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity) ? 0.5 : 1
+              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit) ? 0.5 : 1
             }}
           >
             SPLIT
           </button>
         </div>
+        </>
+          );
+        })()}
       </Modal>
 
       {/* Engineering Check Partial Modal */}
@@ -4906,13 +5037,18 @@ function WHYardPage({ user }) {
                 const isOverQty = totalRequested > totalAvailable;
                 
                 // V28.6: Build actions list based on inventory quantities
+                // V29.0: HF/TP items from Yard must go to Site IN first, NOT directly to HF/TP
                 const yardActions = [];
                 const hasYardQty = available > 0;
                 const hasSiteQty = inv.site > 0;
+                const hasEnoughYard = inv.yard >= comp.quantity;
+                const isHF = !!comp.requests?.hf_number;
+                const isTP = !!comp.requests?.test_pack_number;
                 
-                // Found requires full quantity available in yard
-                if (canFulfill) {
-                  yardActions.push({ id: 'found', icon: '✓', label: 'Found/Transfer' });
+                // V29.0: Found/Transfer (Site IN) available for ALL items including HF/TP
+                // From Yard, material must go to Site IN first, then from Site to HF/TP
+                if (hasEnoughYard) {
+                  yardActions.push({ id: 'found', icon: '✓', label: 'Found → Site IN' });
                 }
                 // Partial requires some quantity in yard
                 if (hasYardQty) {
@@ -4920,14 +5056,7 @@ function WHYardPage({ user }) {
                 }
                 // Engineering always available
                 yardActions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
-                // V28.8: HF only if yard_qty > 0 AND has hf_number
-                if (hasYardQty && comp.requests?.hf_number) {
-                  yardActions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
-                }
-                // V28.8: TestPack only if yard_qty > 0 AND has test_pack_number
-                if (hasYardQty && comp.requests?.test_pack_number) {
-                  yardActions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
-                }
+                // V29.0: NO "To HF" or "To TestPack" from Yard - must go through Site IN first!
                 // Return to Site requires site_qty > 0 (material must be available at site)
                 if (hasSiteQty) {
                   yardActions.push({ id: 'return', icon: '↩️', label: 'Return to Site' });
@@ -4996,8 +5125,13 @@ function WHYardPage({ user }) {
         title="Where to send the found material?"
       />
 
-      {/* Partial Modal - V28.11: With Request Number and English labels */}
+      {/* Partial Modal - V29.0: With inventory validation */}
       <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Partial Split">
+        {(() => {
+          const availableQty = inventoryMap[selectedComponent?.ident_code]?.yard || 0;
+          const isOverLimit = parseInt(partialQty) > availableQty;
+          return (
+        <>
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: COLORS.info }}>
             📋 Request: {String(selectedComponent?.requests?.request_number).padStart(5, '0')}-{selectedComponent?.requests?.sub_number}
@@ -5009,7 +5143,7 @@ function WHYardPage({ user }) {
             <strong>Total Requested:</strong> {selectedComponent?.quantity}
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Available in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.yard || 0}</span>
+            <strong>Available in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{availableQty}</span>
           </p>
         </div>
         
@@ -5019,11 +5153,16 @@ function WHYardPage({ user }) {
             type="number"
             value={partialQty}
             onChange={(e) => setPartialQty(e.target.value)}
-            style={styles.input}
+            style={{ ...styles.input, borderColor: isOverLimit ? COLORS.primary : undefined }}
             min="1"
-            max={Math.min(selectedComponent?.quantity - 1, inventoryMap[selectedComponent?.ident_code]?.yard || 0)}
+            max={Math.min(selectedComponent?.quantity - 1, availableQty)}
             placeholder="Enter found quantity"
           />
+          {isOverLimit && (
+            <p style={{ color: COLORS.primary, fontSize: '12px', marginTop: '4px' }}>
+              ⚠️ Cannot exceed available quantity ({availableQty})
+            </p>
+          )}
         </div>
         
         <div style={{ marginBottom: '16px' }}>
@@ -5083,17 +5222,20 @@ function WHYardPage({ user }) {
           <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={submitPartial} 
-            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || parseInt(partialQty) > (inventoryMap[selectedComponent?.ident_code]?.yard || 0)}
+            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit}
             style={{ 
               ...styles.button, 
               backgroundColor: COLORS.warning, 
               color: 'white',
-              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || parseInt(partialQty) > (inventoryMap[selectedComponent?.ident_code]?.yard || 0)) ? 0.5 : 1
+              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit) ? 0.5 : 1
             }}
           >
             SPLIT
           </button>
         </div>
+        </>
+          );
+        })()}
       </Modal>
 
       {/* Engineering Check Partial Modal */}
@@ -5949,36 +6091,102 @@ function EngineeringPage({ user }) {
 // HF PAGE - Componenti HF raggruppati per request
 // ============================================================
 function HFPage({ user }) {
-  const [groups, setGroups] = useState({});
+  const [hfGroups, setHfGroups] = useState({});
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [historyComponentId, setHistoryComponentId] = useState(null);
+  const [inventoryMap, setInventoryMap] = useState({});
+  const [activeTab, setActiveTab] = useState('materials');
+  const [completedCount, setCompletedCount] = useState(0);
 
   useEffect(() => { loadComponents(); }, []);
 
   const loadComponents = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('request_components')
-      .select(`*, requests (request_number, sub_number, hf_number, requester_user_id)`)
-      .eq('status', 'HF');
     
-    if (data) {
-      // Raggruppa per request_number
-      const grouped = {};
-      data.forEach(comp => {
-        const reqNum = comp.requests?.request_number;
-        if (!grouped[reqNum]) {
-          grouped[reqNum] = {
-            request_number: reqNum,
-            hf_number: comp.requests?.hf_number,
-            requester_user_id: comp.requests?.requester_user_id,
-            components: []
-          };
+    try {
+      // V29.0: Load components for HF monitoring
+      // - HF: Components ready in HF queue
+      // - Eng: Components still in Engineering (for monitoring)
+      const { data } = await supabase
+        .from('request_components')
+        .select(`*, requests (request_number, sub_number, hf_number, requester_user_id)`)
+        .not('requests.hf_number', 'is', null)
+        .in('status', ['HF', 'Eng']);
+      
+      if (data) {
+        // Get unique ident_codes and load inventory
+        const uniqueIdentCodes = [...new Set(data.map(c => c.ident_code).filter(Boolean))];
+        if (uniqueIdentCodes.length > 0) {
+          const { data: invData } = await supabase
+            .from('inventory')
+            .select('ident_code, site_qty, yard_qty')
+            .in('ident_code', uniqueIdentCodes);
+          
+          const invMap = {};
+          if (invData) {
+            invData.forEach(inv => {
+              invMap[inv.ident_code] = { site: inv.site_qty || 0, yard: inv.yard_qty || 0 };
+            });
+          }
+          setInventoryMap(invMap);
         }
-        grouped[reqNum].components.push(comp);
-      });
-      setGroups(grouped);
+
+        // Group by hf_number, then by request_number
+        const grouped = {};
+        data.forEach(comp => {
+          const hfNum = comp.requests?.hf_number;
+          if (!hfNum) return;
+          
+          if (!grouped[hfNum]) {
+            grouped[hfNum] = {
+              hf_number: hfNum,
+              requests: {}
+            };
+          }
+          
+          const reqNum = comp.requests?.request_number;
+          const subNum = comp.requests?.sub_number || 0;
+          const reqKey = `${reqNum}-${subNum}`;
+          
+          if (!grouped[hfNum].requests[reqKey]) {
+            grouped[hfNum].requests[reqKey] = {
+              request_number: reqNum,
+              sub_number: subNum,
+              requester_user_id: comp.requests?.requester_user_id,
+              components: []
+            };
+          }
+          
+          grouped[hfNum].requests[reqKey].components.push(comp);
+        });
+        
+        setHfGroups(grouped);
+
+        // Calculate completed HF count
+        const { data: completedHF } = await supabase
+          .from('requests')
+          .select('id')
+          .not('hf_number', 'is', null);
+        
+        if (completedHF) {
+          let completed = 0;
+          for (const req of completedHF) {
+            const { data: comps } = await supabase
+              .from('request_components')
+              .select('status')
+              .eq('request_id', req.id);
+            
+            if (comps && comps.length > 0) {
+              const allDone = comps.every(c => ['Trans', 'ToCollect', 'Done'].includes(c.status));
+              if (allDone) completed++;
+            }
+          }
+          setCompletedCount(completed);
+        }
+      }
+    } catch (error) {
+      console.error('HF load error:', error);
     }
     setLoading(false);
   };
@@ -5995,49 +6203,82 @@ function HFPage({ user }) {
     });
   };
 
-  const isGroupComplete = (group) => {
-    // Check that all le sub-richieste siano in HF
-    return group.components.length > 0;
+  // Check if a component is ready (in HF status with inventory available)
+  const isReady = (comp) => {
+    if (comp.status === 'Eng') return false;
+    if (comp.status === 'HF') {
+      const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+      return (inv.site + inv.yard) >= comp.quantity;
+    }
+    return false;
   };
 
-  const handleDeliver = async (group, destination) => {
-    // destination: 'toSite' o 'delivered'
-    const newStatus = destination === 'toSite' ? 'Trans' : 'Done';
-    
-    for (const comp of group.components) {
-      await supabase.from('request_components')
-        .update({ status: newStatus })
-        .eq('id', comp.id);
-      
-      await logHistory(comp.id, 
-        destination === 'toSite' ? 'HF Complete - To Site' : 'HF Complete - Delivered',
-        'HF', newStatus, 
-        `HF ${group.hf_number} completed`
-      );
+  const isInEngineering = (comp) => comp.status === 'Eng';
 
-      if (destination === 'delivered') {
-        // Update inventory record_out using RPC
-        await supabase.rpc('increment_record_out', { 
-          p_ident_code: comp.ident_code, 
-          p_qty: comp.quantity 
-        });
+  // Check if ALL components in an HF group are ready
+  const isHFComplete = (hfGroup) => {
+    const allComps = Object.values(hfGroup.requests).flatMap(r => r.components);
+    return allComps.length > 0 && allComps.every(isReady);
+  };
+
+  // Get ready/total counts for an HF group
+  const getHFCounts = (hfGroup) => {
+    const allComps = Object.values(hfGroup.requests).flatMap(r => r.components);
+    const ready = allComps.filter(isReady).length;
+    return { ready, total: allComps.length };
+  };
+
+  // Deliver entire HF (only when all ready)
+  const handleDeliverHF = async (hfNum, hfGroup, destination) => {
+    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
+    
+    for (const request of Object.values(hfGroup.requests)) {
+      for (const comp of request.components) {
+        // Decrement inventory
+        const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+        let remaining = comp.quantity;
         
+        if (inv.site >= remaining) {
+          await supabase.rpc('decrement_site_qty', { p_ident_code: comp.ident_code, p_qty: remaining });
+        } else {
+          if (inv.site > 0) {
+            await supabase.rpc('decrement_site_qty', { p_ident_code: comp.ident_code, p_qty: inv.site });
+            remaining -= inv.site;
+          }
+          if (remaining > 0 && inv.yard >= remaining) {
+            await supabase.rpc('decrement_yard_qty', { p_ident_code: comp.ident_code, p_qty: remaining });
+          }
+        }
+        
+        // Update status
+        await supabase.from('request_components')
+          .update({ status: newStatus })
+          .eq('id', comp.id);
+        
+        await logHistory(comp.id, 
+          destination === 'toSite' ? 'HF Complete - To Site IN' : 'HF Complete - To Collect',
+          'HF', newStatus, 
+          `HF ${hfNum} completed`
+        );
+
+        // Log movement
         await supabase.from('movements').insert({
           ident_code: comp.ident_code,
           movement_type: 'OUT',
           quantity: comp.quantity,
           from_location: 'HF',
-          to_location: 'DELIVERED',
+          to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
           performed_by: user.full_name,
-          note: `HF ${group.hf_number}`
+          note: `HF ${hfNum}`
         });
       }
     }
     
+    setCompletedCount(prev => prev + 1);
     loadComponents();
   };
 
-  // V28.9: Handle component-level actions (Delete)
+  // Handle component-level actions
   const handleComponentAction = async (comp, action) => {
     if (action === 'delete') {
       if (!confirm(`Delete component ${comp.ident_code}?`)) return;
@@ -6045,7 +6286,17 @@ function HFPage({ user }) {
         await supabase.from('request_components')
           .update({ status: 'Cancelled' })
           .eq('id', comp.id);
-        await logHistory(comp.id, 'Deleted from HF', 'HF', 'Cancelled', '');
+        await logHistory(comp.id, 'Deleted from HF', comp.status, 'Cancelled', '');
+        loadComponents();
+      } catch (error) {
+        alert('Error: ' + error.message);
+      }
+    } else if (action === 'return') {
+      try {
+        await supabase.from('request_components')
+          .update({ status: 'WH_Site' })
+          .eq('id', comp.id);
+        await logHistory(comp.id, 'Returned from HF to WH Site', comp.status, 'WH_Site', '');
         loadComponents();
       } catch (error) {
         alert('Error: ' + error.message);
@@ -6062,171 +6313,228 @@ function HFPage({ user }) {
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
-  const groupList = Object.values(groups);
+  const hfList = Object.values(hfGroups);
+  const totalComponents = hfList.reduce((sum, hf) => 
+    sum + Object.values(hf.requests).reduce((s, r) => s + r.components.length, 0), 0);
 
   return (
     <div>
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px' }}>
-            🔩 HF - Flanged Joints
-            <span style={{ fontSize: '14px', fontWeight: 'normal', color: '#6b7280' }}>
-              ({groupList.length} groups)
-            </span>
-          </h2>
-          <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
-            Complete all parts of an HF before delivering
-          </p>
-        </div>
-        {groupList.length > 0 && (
-          <button
-            onClick={() => {
-              const allComps = groupList.flatMap(g => g.components.map(c => ({ ...c, hf: g.hf_number })));
-              const printWindow = window.open('', '_blank');
-              printWindow.document.write(`
-                <html><head><title>HF - Flanged Joints</title>
-                <style>
-                  body { font-family: Arial, sans-serif; padding: 20px; }
-                  h1 { color: #0D9488; }
-                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
-                  th { background-color: #CCFBF1; }
-                </style></head><body>
-                <h1>🔩 HF - Flanged Joints</h1>
-                <p>Printed: ${new Date().toLocaleString()} | Groups: ${groupList.length} | Components: ${allComps.length}</p>
-                <table>
-                  <tr><th>HF</th><th>Request</th><th>Code</th><th>Description</th><th>Tag</th><th>Qty</th></tr>
-                  ${allComps.map(comp => `<tr>
-                    <td>${comp.hf || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number || 0}</td>
-                    <td>${comp.ident_code}</td>
-                    <td>${comp.description || '-'}</td>
-                    <td>${comp.tag || '-'}</td>
-                    <td>${comp.quantity}</td>
-                  </tr>`).join('')}
-                </table>
-                </body></html>
-              `);
-              printWindow.document.close();
-              printWindow.print();
-            }}
-            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
-          >
-            🖨️ Print
-          </button>
-        )}
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <button
+          onClick={() => setActiveTab('materials')}
+          style={{
+            ...styles.button,
+            backgroundColor: activeTab === 'materials' ? COLORS.teal : '#e5e7eb',
+            color: activeTab === 'materials' ? 'white' : '#374151'
+          }}
+        >
+          📦 Materials ({totalComponents})
+        </button>
+        <button
+          onClick={() => setActiveTab('log')}
+          style={{
+            ...styles.button,
+            backgroundColor: activeTab === 'log' ? COLORS.teal : '#e5e7eb',
+            color: activeTab === 'log' ? 'white' : '#374151'
+          }}
+        >
+          📋 Log
+        </button>
       </div>
 
-      {groupList.length === 0 ? (
+      {activeTab === 'log' ? (
+        // Log Tab
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: '600' }}>📋 HF Completion Log</h3>
+          </div>
+          <div style={{ padding: '20px' }}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: '1fr', 
+              gap: '16px' 
+            }}>
+              <div style={{ 
+                padding: '24px', 
+                backgroundColor: '#D1FAE5', 
+                borderRadius: '8px', 
+                textAlign: 'center',
+                border: '2px solid #10B981'
+              }}>
+                <p style={{ fontSize: '32px', fontWeight: '700', color: COLORS.success }}>{completedCount}</p>
+                <p style={{ color: COLORS.success, fontWeight: '500' }}>✅ Completed</p>
+              </div>
+            </div>
+            <p style={{ marginTop: '16px', color: '#6b7280', fontSize: '13px' }}>
+              Log tracks when HF groups are fully completed and delivered. 
+              HF requires ALL components to be ready before delivery (no partial).
+            </p>
+          </div>
+        </div>
+      ) : (
+        // Materials Tab
+        <>
+      {hfList.length === 0 ? (
         <div style={{ ...styles.card, padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
           No HF components waiting
         </div>
       ) : (
-        groupList.map(group => {
-          const complete = isGroupComplete(group);
-          const totalQty = group.components.reduce((sum, c) => sum + c.quantity, 0);
+        hfList.map(hf => {
+          const counts = getHFCounts(hf);
+          const allReady = isHFComplete(hf);
           
           return (
-            <div key={group.request_number} style={{ ...styles.card, marginBottom: '16px' }}>
+            <div key={hf.hf_number} style={{
+              backgroundColor: '#F0FDFA',
+              border: '2px solid #14B8A6',
+              borderRadius: '8px',
+              padding: '16px',
+              marginBottom: '24px'
+            }}>
               <div style={{ 
-                ...styles.cardHeader, 
-                backgroundColor: complete ? '#D1FAE5' : '#FEF3C7',
-                borderBottom: `2px solid ${complete ? COLORS.success : COLORS.warning}`
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '16px'
               }}>
                 <div>
-                  <span style={{ fontWeight: '700', fontSize: '16px' }}>
-                    Request {String(group.request_number).padStart(5, '0')}
-                  </span>
-                  {group.hf_number && (
-                    <span style={{ 
-                      marginLeft: '12px', 
-                      padding: '4px 10px', 
-                      backgroundColor: COLORS.teal, 
-                      color: 'white', 
-                      borderRadius: '4px',
-                      fontSize: '13px'
-                    }}>
-                      HF: {group.hf_number}
-                    </span>
-                  )}
-                  <span style={{ marginLeft: '12px', color: '#6b7280', fontSize: '14px' }}>
-                    {group.components.length} components | Total Qty: {totalQty}
+                  <h3 style={{ fontWeight: '700', color: COLORS.teal, fontSize: '18px' }}>
+                    🔩 HF: {hf.hf_number}
+                  </h3>
+                  <span style={{ color: '#6b7280', fontSize: '13px' }}>
+                    {counts.ready}/{counts.total} ready
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  {complete ? (
-                    <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  {!allReady && (
+                    <span style={{ 
+                      padding: '6px 12px', 
+                      backgroundColor: '#FEF3C7', 
+                      color: '#92400E',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '500'
+                    }}>
+                      ⏳ {counts.total - counts.ready} items pending
+                    </span>
+                  )}
+                  {allReady && (
+                    <div style={{ display: 'flex', gap: '8px' }}>
                       <button
-                        onClick={() => handleDeliver(group, 'toSite')}
+                        onClick={() => handleDeliverHF(hf.hf_number, hf, 'toSite')}
                         disabled={!canModify}
                         style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
                       >
-                        🚚 Send to Site
+                        🚚 To Site
                       </button>
                       <button
-                        onClick={() => handleDeliver(group, 'delivered')}
+                        onClick={() => handleDeliverHF(hf.hf_number, hf, 'delivered')}
                         disabled={!canModify}
                         style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
                       >
                         📦 To Collect
                       </button>
-                    </>
-                  ) : (
-                    <span style={{ 
-                      padding: '8px 16px', 
-                      backgroundColor: '#FEF3C7', 
-                      color: '#92400E',
-                      borderRadius: '6px',
-                      fontSize: '13px'
-                    }}>
-                      ⏳ Waiting for completion
-                    </span>
+                    </div>
                   )}
                 </div>
               </div>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Sub</th>
-                    <th style={styles.th}>Code</th>
-                    <th style={styles.th}>Description</th>
-                    <th style={styles.th}>Qty</th>
-                    <th style={styles.th}>Status</th>
-                    <th style={styles.th}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.components.map(comp => (
-                    <tr key={comp.id}>
-                      <td style={{ ...styles.td, fontFamily: 'monospace' }}>-{comp.requests?.sub_number}</td>
-                      <td style={{ ...styles.td, fontFamily: 'monospace' }}>{comp.ident_code}</td>
-                      <td style={styles.td}>{comp.description}</td>
-                      <td style={styles.td}>{comp.quantity}</td>
-                      <td style={styles.td}>
-                        <span style={{ ...styles.statusBadge, backgroundColor: COLORS.success }}>
-                          ✅ Ready
-                        </span>
-                      </td>
-                      <td style={styles.td}>
-                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                          <ActionDropdown
-                            actions={[
-                              { id: 'delete', icon: '🗑️', label: 'Delete' }
-                            ]}
-                            onExecute={(action) => handleComponentAction(comp, action)}
-                            disabled={!canModify}
-                            componentId={comp.id}
-                          />
-                          <ActionButton color={comp.requests?.description ? COLORS.primary : COLORS.info} onClick={() => openHistory(comp.id)} title="History">ℹ️</ActionButton>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              
+              {/* Requests within this HF */}
+              {Object.values(hf.requests).map(request => (
+                <div key={`${request.request_number}-${request.sub_number}`} style={{
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px',
+                  marginBottom: '12px',
+                  overflow: 'hidden'
+                }}>
+                  <div style={{
+                    backgroundColor: allReady ? '#D1FAE5' : '#FEF9C3',
+                    padding: '10px 14px',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}>
+                    <span style={{ fontWeight: '600' }}>
+                      Request {String(request.request_number).padStart(5, '0')}-{request.sub_number}
+                    </span>
+                    <span style={{ marginLeft: '12px', color: '#6b7280', fontSize: '13px' }}>
+                      ({request.components.filter(isReady).length}/{request.components.length} ready)
+                    </span>
+                  </div>
+                  
+                  <table style={{ ...styles.table, margin: 0 }}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Code</th>
+                        <th style={styles.th}>Description</th>
+                        <th style={styles.th}>Qty</th>
+                        <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white' }}>WH Site</th>
+                        <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white' }}>WH Yard</th>
+                        <th style={styles.th}>Status</th>
+                        <th style={styles.th}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {request.components.map(comp => {
+                        const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+                        const compReady = isReady(comp);
+                        const compInEng = isInEngineering(comp);
+                        const rowBgColor = compReady ? '#F0FDF4' : compInEng ? '#F3E8FF' : '#FEE2E2';
+                        
+                        return (
+                          <tr key={comp.id} style={{ backgroundColor: rowBgColor }}>
+                            <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
+                            <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {comp.description || '-'}
+                            </td>
+                            <td style={styles.td}>{comp.quantity}</td>
+                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: compInEng ? '#9ca3af' : (inv.site >= comp.quantity ? COLORS.success : '#6b7280') }}>
+                              {compInEng ? '-' : inv.site}
+                            </td>
+                            <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: compInEng ? '#9ca3af' : (inv.yard > 0 ? COLORS.secondary : '#6b7280') }}>
+                              {compInEng ? '-' : inv.yard}
+                            </td>
+                            <td style={styles.td}>
+                              {compInEng ? (
+                                <span style={{ ...styles.statusBadge, backgroundColor: COLORS.purple }}>⏳ In Engineering</span>
+                              ) : compReady ? (
+                                <span style={{ ...styles.statusBadge, backgroundColor: COLORS.success }}>✅ Ready</span>
+                              ) : (
+                                <span style={{ ...styles.statusBadge, backgroundColor: COLORS.primary }}>❌ Not Available</span>
+                              )}
+                            </td>
+                            <td style={styles.td}>
+                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                <ActionDropdown
+                                  actions={[
+                                    { id: 'return', icon: '↩️', label: 'Return to WH' },
+                                    { id: 'delete', icon: '🗑️', label: 'Delete' }
+                                  ]}
+                                  onExecute={(action) => handleComponentAction(comp, action)}
+                                  disabled={!canModify}
+                                  componentId={comp.id}
+                                />
+                                <ActionButton 
+                                  color={COLORS.info} 
+                                  onClick={() => openHistory(comp.id)} 
+                                  title="History"
+                                >
+                                  ℹ️
+                                </ActionButton>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
             </div>
           );
         })
+      )}
+      </>
       )}
 
       <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
@@ -6255,7 +6563,7 @@ function TestPackPage({ user }) {
     setLoading(true);
     
     try {
-      // V28.12: Load components for TestPack monitoring
+      // V29.0: Load components for TestPack monitoring
       // - Eng: Items in Engineering (waiting for check)
       // - TP: Materials ready in TestPack queue
       // - TP_Spool_Sent: Spools sent to site (ready for delivery)
@@ -6322,7 +6630,7 @@ function TestPackPage({ user }) {
       
       setTestPacks(grouped);
       
-      // V28.12: Calculate initial completed requests counters
+      // V29.0: Calculate initial completed requests counters
       // Get all TestPack requests and check their completion status
       const { data: tpRequests } = await supabase
         .from('requests')
@@ -6372,7 +6680,7 @@ function TestPackPage({ user }) {
     });
   };
 
-  // V28.12: Check if a component is ready based on status and inventory
+  // V29.0: Check if a component is ready based on status and inventory
   const isReady = (comp) => {
     // Items in Engineering are NOT ready
     if (comp.status === 'Eng') {
@@ -6391,7 +6699,7 @@ function TestPackPage({ user }) {
     return false;
   };
   
-  // V28.12: Check if in Engineering
+  // V29.0: Check if in Engineering
   const isInEngineering = (comp) => comp.status === 'Eng';
   
   // V28.11: Check if partial ready (some but not all qty available)
@@ -6571,7 +6879,7 @@ function TestPackPage({ user }) {
       });
     }
     
-    // V28.12: Update completed requests counters based on actual component states
+    // V29.0: Update completed requests counters based on actual component states
     // Check how many sub-categories have been delivered for this request
     const requestId = subCat.components[0]?.request_id;
     if (requestId) {
@@ -6676,7 +6984,7 @@ function TestPackPage({ user }) {
       }
     }
     
-    // V28.12: Update completed requests counters
+    // V29.0: Update completed requests counters
     // handleDeliverAll delivers ALL items, so it's always a Fully Completed
     const firstComp = Object.values(request.subCategories)[0]?.components[0];
     if (firstComp?.request_id) {
@@ -7042,7 +7350,7 @@ function TestPackPage({ user }) {
                                 // V28.11: Check if this is a Spool item
                                 const isSpool = (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL');
                                 
-                                // V28.12: Row background color
+                                // V29.0: Row background color
                                 const rowBgColor = compReady ? '#F0FDF4' : compInEng ? '#F3E8FF' : compPartial ? '#FFFBEB' : '#FEE2E2';
                                 
                                 return (
@@ -11540,13 +11848,42 @@ export default function App() {
     const { data: orderedData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Ordered');
     const { data: spareData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Spare');
     const { data: mngData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Mng');
-    const { data: hfData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'HF');
-    // V28.12: TestPack badge counts TP + Eng + TP_Spool_Sent items that have test_pack_number
+    // V29.0: HF badge counts unique HF numbers (not components)
+    const { data: hfData } = await supabase
+      .from('requests')
+      .select('hf_number')
+      .not('hf_number', 'is', null);
+    // Get unique HF numbers that have pending components
+    let hfCount = 0;
+    if (hfData) {
+      const uniqueHFs = [...new Set(hfData.map(r => r.hf_number).filter(Boolean))];
+      for (const hfNum of uniqueHFs) {
+        const { data: comps } = await supabase
+          .from('request_components')
+          .select('id, requests!inner(hf_number)')
+          .eq('requests.hf_number', hfNum)
+          .in('status', ['HF', 'Eng']);
+        if (comps && comps.length > 0) hfCount++;
+      }
+    }
+    // V29.0: TestPack badge counts unique TEST_PACK_NUMBERS (not requests/components)
     const { data: tpData } = await supabase
-      .from('request_components')
-      .select('id, requests!inner(test_pack_number)')
-      .in('status', ['TP', 'Eng', 'TP_Spool_Sent'])
-      .not('requests.test_pack_number', 'is', null);
+      .from('requests')
+      .select('test_pack_number')
+      .not('test_pack_number', 'is', null);
+    // Get unique test_pack_numbers that have pending components
+    let tpCount = 0;
+    if (tpData) {
+      const uniqueTPs = [...new Set(tpData.map(r => r.test_pack_number).filter(Boolean))];
+      for (const tpNum of uniqueTPs) {
+        const { data: comps } = await supabase
+          .from('request_components')
+          .select('id, requests!inner(test_pack_number)')
+          .eq('requests.test_pack_number', tpNum)
+          .in('status', ['TP', 'Eng', 'TP_Spool_Sent']);
+        if (comps && comps.length > 0) tpCount++;
+      }
+    }
     const { data: collectData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'ToCollect');
     
     // Engineering Checks counts - these should be added to WH Site and WH Yard badges
@@ -11562,8 +11899,8 @@ export default function App() {
     counts.materialIn = 0; // Material In doesn't need a badge
     counts.spareParts = spareData?.length || 0;
     counts.management = mngData?.length || 0;
-    counts.hfPage = hfData?.length || 0;
-    counts.testPackPage = tpData?.length || 0;
+    counts.hfPage = hfCount;
+    counts.testPackPage = tpCount;
     counts.toBeCollected = collectData?.length || 0;
 
     setBadges(counts);
