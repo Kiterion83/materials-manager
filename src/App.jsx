@@ -6321,6 +6321,38 @@ function TestPackPage({ user }) {
       });
       
       setTestPacks(grouped);
+      
+      // V28.12: Calculate initial completed requests counters
+      // Get all TestPack requests and check their completion status
+      const { data: tpRequests } = await supabase
+        .from('requests')
+        .select('id, request_number, sub_number')
+        .not('test_pack_number', 'is', null);
+      
+      if (tpRequests) {
+        let fullyCompleted = 0;
+        let partiallyCompleted = 0;
+        
+        for (const req of tpRequests) {
+          const { data: reqComps } = await supabase
+            .from('request_components')
+            .select('status')
+            .eq('request_id', req.id);
+          
+          if (reqComps && reqComps.length > 0) {
+            const deliveredStatuses = ['Trans', 'ToCollect', 'Done'];
+            const deliveredCount = reqComps.filter(c => deliveredStatuses.includes(c.status)).length;
+            
+            if (deliveredCount === reqComps.length) {
+              fullyCompleted++;
+            } else if (deliveredCount > 0) {
+              partiallyCompleted++;
+            }
+          }
+        }
+        
+        setCompletedRequests({ total: fullyCompleted, partial: partiallyCompleted });
+      }
     }
     } catch (error) {
       console.error('TestPack load error:', error);
@@ -6539,11 +6571,45 @@ function TestPackPage({ user }) {
       });
     }
     
-    // Update completed requests counters
-    setCompletedRequests(prev => ({
-      total: componentsToMove.length === 0 ? prev.total + 1 : prev.total,
-      partial: componentsToMove.length > 0 ? prev.partial + 1 : prev.partial
-    }));
+    // V28.12: Update completed requests counters based on actual component states
+    // Check how many sub-categories have been delivered for this request
+    const requestId = subCat.components[0]?.request_id;
+    if (requestId) {
+      // Get all components for this request (including just-delivered ones)
+      const { data: allReqComponents } = await supabase
+        .from('request_components')
+        .select('id, status, sub_category')
+        .eq('request_id', requestId);
+      
+      if (allReqComponents) {
+        const deliveredStatuses = ['Trans', 'ToCollect', 'Done'];
+        const deliveredCount = allReqComponents.filter(c => deliveredStatuses.includes(c.status)).length;
+        const totalCount = allReqComponents.length;
+        
+        // Check if this was the FIRST delivery (only the just-delivered items are in delivered status)
+        const justDeliveredCount = subCat.components.filter(c => isReady(c)).length;
+        const wasPartialBefore = deliveredCount > justDeliveredCount;
+        const isFullyComplete = deliveredCount === totalCount;
+        
+        setCompletedRequests(prev => {
+          if (isFullyComplete) {
+            // Fully completed: Fully +1, Partial -1 (if was partial before)
+            return {
+              total: prev.total + 1,
+              partial: wasPartialBefore ? prev.partial - 1 : prev.partial
+            };
+          } else if (!wasPartialBefore) {
+            // First partial delivery: Partial +1
+            return {
+              total: prev.total,
+              partial: prev.partial + 1
+            };
+          }
+          // Already partial, still partial: no change
+          return prev;
+        });
+      }
+    }
     
     loadComponents();
   };
@@ -6607,6 +6673,32 @@ function TestPackPage({ user }) {
           performed_by: user.full_name,
           note: `TP ${tpNum}`
         });
+      }
+    }
+    
+    // V28.12: Update completed requests counters
+    // handleDeliverAll delivers ALL items, so it's always a Fully Completed
+    const firstComp = Object.values(request.subCategories)[0]?.components[0];
+    if (firstComp?.request_id) {
+      // Check if this request was already partially completed
+      const { data: allReqComponents } = await supabase
+        .from('request_components')
+        .select('status')
+        .eq('request_id', firstComp.request_id);
+      
+      if (allReqComponents) {
+        const deliveredStatuses = ['Trans', 'ToCollect', 'Done'];
+        // Count how many were delivered BEFORE this action
+        const readyCount = Object.values(request.subCategories)
+          .flatMap(sc => sc.components)
+          .filter(c => isReady(c)).length;
+        const previouslyDelivered = allReqComponents.filter(c => deliveredStatuses.includes(c.status)).length - readyCount;
+        const wasPartialBefore = previouslyDelivered > 0;
+        
+        setCompletedRequests(prev => ({
+          total: prev.total + 1,
+          partial: wasPartialBefore ? prev.partial - 1 : prev.partial
+        }));
       }
     }
     
@@ -6907,7 +6999,7 @@ function TestPackPage({ user }) {
                                 ({subReadyCount}/{subCat.components.length} ready)
                               </span>
                             </div>
-                            {subReady && !isSpoolCategory && (
+                            {subReady && (
                               <div style={{ display: 'flex', gap: '6px' }}>
                                 <button
                                   onClick={() => handleDeliverSubCategory(tp.test_pack_number, request, subCat, 'toSite')}
@@ -6924,18 +7016,6 @@ function TestPackPage({ user }) {
                                   ✅ Deliver
                                 </button>
                               </div>
-                            )}
-                            {subReady && isSpoolCategory && (
-                              <span style={{ 
-                                padding: '4px 12px', 
-                                backgroundColor: COLORS.success, 
-                                color: 'white', 
-                                borderRadius: '4px',
-                                fontSize: '11px',
-                                fontWeight: '600'
-                              }}>
-                                ✅ Spool Ready
-                              </span>
                             )}
                           </div>
                           
@@ -11461,7 +11541,12 @@ export default function App() {
     const { data: spareData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Spare');
     const { data: mngData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Mng');
     const { data: hfData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'HF');
-    const { data: tpData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'TP');
+    // V28.12: TestPack badge counts TP + Eng + TP_Spool_Sent items that have test_pack_number
+    const { data: tpData } = await supabase
+      .from('request_components')
+      .select('id, requests!inner(test_pack_number)')
+      .in('status', ['TP', 'Eng', 'TP_Spool_Sent'])
+      .not('requests.test_pack_number', 'is', null);
     const { data: collectData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'ToCollect');
     
     // Engineering Checks counts - these should be added to WH Site and WH Yard badges
