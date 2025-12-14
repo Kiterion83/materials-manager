@@ -16,7 +16,7 @@
 //   - Removed redundant "Notes from Engineering" section in WH Site
 //   - Partial modals: Show both SITE and YARD availability
 // V28.7 Changes:
-//   - Split Partial Modal: Complete redesign like "Rilascio Parziale"
+//   - Split Partial Modal: Complete redesign like "Partial Split"
 //   - Actions To HF/TestPack: Only visible if HF/TP columns are not empty
 //   - To Collect page: Renamed from "To Be Collected", dropdown fix
 //   - Partial destinations include HF/TP options conditionally
@@ -48,7 +48,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V28.9';
+const APP_VERSION = 'V28.11';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -80,6 +80,34 @@ function isOverdue(forecastDate) {
   const forecast = new Date(forecastDate);
   forecast.setHours(0, 0, 0, 0);
   return today > forecast;
+}
+
+// V28.11: Abbreviation helpers for compact display
+function abbrevCategory(cat) {
+  if (!cat) return '-';
+  const map = {
+    'Piping': 'P',
+    'Mechanical': 'M',
+    'TestPack': 'TP'
+  };
+  return map[cat] || cat.substring(0, 2).toUpperCase();
+}
+
+function abbrevSubCategory(sub) {
+  if (!sub) return '-';
+  const map = {
+    'Erection': 'E',
+    'Support': 'S',
+    'Instrument': 'I',
+    'Bulk': 'B'
+  };
+  return map[sub] || sub.substring(0, 1).toUpperCase();
+}
+
+function abbrevSpool(spool) {
+  if (!spool) return '-';
+  // Return last 5 characters
+  return spool.length > 5 ? spool.slice(-5) : spool;
 }
 
 // V28.6: Role-based permission helper
@@ -459,14 +487,8 @@ const styles = {
   logoIcon: {
     width: '40px',
     height: '40px',
-    backgroundColor: COLORS.primary,
     borderRadius: '8px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: '14px'
+    objectFit: 'cover'
   },
   nav: {
     flex: 1,
@@ -1352,21 +1374,17 @@ function LoginScreen({ onLogin }) {
         maxWidth: '400px'
       }}>
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            backgroundColor: COLORS.primary,
-            borderRadius: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 16px',
-            color: 'white',
-            fontWeight: 'bold',
-            fontSize: '20px'
-          }}>
-            STR
-          </div>
+          <img 
+            src="/streicher-logo.png" 
+            alt="STREICHER Logo"
+            style={{
+              width: '100px',
+              height: '100px',
+              borderRadius: '12px',
+              margin: '0 auto 16px',
+              display: 'block'
+            }}
+          />
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1f2937' }}>MAX STREICHER</h1>
           <p style={{ color: '#6b7280', marginTop: '4px', border: '2px solid #16a34a', borderRadius: '4px', padding: '4px 12px', display: 'inline-block' }}>Materials Manager {APP_VERSION}</p>
         </div>
@@ -1460,7 +1478,7 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
   return (
     <div style={{ ...styles.sidebar, ...(collapsed ? styles.sidebarCollapsed : {}) }}>
       <div style={styles.logo}>
-        <div style={styles.logoIcon}>STR</div>
+        <img src="/streicher-logo.png" alt="STREICHER" style={styles.logoIcon} />
         {!collapsed && (
           <div>
             <h1 style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>MAX STREICHER</h1>
@@ -2182,14 +2200,19 @@ function RequestsPage({ user }) {
   const addMaterial = async () => {
     if (!currentMaterial.ident_code || !currentMaterial.qty) return;
     
+    // V28.11: Block if description is empty
+    const selected = identOptions.find(o => o.ident_code === currentMaterial.ident_code);
+    const materialDesc = currentMaterial.description || selected?.description || '';
+    
+    if (!materialDesc) {
+      alert('Description is required. Please select a valid item with description.');
+      return;
+    }
+    
     // Check project qty availability
     if (requestType === 'Piping') {
       await checkProjectQtyAvailable(currentMaterial.ident_code, currentMaterial.qty);
     }
-    
-    // Use description from currentMaterial (set by handleIdentCodeChange) or find from identOptions
-    const selected = identOptions.find(o => o.ident_code === currentMaterial.ident_code);
-    const materialDesc = currentMaterial.description || selected?.description || '';
     
     // V28.10: Include sub_category with each material
     setMaterials([...materials, {
@@ -3012,7 +3035,7 @@ function RequestsPage({ user }) {
                 animation: siteYardDisabled ? 'pulse 2s infinite' : 'none'
               }}
             >
-              ⚙️ Send to Engineering {siteYardDisabled && '(Required)'}
+              ⚙️ Send to Engineering {siteYardDisabled && requestType !== 'TestPack' && '(Required)'}
             </button>
           </div>
         </div>
@@ -3353,6 +3376,18 @@ function WHSitePage({ user }) {
         await logHistory(check.id, 'Check - Found', 'WH_Site', 'ToCollect', 'Item found after Engineering check');
         loadComponents();
       } else if (action === 'check_notfound') {
+        // V28.11: If sent to "Both", change to "Yard" to wait for Yard response
+        if (check.eng_check_sent_to === 'Both') {
+          await supabase.from('request_components')
+            .update({ 
+              eng_check_sent_to: 'Yard',
+              eng_check_message: (check.eng_check_message || '') + ' [Site: Not Found]'
+            })
+            .eq('id', check.id);
+          await logHistory(check.id, 'Check - Site Not Found', 'WH_Site', 'Eng', 'Not found in Site, waiting for Yard response');
+          loadComponents();
+          return;
+        }
         // Not Found → return to Engineering
         await supabase.from('request_components')
           .update({ 
@@ -3424,7 +3459,12 @@ function WHSitePage({ user }) {
         // V28.10: Delete component
         if (!confirm('Are you sure you want to delete this item?')) return;
         await supabase.from('request_components')
-          .update({ status: 'Deleted' })
+          .update({ 
+            status: 'Deleted',
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
           .eq('id', check.id);
         await logHistory(check.id, 'Deleted from Check', 'WH_Site', 'Deleted', 'Item deleted from Engineering check');
         loadComponents();
@@ -3564,10 +3604,10 @@ function WHSitePage({ user }) {
                   const hasYardQty = inv.yard > 0;
                   return (
                   <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
-                    <td style={styles.td}>{check.requests?.request_type || '-'}</td>
-                    <td style={styles.td}>{check.sub_category || check.requests?.sub_category || '-'}</td>
+                    <td style={styles.td}>{abbrevCategory(check.requests?.request_type)}</td>
+                    <td style={styles.td}>{abbrevSubCategory(check.sub_category || check.requests?.sub_category)}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
-                    <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.full_spool_number || check.full_spool_number || '-'}</td>
+                    <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(check.requests?.full_spool_number || check.full_spool_number)}</td>
                     <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
                     <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -3604,9 +3644,14 @@ function WHSitePage({ user }) {
                             actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                           }
                           
-                          // To TestPack only if site_qty > 0 AND has test_pack_number OR is TestPack category
-                          if (hasSiteQty && (check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP')) {
-                            actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
+                          // V28.11: To TestPack only if FULL qty available (site_qty >= requested)
+                          const isTestPackItem = check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP';
+                          if (isTestPackItem) {
+                            // Only show To TestPack if full qty available
+                            if (siteQty >= check.quantity) {
+                              actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
+                            }
+                            // Partial is already added above, so user can use Partial if not full qty
                           }
                           
                           // To Yard always available if yard has qty
@@ -3664,8 +3709,8 @@ function WHSitePage({ user }) {
                     const totalRequested = totalRequestedMap[comp.ident_code] || 0;
                     const isOverQty = totalRequested > totalAvailable;
                     return `<tr>
-                      <td>${comp.requests?.request_type || '-'}</td>
-                      <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                      <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                      <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -3718,10 +3763,10 @@ function WHSitePage({ user }) {
                 const isOverQty = totalRequested > totalAvailable;
                 return (
                 <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
-                  <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+                  <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -3805,22 +3850,25 @@ function WHSitePage({ user }) {
         title="Where to send the material?"
       />
 
-      {/* Partial Modal - V28.7: Improved like Rilascio Parziale */}
-      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Rilascio Parziale">
+      {/* Partial Modal - V28.11: Translated to English + Request Number */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Partial Split">
         <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: COLORS.info }}>
+            📋 Request: {String(selectedComponent?.requests?.request_number).padStart(5, '0')}-{selectedComponent?.requests?.sub_number}
+          </p>
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
           </p>
           <p style={{ marginBottom: '8px' }}>
-            <strong>Totale Richiesto:</strong> {selectedComponent?.quantity}
+            <strong>Total Requested:</strong> {selectedComponent?.quantity}
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Disponibile in SITE:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.site || 0}</span>
+            <strong>Available in SITE:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.site || 0}</span>
           </p>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantità Trovata</label>
+          <label style={styles.label}>Found Quantity</label>
           <input
             type="number"
             value={partialQty}
@@ -3828,12 +3876,12 @@ function WHSitePage({ user }) {
             style={styles.input}
             min="1"
             max={selectedComponent?.quantity - 1}
-            placeholder="Inserisci quantità trovata"
+            placeholder="Enter found quantity"
           />
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>✅ Trovati ({partialQty || 0} pz) vanno a:</label>
+          <label style={styles.label}>✅ Found ({partialQty || 0} pcs) go to:</label>
           <select
             value={partialFoundDest}
             onChange={(e) => setPartialFoundDest(e.target.value)}
@@ -3845,14 +3893,14 @@ function WHSitePage({ user }) {
             {selectedComponent?.requests?.hf_number && (
               <option value="HF">→ HF</option>
             )}
-            {selectedComponent?.requests?.test_pack_number && (
+            {(selectedComponent?.requests?.test_pack_number || selectedComponent?.requests?.request_type === 'TestPack') && (
               <option value="TP">→ TestPack</option>
             )}
           </select>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>❌ Non Trovati ({(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz) vanno a:</label>
+          <label style={styles.label}>❌ Not Found ({(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pcs) go to:</label>
           <select
             value={partialNotFoundDest}
             onChange={(e) => setPartialNotFoundDest(e.target.value)}
@@ -3864,7 +3912,7 @@ function WHSitePage({ user }) {
             {selectedComponent?.requests?.hf_number && (
               <option value="HF">→ HF</option>
             )}
-            {selectedComponent?.requests?.test_pack_number && (
+            {(selectedComponent?.requests?.test_pack_number || selectedComponent?.requests?.request_type === 'TestPack') && (
               <option value="TP">→ TestPack</option>
             )}
           </select>
@@ -3878,15 +3926,15 @@ function WHSitePage({ user }) {
           marginBottom: '16px'
         }}>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{partialQty || 0} pz</strong> → {partialFoundDest === 'ToCollect' ? 'To Collect' : partialFoundDest} (Richiesta originale)
+            • <strong>{partialQty || 0} pcs</strong> → {partialFoundDest === 'ToCollect' ? 'To Collect' : partialFoundDest} (Original request)
           </p>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz</strong> → {partialNotFoundDest} (Nuova sub-richiesta)
+            • <strong>{(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pcs</strong> → {partialNotFoundDest} (New sub-request)
           </p>
         </div>
         
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={submitPartial} 
             disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity}
@@ -3903,24 +3951,24 @@ function WHSitePage({ user }) {
       </Modal>
 
       {/* Engineering Check Partial Modal */}
-      <Modal isOpen={showCheckPartialModal} onClose={() => setShowCheckPartialModal(false)} title="🔶 Rilascio Parziale">
+      <Modal isOpen={showCheckPartialModal} onClose={() => setShowCheckPartialModal(false)} title="🔶 Partial Split">
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedCheck?.ident_code}</span>
           </p>
           <p style={{ marginBottom: '8px' }}>
-            <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
+            <strong>Total Requested:</strong> {selectedCheck?.quantity}
           </p>
           <p style={{ marginBottom: '4px' }}>
-            <strong>Disponibile in SITE:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.site || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.site || 0}</span>
+            <strong>Available in SITE:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.site || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.site || 0}</span>
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Disponibile in YARD:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.yard || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
+            <strong>Available in YARD:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.yard || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
           </p>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantità Trovata</label>
+          <label style={styles.label}>Found Quantity</label>
           <input
             type="number"
             value={checkPartialQty}
@@ -3928,25 +3976,28 @@ function WHSitePage({ user }) {
             style={styles.input}
             min="1"
             max={selectedCheck?.quantity - 1}
-            placeholder="Inserisci quantità trovata"
+            placeholder="Enter found quantity"
           />
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>✅ Trovati ({checkPartialQty || 0} pz) vanno a:</label>
+          <label style={styles.label}>✅ Found ({checkPartialQty || 0} pcs) go to:</label>
           <select
             value={checkFoundDest}
             onChange={(e) => setCheckFoundDest(e.target.value)}
             style={styles.input}
           >
-            <option value="ToCollect">→ ToCollect</option>
+            <option value="ToCollect">→ To Collect</option>
             <option value="Yard">→ WH Yard</option>
             <option value="Eng">→ Engineering</option>
+            {(selectedCheck?.requests?.test_pack_number || selectedCheck?.requests?.request_type === 'TestPack') && (
+              <option value="TP">→ TestPack</option>
+            )}
           </select>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>❌ Non Trovati ({(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz) vanno a:</label>
+          <label style={styles.label}>❌ Not Found ({(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pcs) go to:</label>
           <select
             value={checkNotFoundDest}
             onChange={(e) => setCheckNotFoundDest(e.target.value)}
@@ -3954,6 +4005,9 @@ function WHSitePage({ user }) {
           >
             <option value="Eng">→ Engineering</option>
             <option value="Yard">→ WH Yard</option>
+            {(selectedCheck?.requests?.test_pack_number || selectedCheck?.requests?.request_type === 'TestPack') && (
+              <option value="TP">→ TestPack</option>
+            )}
           </select>
         </div>
         
@@ -3965,15 +4019,15 @@ function WHSitePage({ user }) {
           marginBottom: '16px'
         }}>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{checkPartialQty || 0} pz</strong> → {checkFoundDest} (Richiesta originale)
+            • <strong>{checkPartialQty || 0} pcs</strong> → {checkFoundDest} (Original request)
           </p>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz</strong> → {checkNotFoundDest} (Nuova sub-richiesta)
+            • <strong>{(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pcs</strong> → {checkNotFoundDest} (New sub-request)
           </p>
         </div>
         
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={handleCheckPartialSubmit} 
             disabled={!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity}
@@ -4410,6 +4464,18 @@ function WHYardPage({ user }) {
         await logHistory(check.id, 'Check - Found', 'Yard', 'Trans', 'Item found in Yard, sent to Site IN (inventory updated on receipt)');
         loadComponents();
       } else if (action === 'check_notfound') {
+        // V28.11: If sent to "Both", change to "WH_Site" to wait for Site response
+        if (check.eng_check_sent_to === 'Both') {
+          await supabase.from('request_components')
+            .update({ 
+              eng_check_sent_to: 'WH_Site',
+              eng_check_message: (check.eng_check_message || '') + ' [Yard: Not Found]'
+            })
+            .eq('id', check.id);
+          await logHistory(check.id, 'Check - Yard Not Found', 'Yard', 'Eng', 'Not found in Yard, waiting for Site response');
+          loadComponents();
+          return;
+        }
         // Not Found → return to Engineering
         await supabase.from('request_components')
           .update({ 
@@ -4481,7 +4547,12 @@ function WHYardPage({ user }) {
         // V28.10: Delete component
         if (!confirm('Are you sure you want to delete this item?')) return;
         await supabase.from('request_components')
-          .update({ status: 'Deleted' })
+          .update({ 
+            status: 'Deleted',
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null
+          })
           .eq('id', check.id);
         await logHistory(check.id, 'Deleted from Check', 'Yard', 'Deleted', 'Item deleted from Engineering check');
         loadComponents();
@@ -4636,10 +4707,10 @@ function WHYardPage({ user }) {
                   const canFulfill = inv.yard >= check.quantity;
                   return (
                     <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
-                      <td style={styles.td}>{check.requests?.request_type || '-'}</td>
-                      <td style={styles.td}>{check.sub_category || check.requests?.sub_category || '-'}</td>
+                      <td style={styles.td}>{abbrevCategory(check.requests?.request_type)}</td>
+                      <td style={styles.td}>{abbrevSubCategory(check.sub_category || check.requests?.sub_category)}</td>
                       <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
-                      <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.full_spool_number || check.full_spool_number || '-'}</td>
+                      <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(check.requests?.full_spool_number || check.full_spool_number)}</td>
                       <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
                       <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -4680,9 +4751,14 @@ function WHYardPage({ user }) {
                               actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                             }
                             
-                            // To TestPack only if yard_qty > 0 AND has test_pack_number OR is TestPack category
-                            if (hasYardQty && (check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP')) {
-                              actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
+                            // V28.11: To TestPack only if FULL qty available (yard_qty >= requested)
+                            const isTestPackItem = check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP';
+                            if (isTestPackItem) {
+                              // Only show To TestPack if full qty available
+                              if (canFulfill) {
+                                actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
+                              }
+                              // Partial is already added above, so user can use Partial if not full qty
                             }
                             
                             // To Site always available if site has qty
@@ -4739,8 +4815,8 @@ function WHYardPage({ user }) {
                     const totalRequested = totalRequestedMap[comp.ident_code] || 0;
                     const isOverQty = totalRequested > totalAvailable;
                     return `<tr>
-                      <td>${comp.requests?.request_type || '-'}</td>
-                      <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                      <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                      <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -4826,10 +4902,10 @@ function WHYardPage({ user }) {
                 
                 return (
                   <tr key={comp.id} style={isOverQty ? { backgroundColor: '#FEF2F2' } : {}}>
-                    <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                    <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+                    <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                    <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
+                    <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                     <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                     <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -4885,22 +4961,25 @@ function WHYardPage({ user }) {
         title="Where to send the found material?"
       />
 
-      {/* Partial Modal - V28.7: Improved like Rilascio Parziale */}
-      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Rilascio Parziale">
+      {/* Partial Modal - V28.11: With Request Number and English labels */}
+      <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Partial Split">
         <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: COLORS.info }}>
+            📋 Request: {String(selectedComponent?.requests?.request_number).padStart(5, '0')}-{selectedComponent?.requests?.sub_number}
+          </p>
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
           </p>
           <p style={{ marginBottom: '8px' }}>
-            <strong>Totale Richiesto:</strong> {selectedComponent?.quantity}
+            <strong>Total Requested:</strong> {selectedComponent?.quantity}
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Disponibile in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.yard || 0}</span>
+            <strong>Available in YARD:</strong> <span style={{ color: COLORS.success, fontWeight: '600' }}>{inventoryMap[selectedComponent?.ident_code]?.yard || 0}</span>
           </p>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantità Trovata</label>
+          <label style={styles.label}>Found Quantity</label>
           <input
             type="number"
             value={partialQty}
@@ -4908,12 +4987,12 @@ function WHYardPage({ user }) {
             style={styles.input}
             min="1"
             max={Math.min(selectedComponent?.quantity - 1, inventoryMap[selectedComponent?.ident_code]?.yard || 0)}
-            placeholder="Inserisci quantità trovata"
+            placeholder="Enter found quantity"
           />
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>✅ Trovati ({partialQty || 0} pz) vanno a:</label>
+          <label style={styles.label}>✅ Found ({partialQty || 0} pcs) go to:</label>
           <select
             value={partialFoundDest}
             onChange={(e) => setPartialFoundDest(e.target.value)}
@@ -4925,14 +5004,14 @@ function WHYardPage({ user }) {
             {selectedComponent?.requests?.hf_number && (
               <option value="HF">→ HF</option>
             )}
-            {selectedComponent?.requests?.test_pack_number && (
+            {(selectedComponent?.requests?.test_pack_number || selectedComponent?.requests?.request_type === 'TestPack') && (
               <option value="TP">→ TestPack</option>
             )}
           </select>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>❌ Non Trovati ({(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz) vanno a:</label>
+          <label style={styles.label}>❌ Not Found ({(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pcs) go to:</label>
           <select
             value={partialNotFoundDest}
             onChange={(e) => setPartialNotFoundDest(e.target.value)}
@@ -4944,7 +5023,7 @@ function WHYardPage({ user }) {
             {selectedComponent?.requests?.hf_number && (
               <option value="HF">→ HF</option>
             )}
-            {selectedComponent?.requests?.test_pack_number && (
+            {(selectedComponent?.requests?.test_pack_number || selectedComponent?.requests?.request_type === 'TestPack') && (
               <option value="TP">→ TestPack</option>
             )}
           </select>
@@ -4958,15 +5037,15 @@ function WHYardPage({ user }) {
           marginBottom: '16px'
         }}>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{partialQty || 0} pz</strong> → {partialFoundDest === 'Trans' ? 'Site IN' : partialFoundDest} (Richiesta originale)
+            • <strong>{partialQty || 0} pcs</strong> → {partialFoundDest === 'Trans' ? 'Site IN' : partialFoundDest} (Original request)
           </p>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pz</strong> → {partialNotFoundDest} (Nuova sub-richiesta)
+            • <strong>{(selectedComponent?.quantity || 0) - (parseInt(partialQty) || 0)} pcs</strong> → {partialNotFoundDest} (New sub-request)
           </p>
         </div>
         
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={submitPartial} 
             disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || parseInt(partialQty) > (inventoryMap[selectedComponent?.ident_code]?.yard || 0)}
@@ -4983,24 +5062,24 @@ function WHYardPage({ user }) {
       </Modal>
 
       {/* Engineering Check Partial Modal */}
-      <Modal isOpen={showCheckPartialModal} onClose={() => setShowCheckPartialModal(false)} title="🔶 Rilascio Parziale">
+      <Modal isOpen={showCheckPartialModal} onClose={() => setShowCheckPartialModal(false)} title="🔶 Partial Split">
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedCheck?.ident_code}</span>
           </p>
           <p style={{ marginBottom: '8px' }}>
-            <strong>Totale Richiesto:</strong> {selectedCheck?.quantity}
+            <strong>Total Requested:</strong> {selectedCheck?.quantity}
           </p>
           <p style={{ marginBottom: '4px' }}>
-            <strong>Disponibile in SITE:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.site || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.site || 0}</span>
+            <strong>Available in SITE:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.site || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.site || 0}</span>
           </p>
           <p style={{ marginBottom: '16px' }}>
-            <strong>Disponibile in YARD:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.yard || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
+            <strong>Available in YARD:</strong> <span style={{ color: (inventoryMap[selectedCheck?.ident_code]?.yard || 0) > 0 ? COLORS.success : COLORS.primary, fontWeight: '600' }}>{inventoryMap[selectedCheck?.ident_code]?.yard || 0}</span>
           </p>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Quantità Trovata</label>
+          <label style={styles.label}>Found Quantity</label>
           <input
             type="number"
             value={checkPartialQty}
@@ -5008,12 +5087,12 @@ function WHYardPage({ user }) {
             style={styles.input}
             min="1"
             max={Math.min(selectedCheck?.quantity - 1, inventoryMap[selectedCheck?.ident_code]?.yard || 0)}
-            placeholder="Inserisci quantità trovata"
+            placeholder="Enter found quantity"
           />
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>✅ Trovati ({checkPartialQty || 0} pz) vanno a:</label>
+          <label style={styles.label}>✅ Found ({checkPartialQty || 0} pcs) go to:</label>
           <select
             value={checkFoundDest}
             onChange={(e) => setCheckFoundDest(e.target.value)}
@@ -5022,11 +5101,14 @@ function WHYardPage({ user }) {
             <option value="Trans">→ Site IN (Transit)</option>
             <option value="WH_Site">→ WH Site</option>
             <option value="Eng">→ Engineering</option>
+            {(selectedCheck?.requests?.test_pack_number || selectedCheck?.requests?.request_type === 'TestPack') && (
+              <option value="TP">→ TestPack</option>
+            )}
           </select>
         </div>
         
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>❌ Non Trovati ({(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz) vanno a:</label>
+          <label style={styles.label}>❌ Not Found ({(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pcs) go to:</label>
           <select
             value={checkNotFoundDest}
             onChange={(e) => setCheckNotFoundDest(e.target.value)}
@@ -5034,6 +5116,9 @@ function WHYardPage({ user }) {
           >
             <option value="Eng">→ Engineering</option>
             <option value="WH_Site">→ WH Site</option>
+            {(selectedCheck?.requests?.test_pack_number || selectedCheck?.requests?.request_type === 'TestPack') && (
+              <option value="TP">→ TestPack</option>
+            )}
           </select>
         </div>
         
@@ -5045,15 +5130,15 @@ function WHYardPage({ user }) {
           marginBottom: '16px'
         }}>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{checkPartialQty || 0} pz</strong> → {checkFoundDest === 'Trans' ? 'Site IN' : checkFoundDest} (Richiesta originale)
+            • <strong>{checkPartialQty || 0} pcs</strong> → {checkFoundDest === 'Trans' ? 'Site IN' : checkFoundDest} (Original request)
           </p>
           <p style={{ fontSize: '13px', color: '#92400E' }}>
-            • <strong>{(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pz</strong> → {checkNotFoundDest === 'WH_Site' ? 'WH Site' : checkNotFoundDest} (Nuova sub-richiesta)
+            • <strong>{(selectedCheck?.quantity || 0) - (parseInt(checkPartialQty) || 0)} pcs</strong> → {checkNotFoundDest === 'WH_Site' ? 'WH Site' : checkNotFoundDest} (New sub-request)
           </p>
         </div>
         
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-          <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Annulla</button>
+          <button onClick={() => setShowCheckPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={handleCheckPartialSubmit} 
             disabled={!checkPartialQty || parseInt(checkPartialQty) <= 0 || parseInt(checkPartialQty) >= selectedCheck?.quantity || parseInt(checkPartialQty) > (inventoryMap[selectedCheck?.ident_code]?.yard || 0)}
@@ -5235,8 +5320,8 @@ function SiteInPage({ user }) {
                 <table>
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
                   ${components.map(comp => `<tr>
-                    <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -5277,10 +5362,10 @@ function SiteInPage({ user }) {
             <tbody>
               {components.map(comp => (
                 <tr key={comp.id}>
-                  <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+                  <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -5516,10 +5601,10 @@ function EngineeringPage({ user }) {
     
     return (
       <tr key={comp.id}>
-        <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-        <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+        <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+        <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
         <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-        <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
+        <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
         <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
         <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -5600,8 +5685,8 @@ function EngineeringPage({ user }) {
                   <table>
                     <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Sent To</th></tr>
                     ${filteredWaiting.map(comp => `<tr>
-                      <td>${comp.requests?.request_type || '-'}</td>
-                      <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                      <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                      <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${comp.requests?.hf_number || '-'}</td>
@@ -5682,8 +5767,8 @@ function EngineeringPage({ user }) {
                   <tr><th>Status</th><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
                   ${allComps.map(comp => `<tr>
                     <td>${comp.has_eng_check ? 'Waiting Check' : 'To Process'}</td>
-                    <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -5864,7 +5949,7 @@ function HFPage({ user }) {
       await logHistory(comp.id, 
         destination === 'toSite' ? 'HF Complete - To Site' : 'HF Complete - Delivered',
         'HF', newStatus, 
-        `HF ${group.hf_number} completato`
+        `HF ${group.hf_number} completed`
       );
 
       if (destination === 'delivered') {
@@ -6094,6 +6179,12 @@ function TestPackPage({ user }) {
   const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [historyComponentId, setHistoryComponentId] = useState(null);
+  // V28.11: Inventory map for WH Site/Yard display
+  const [inventoryMap, setInventoryMap] = useState({});
+  // V28.11: Tab navigation
+  const [activeTab, setActiveTab] = useState('materials'); // 'materials' or 'log'
+  // V28.11: Log data
+  const [completedRequests, setCompletedRequests] = useState({ total: 0, partial: 0 });
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -6111,6 +6202,23 @@ function TestPackPage({ user }) {
         .not('status', 'eq', 'Deleted');
       
       if (data) {
+        // V28.11: Get unique ident_codes and load inventory
+        const uniqueIdentCodes = [...new Set(data.map(c => c.ident_code).filter(Boolean))];
+        if (uniqueIdentCodes.length > 0) {
+          const { data: invData } = await supabase
+            .from('inventory')
+            .select('ident_code, site_qty, yard_qty')
+            .in('ident_code', uniqueIdentCodes);
+          
+          const invMap = {};
+          if (invData) {
+            invData.forEach(inv => {
+              invMap[inv.ident_code] = { site: inv.site_qty || 0, yard: inv.yard_qty || 0 };
+            });
+          }
+          setInventoryMap(invMap);
+        }
+
       // Group by test_pack_number, then by request_number, then by sub_category
       const grouped = {};
       data.forEach(comp => {
@@ -6128,13 +6236,15 @@ function TestPackPage({ user }) {
         if (!grouped[tpNum].requests[reqNum]) {
           grouped[tpNum].requests[reqNum] = {
             request_number: reqNum,
+            sub_number: comp.requests?.sub_number || 0,
             requester_user_id: comp.requests?.requester_user_id,
             secondary_collector: comp.requests?.secondary_collector,
             subCategories: {}
           };
         }
         
-        const subCat = comp.requests?.sub_category || 'Other';
+        // V28.11: Use component-level sub_category (set when material was added)
+        const subCat = comp.sub_category || comp.requests?.sub_category || 'Other';
         if (!grouped[tpNum].requests[reqNum].subCategories[subCat]) {
           grouped[tpNum].requests[reqNum].subCategories[subCat] = {
             name: subCat,
@@ -6165,14 +6275,36 @@ function TestPackPage({ user }) {
     });
   };
 
-  // Check if a component is ready (in ToCollect status)
-  const isReady = (comp) => comp.status === 'ToCollect';
+  // V28.11: Check if a component is ready based on inventory availability
+  // Ready = qty_requested <= WH_Site + WH_Yard
+  const isReady = (comp) => {
+    const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+    const totalAvailable = inv.site + inv.yard;
+    return totalAvailable >= comp.quantity;
+  };
+  
+  // V28.11: Check if partial ready (some but not all qty available)
+  const isPartialReady = (comp) => {
+    const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+    const totalAvailable = inv.site + inv.yard;
+    return totalAvailable > 0 && totalAvailable < comp.quantity;
+  };
   
   // Check if all components in a sub-category are ready
   const isSubCategoryReady = (subCat) => subCat.components.every(isReady);
   
   // Get ready count for a sub-category
   const getReadyCount = (subCat) => subCat.components.filter(isReady).length;
+  
+  // V28.11: Get total components count for a request
+  const getTotalComponentsCount = (request) => {
+    return Object.values(request.subCategories).reduce((sum, subCat) => sum + subCat.components.length, 0);
+  };
+  
+  // V28.11: Get ready components count for a request
+  const getReadyComponentsCount = (request) => {
+    return Object.values(request.subCategories).reduce((sum, subCat) => sum + getReadyCount(subCat), 0);
+  };
 
   // Deliver a single sub-category
   const handleDeliverSubCategory = async (tpNum, reqNum, subCat, destination) => {
@@ -6188,7 +6320,7 @@ function TestPackPage({ user }) {
       await logHistory(comp.id, 
         destination === 'toSite' ? 'TP SubCat - To Site' : 'TP SubCat - Delivered',
         comp.status, newStatus, 
-        `TestPack ${tpNum} - ${subCat.name} completato`
+        `TestPack ${tpNum} - ${subCat.name} completed`
       );
 
       if (destination === 'delivered') {
@@ -6227,7 +6359,7 @@ function TestPackPage({ user }) {
         await logHistory(comp.id, 
           destination === 'toSite' ? 'TP Complete - To Site' : 'TP Complete - Delivered',
           comp.status, newStatus, 
-          `TestPack ${tpNum} completato`
+          `TestPack ${tpNum} completed`
         );
 
         if (destination === 'delivered') {
@@ -6335,13 +6467,17 @@ function TestPackPage({ user }) {
                   ${Object.values(req.subCategories).map(subCat => `
                     <p><strong>${subCat.name}</strong> (${getReadyCount(subCat)}/${subCat.components.length} ready)</p>
                     <table>
-                      <tr><th>Code</th><th>Description</th><th>Qty</th><th>Status</th></tr>
-                      ${subCat.components.map(c => `<tr>
+                      <tr><th>Code</th><th>Description</th><th>Qty</th><th>WH Site</th><th>WH Yard</th><th>Status</th></tr>
+                      ${subCat.components.map(c => {
+                        const inv = inventoryMap[c.ident_code] || { site: 0, yard: 0 };
+                        return `<tr>
                         <td>${c.ident_code}</td>
                         <td>${c.description || '-'}</td>
                         <td>${c.quantity}</td>
-                        <td class="${isReady(c) ? 'ready' : 'waiting'}">${c.status}</td>
-                      </tr>`).join('')}
+                        <td>${inv.site}</td>
+                        <td>${inv.yard}</td>
+                        <td class="${isReady(c) ? 'ready' : 'waiting'}">${isReady(c) ? 'Ready' : 'Pending'}</td>
+                      </tr>`}).join('')}
                     </table>
                   `).join('')}
                 `).join('')}
@@ -6357,6 +6493,68 @@ function TestPackPage({ user }) {
         </button>
       </div>
 
+      {/* V28.11: Tab Navigation */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        <button
+          onClick={() => setActiveTab('materials')}
+          style={{
+            ...styles.button,
+            backgroundColor: activeTab === 'materials' ? COLORS.purple : '#f3f4f6',
+            color: activeTab === 'materials' ? 'white' : '#374151',
+            borderRadius: '8px 8px 0 0'
+          }}
+        >
+          📦 Materials ({totalRequests})
+        </button>
+        <button
+          onClick={() => setActiveTab('log')}
+          style={{
+            ...styles.button,
+            backgroundColor: activeTab === 'log' ? COLORS.purple : '#f3f4f6',
+            color: activeTab === 'log' ? 'white' : '#374151',
+            borderRadius: '8px 8px 0 0'
+          }}
+        >
+          📋 Log
+        </button>
+      </div>
+
+      {activeTab === 'log' ? (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#F3E8FF' }}>
+            <h3 style={{ fontWeight: '600' }}>📋 TestPack Log</h3>
+          </div>
+          <div style={{ padding: '16px' }}>
+            <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
+              <div style={{ 
+                flex: 1, 
+                padding: '20px', 
+                backgroundColor: '#D1FAE5', 
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '32px', fontWeight: '700', color: COLORS.success }}>{completedRequests.total}</div>
+                <div style={{ color: '#065F46', fontWeight: '500' }}>✅ Fully Completed</div>
+              </div>
+              <div style={{ 
+                flex: 1, 
+                padding: '20px', 
+                backgroundColor: '#FEF3C7', 
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '32px', fontWeight: '700', color: COLORS.warning }}>{completedRequests.partial}</div>
+                <div style={{ color: '#92400E', fontWeight: '500' }}>⚠️ Partially Completed</div>
+              </div>
+            </div>
+            <p style={{ color: '#6b7280', fontSize: '14px' }}>
+              Log functionality tracks when requests are fully or partially delivered. 
+              A request is "Fully Completed" when all sub-categories have been sent to Site IN or To Collect.
+            </p>
+          </div>
+        </div>
+      ) : (
+      <>
       {tpList.length === 0 ? (
         <div style={{ ...styles.card, padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
           No TestPack components
@@ -6500,24 +6698,44 @@ function TestPackPage({ user }) {
                           <table style={{ ...styles.table, margin: 0 }}>
                             <thead>
                               <tr>
-                                <th style={styles.th}>Sub</th>
                                 <th style={styles.th}>Code</th>
                                 <th style={styles.th}>Description</th>
                                 <th style={styles.th}>Qty</th>
+                                <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white' }}>WH Site</th>
+                                <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white' }}>WH Yard</th>
                                 <th style={styles.th}>Status</th>
                                 <th style={styles.th}>Actions</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {subCat.components.map(comp => (
-                                <tr key={comp.id} style={{ backgroundColor: isReady(comp) ? '#F0FDF4' : '#FFFBEB' }}>
-                                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>-{comp.requests?.sub_number}</td>
+                              {subCat.components.map(comp => {
+                                const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+                                const totalAvail = inv.site + inv.yard;
+                                const compReady = isReady(comp);
+                                const compPartial = isPartialReady(comp);
+                                
+                                return (
+                                <tr key={comp.id} style={{ backgroundColor: compReady ? '#F0FDF4' : compPartial ? '#FFFBEB' : '#FEE2E2' }}>
                                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                                   <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {comp.description || '-'}
                                   </td>
                                   <td style={styles.td}>{comp.quantity}</td>
-                                  <td style={styles.td}>{getStatusBadge(comp)}</td>
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site >= comp.quantity ? COLORS.success : '#6b7280' }}>
+                                    {inv.site}
+                                  </td>
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.yard > 0 ? COLORS.secondary : '#6b7280' }}>
+                                    {inv.yard}
+                                  </td>
+                                  <td style={styles.td}>
+                                    {compReady ? (
+                                      <span style={{ ...styles.statusBadge, backgroundColor: COLORS.success }}>✅ Ready</span>
+                                    ) : compPartial ? (
+                                      <span style={{ ...styles.statusBadge, backgroundColor: COLORS.warning }}>⚠️ Partial ({totalAvail}/{comp.quantity})</span>
+                                    ) : (
+                                      <span style={{ ...styles.statusBadge, backgroundColor: COLORS.primary }}>❌ Not Available</span>
+                                    )}
+                                  </td>
                                   <td style={styles.td}>
                                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                       <ActionDropdown
@@ -6538,7 +6756,8 @@ function TestPackPage({ user }) {
                                     </div>
                                   </td>
                                 </tr>
-                              ))}
+                                );
+                              })}
                             </tbody>
                           </table>
                         </div>
@@ -6550,6 +6769,8 @@ function TestPackPage({ user }) {
             })}
           </div>
         ))
+      )}
+      </>
       )}
 
       <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
@@ -6745,8 +6966,8 @@ function ToBeCollectedPage({ user }) {
                 <table>
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
                   ${components.map(comp => `<tr>
-                    <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${comp.requests?.hf_number || '-'}</td>
@@ -6790,8 +7011,8 @@ function ToBeCollectedPage({ user }) {
             <tbody>
               {components.map(comp => (
                 <tr key={comp.id}>
-                  <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+                  <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
@@ -6947,6 +7168,15 @@ function MaterialInPage({ user }) {
   const [materialInLog, setMaterialInLog] = useState([]);
   const [logSearchMir, setLogSearchMir] = useState('');
   
+  // V28.11: MIR Documents state
+  const [showDocsModal, setShowDocsModal] = useState(false);
+  const [selectedLogItem, setSelectedLogItem] = useState(null);
+  const [mirDocs, setMirDocs] = useState([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  
   const [loading, setLoading] = useState(true);
   const [searchResults, setSearchResults] = useState([]);
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -6984,6 +7214,161 @@ function MaterialInPage({ user }) {
     if (logData) setMaterialInLog(logData);
     
     setLoading(false);
+  };
+
+  // V28.11: MIR Documents functions
+  const extractMirInfo = (note) => {
+    // Extract MIR and RK from note like "MIR 123/RK 456 - ..."
+    const match = note?.match(/MIR\s*(\d+)\s*\/\s*RK\s*(\d+)/i);
+    if (match) {
+      return { mir: match[1], rk: match[2] };
+    }
+    return { mir: null, rk: null };
+  };
+
+  const openDocsModal = async (logItem) => {
+    setSelectedLogItem(logItem);
+    const { mir } = extractMirInfo(logItem.note);
+    if (mir) {
+      // Load existing docs for this MIR
+      const { data } = await supabase
+        .from('mir_documents')
+        .select('*')
+        .eq('mir_number', mir)
+        .order('created_at', { ascending: false });
+      setMirDocs(data || []);
+    } else {
+      setMirDocs([]);
+    }
+    setShowDocsModal(true);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const { mir, rk } = extractMirInfo(selectedLogItem?.note);
+    if (!mir) {
+      alert('Cannot extract MIR number from this record');
+      return;
+    }
+    
+    setUploadingDoc(true);
+    
+    try {
+      // Generate filename: MIR-{mir}_RK-{rk}_{date}_{sequence}.{ext}
+      const date = new Date().toISOString().split('T')[0];
+      const ext = file.name.split('.').pop().toLowerCase();
+      const sequence = String(mirDocs.length + 1).padStart(3, '0');
+      const fileName = `MIR-${mir}_RK-${rk || 'NA'}_${date}_${sequence}.${ext}`;
+      const filePath = `${mir}/${fileName}`;
+      
+      // Upload to Supabase Storage
+      const { error: uploadError } = await supabase.storage
+        .from('mir-documents')
+        .upload(filePath, file);
+      
+      if (uploadError) throw uploadError;
+      
+      // Save reference in database
+      const { error: dbError } = await supabase
+        .from('mir_documents')
+        .insert({
+          mir_number: mir,
+          voucher_number: rk,
+          file_name: fileName,
+          file_path: filePath,
+          file_type: file.type,
+          file_size: file.size,
+          uploaded_by_user_id: user.id,
+          uploaded_by_name: user.full_name
+        });
+      
+      if (dbError) throw dbError;
+      
+      // Reload docs
+      const { data } = await supabase
+        .from('mir_documents')
+        .select('*')
+        .eq('mir_number', mir)
+        .order('created_at', { ascending: false });
+      setMirDocs(data || []);
+      
+      alert('Document uploaded successfully!');
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Upload failed: ' + error.message);
+    }
+    
+    setUploadingDoc(false);
+    e.target.value = ''; // Reset file input
+  };
+
+  const viewDocument = async (doc) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('mir-documents')
+        .createSignedUrl(doc.file_path, 3600); // 1 hour expiry
+      
+      if (error) throw error;
+      
+      setPreviewDoc(doc);
+      setPreviewUrl(data.signedUrl);
+      setShowPreview(true);
+    } catch (error) {
+      console.error('Preview error:', error);
+      alert('Cannot preview document: ' + error.message);
+    }
+  };
+
+  const downloadDocument = async (doc) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('mir-documents')
+        .download(doc.file_path);
+      
+      if (error) throw error;
+      
+      // Create download link
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.file_name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Download failed: ' + error.message);
+    }
+  };
+
+  const deleteDocument = async (doc) => {
+    if (!confirm(`Delete ${doc.file_name}?`)) return;
+    
+    try {
+      // Delete from storage
+      const { error: storageError } = await supabase.storage
+        .from('mir-documents')
+        .remove([doc.file_path]);
+      
+      if (storageError) throw storageError;
+      
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('mir_documents')
+        .delete()
+        .eq('id', doc.id);
+      
+      if (dbError) throw dbError;
+      
+      // Update local state
+      setMirDocs(mirDocs.filter(d => d.id !== doc.id));
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Delete failed: ' + error.message);
+    }
   };
 
   // V28.4: Search ident code with debounce (3+ chars, 500ms delay)
@@ -7780,6 +8165,7 @@ function MaterialInPage({ user }) {
                   <th style={styles.th}>Qty</th>
                   <th style={styles.th}>Destination</th>
                   <th style={styles.th}>Operator</th>
+                  <th style={styles.th}>📎 Docs</th>
                 </tr>
               </thead>
               <tbody>
@@ -7807,11 +8193,28 @@ function MaterialInPage({ user }) {
                       </span>
                     </td>
                     <td style={{ ...styles.td, fontSize: '12px', color: '#6B7280' }}>{m.performed_by}</td>
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => openDocsModal(m)}
+                        style={{
+                          ...styles.button,
+                          backgroundColor: extractMirInfo(m.note).mir ? COLORS.info : '#9CA3AF',
+                          color: 'white',
+                          padding: '4px 8px',
+                          fontSize: '11px',
+                          cursor: extractMirInfo(m.note).mir ? 'pointer' : 'not-allowed'
+                        }}
+                        disabled={!extractMirInfo(m.note).mir}
+                        title={extractMirInfo(m.note).mir ? 'Manage documents' : 'No MIR info available'}
+                      >
+                        📎
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {filteredLog.length === 0 && (
                   <tr>
-                    <td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF', padding: '40px' }}>
+                    <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF', padding: '40px' }}>
                       {logSearchMir ? `No results for "${logSearchMir}"` : 'No Material IN records yet'}
                     </td>
                   </tr>
@@ -7944,6 +8347,114 @@ function MaterialInPage({ user }) {
               </button>
             </div>
           </>
+        )}
+      </Modal>
+
+      {/* V28.11: MIR Documents Modal */}
+      <Modal isOpen={showDocsModal} onClose={() => { setShowDocsModal(false); setMirDocs([]); }} title="📎 MIR Documents">
+        {selectedLogItem && (
+          <>
+            <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#F3F4F6', borderRadius: '8px' }}>
+              <p style={{ fontWeight: '600', marginBottom: '4px' }}>
+                {selectedLogItem.note || 'No MIR info'}
+              </p>
+              <p style={{ fontSize: '12px', color: '#6B7280' }}>
+                {new Date(selectedLogItem.created_at).toLocaleString()}
+              </p>
+            </div>
+
+            {/* Upload Section */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ ...styles.label, display: 'block', marginBottom: '8px' }}>
+                Upload New Document (PDF, JPG, PNG)
+              </label>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.gif"
+                onChange={handleFileUpload}
+                disabled={uploadingDoc}
+                style={{ display: 'block', marginBottom: '8px' }}
+              />
+              {uploadingDoc && (
+                <span style={{ color: COLORS.info, fontSize: '13px' }}>⏳ Uploading...</span>
+              )}
+            </div>
+
+            {/* Documents List */}
+            <div>
+              <h4 style={{ marginBottom: '12px', fontWeight: '600' }}>
+                Uploaded Documents ({mirDocs.length})
+              </h4>
+              {mirDocs.length === 0 ? (
+                <p style={{ color: '#9CA3AF', fontSize: '14px' }}>No documents uploaded yet</p>
+              ) : (
+                <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {mirDocs.map(doc => (
+                    <div key={doc.id} style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 12px',
+                      backgroundColor: '#F9FAFB',
+                      borderRadius: '6px',
+                      marginBottom: '8px',
+                      border: '1px solid #E5E7EB'
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ fontWeight: '500', fontSize: '13px', marginBottom: '2px' }}>
+                          {doc.file_type?.includes('pdf') ? '📄' : '🖼️'} {doc.file_name}
+                        </p>
+                        <p style={{ fontSize: '11px', color: '#6B7280' }}>
+                          {(doc.file_size / 1024).toFixed(1)} KB • {doc.uploaded_by_name} • {new Date(doc.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          onClick={() => viewDocument(doc)}
+                          style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '4px 8px', fontSize: '11px' }}
+                        >
+                          👁️ View
+                        </button>
+                        <button
+                          onClick={() => downloadDocument(doc)}
+                          style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', padding: '4px 8px', fontSize: '11px' }}
+                        >
+                          ⬇️ Download
+                        </button>
+                        <button
+                          onClick={() => deleteDocument(doc)}
+                          style={{ ...styles.button, backgroundColor: COLORS.primary, color: 'white', padding: '4px 8px', fontSize: '11px' }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </Modal>
+
+      {/* V28.11: Document Preview Modal */}
+      <Modal isOpen={showPreview} onClose={() => { setShowPreview(false); setPreviewUrl(null); }} title={`📄 Preview: ${previewDoc?.file_name || ''}`}>
+        {previewUrl && (
+          <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+            {previewDoc?.file_type?.includes('pdf') ? (
+              <iframe
+                src={previewUrl}
+                style={{ width: '100%', height: '60vh', border: 'none' }}
+                title="PDF Preview"
+              />
+            ) : (
+              <img
+                src={previewUrl}
+                alt={previewDoc?.file_name}
+                style={{ maxWidth: '100%', height: 'auto' }}
+              />
+            )}
+          </div>
         )}
       </Modal>
     </div>
@@ -8110,8 +8621,8 @@ function SparePartsPage({ user }) {
           const overdue = comp.forecast_date && isOverdue(comp.forecast_date);
           return (
             <tr key={comp.id} style={{ backgroundColor: overdue ? COLORS.alertRed : 'transparent' }}>
-              <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-              <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+              <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+              <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || '-'}</td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
@@ -8182,8 +8693,8 @@ function SparePartsPage({ user }) {
                 <table>
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
                   ${filteredInternal.map(comp => `<tr>
-                    <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -8230,8 +8741,8 @@ function SparePartsPage({ user }) {
                 <table>
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
                   ${filteredClient.map(comp => `<tr>
-                    <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -8443,7 +8954,7 @@ function OrdersPage({ user }) {
       <tbody>
         {components.map(comp => (
           <tr key={comp.id}>
-            <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
+            <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
             <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
             <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
               {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
@@ -8502,7 +9013,7 @@ function OrdersPage({ user }) {
           const overdue = isOverdue(comp.order_forecast);
           return (
             <tr key={comp.id} style={{ backgroundColor: overdue ? COLORS.alertRed : 'transparent' }}>
-              <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
+              <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                 {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
@@ -8751,8 +9262,8 @@ function ManagementPage({ user }) {
                 <table>
                   <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Note</th></tr>
                   ${filteredComponents.map(comp => `<tr>
-                    <td>${comp.requests?.request_type || '-'}</td>
-                    <td>${comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
@@ -8795,10 +9306,10 @@ function ManagementPage({ user }) {
             <tbody>
               {filteredComponents.map(comp => (
                 <tr key={comp.id}>
-                  <td style={styles.td}>{comp.requests?.request_type || '-'}</td>
-                  <td style={styles.td}>{comp.sub_category || comp.requests?.sub_category || '-'}</td>
+                  <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
+                  <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
-                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || comp.full_spool_number || '-'}</td>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
@@ -10675,8 +11186,9 @@ export default function App() {
     const { data: collectData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'ToCollect');
     
     // Engineering Checks counts - these should be added to WH Site and WH Yard badges
-    const { data: engChecksSite } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).eq('eng_check_sent_to', 'WH_Site');
-    const { data: engChecksYard } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).eq('eng_check_sent_to', 'Yard');
+    // V28.11: Include "Both" in both counts
+    const { data: engChecksSite } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).in('eng_check_sent_to', ['WH_Site', 'Both']);
+    const { data: engChecksYard } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).in('eng_check_sent_to', ['Yard', 'Both']);
 
     counts.whSite = (siteData?.length || 0) + (engChecksSite?.length || 0);
     counts.whYard = (yardData?.length || 0) + (engChecksYard?.length || 0);
