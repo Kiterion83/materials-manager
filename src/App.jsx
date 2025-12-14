@@ -1,6 +1,18 @@
 // ============================================================
-// MATERIALS MANAGER V29.0 - APP.JSX COMPLETE
+// MATERIALS MANAGER V30.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V30.0 Changes:
+//   - Database: Added parent_request_number for mother/child request tracking
+//   - Partial Split: Sub-requests now link to mother request via parent_request_number
+//   - TestPack: Counts include ALL sub-requests of the same mother request
+//   - TestPack Log: Complete redesign with 6 counters (Full/Partial × ToCollect/Collected/Completed)
+//   - TestPack Log: Search by TP# and detailed list of all TestPacks
+//   - HF Log: Complete redesign with counters and delivered HF list
+//   - HF Tab Materials: Now shows count of unique HF numbers (not total components)
+//   - Spool Icon: Changed from 🔧 to tube/pipe icon (⊜)
+//   - Management: ActionDropdown with Internal, Client, Delete, Return options
+//   - Print Label: Now shows TP# and HF# in preview modal
+//   - Info Icon (ℹ️): Red when request has description/note, Blue otherwise
 // V29.0 Changes:
 //   - Dashboard: Fixed TestPack/HF counts to match Sidebar badges
 //   - Labels: New 🏷️ column in Site IN, To Collect, Orders (Ordered tab)
@@ -78,7 +90,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V29.0';
+const APP_VERSION = 'V30.0';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -970,6 +982,16 @@ function LabelPrintModal({ isOpen, onClose, component }) {
             <div style={{ padding: '4px 8px', backgroundColor: '#e5e7eb', borderRadius: '4px' }}>
               <strong>Sub:</strong> {component.sub_category || component.requests?.sub_category || '-'}
             </div>
+            {component.requests?.test_pack_number && (
+              <div style={{ padding: '4px 8px', backgroundColor: '#F3E8FF', borderRadius: '4px', border: '1px solid #A855F7' }}>
+                <strong>TP#:</strong> {component.requests.test_pack_number}
+              </div>
+            )}
+            {component.requests?.hf_number && (
+              <div style={{ padding: '4px 8px', backgroundColor: '#F0FDFA', borderRadius: '4px', border: '1px solid #14B8A6' }}>
+                <strong>HF#:</strong> {component.requests.hf_number}
+              </div>
+            )}
           </div>
           
           <div style={{ fontSize: '11px', textAlign: 'center', marginBottom: '8px', color: '#374151' }}>
@@ -3027,7 +3049,7 @@ function RequestsPage({ user }) {
                       }}
                       style={{ width: '18px', height: '18px' }}
                     />
-                    <span style={{ fontWeight: (missingType === 'Spool' || missingType === 'Both') ? '600' : '400' }}>🔧 Spools</span>
+                    <span style={{ fontWeight: (missingType === 'Spool' || missingType === 'Both') ? '600' : '400' }}>◎ Spools</span>
                   </label>
                 </div>
                 <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
@@ -3754,16 +3776,22 @@ function WHSitePage({ user }) {
     
     const nextSub = (subData?.[0]?.sub_number || 0) + 1;
     
+    // V30.0: Get parent_request_number - use existing parent or the mother request_number
+    const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
+    
     const { data: newReq } = await supabase.from('requests')
       .insert({
         request_number: selectedComponent.requests.request_number,
         sub_number: nextSub,
+        parent_request_number: parentReqNum, // V30.0: Link to mother request
         request_type: selectedComponent.requests.request_type,
         sub_category: selectedComponent.requests.sub_category,
         iso_number: selectedComponent.requests.iso_number,
         full_spool_number: selectedComponent.requests.full_spool_number,
         hf_number: selectedComponent.requests.hf_number,
-        test_pack_number: selectedComponent.requests.test_pack_number
+        test_pack_number: selectedComponent.requests.test_pack_number,
+        requester_user_id: selectedComponent.requests.requester_user_id, // V30.0: Preserve requester
+        created_by_name: selectedComponent.requests.created_by_name // V30.0: Preserve requester name
       })
       .select()
       .single();
@@ -3927,16 +3955,23 @@ function WHSitePage({ user }) {
       
       const nextSub = (subData?.[0]?.sub_number || 0) + 1;
       
+      // V30.0: Get parent_request_number - use existing parent or the mother request_number
+      const parentReqNum = selectedCheck.requests?.parent_request_number || reqNumber;
+      
       // Create new sub-request for NOT FOUND items
       const { data: newReq } = await supabase.from('requests')
         .insert({
           request_number: reqNumber,
           sub_number: nextSub,
+          parent_request_number: parentReqNum, // V30.0: Link to mother request
           request_type: selectedCheck.requests?.request_type,
           sub_category: selectedCheck.requests?.sub_category,
           iso_number: selectedCheck.requests?.iso_number,
           full_spool_number: selectedCheck.requests?.full_spool_number,
-          hf_number: selectedCheck.requests?.hf_number
+          hf_number: selectedCheck.requests?.hf_number,
+          test_pack_number: selectedCheck.requests?.test_pack_number, // V30.0: Preserve TP number
+          requester_user_id: selectedCheck.requests?.requester_user_id, // V30.0: Preserve requester
+          created_by_name: selectedCheck.requests?.created_by_name // V30.0: Preserve requester name
         })
         .select()
         .single();
@@ -4848,16 +4883,22 @@ function WHYardPage({ user }) {
     
     const nextSub = (subData?.[0]?.sub_number || 0) + 1;
     
+    // V30.0: Get parent_request_number - use existing parent or the mother request_number
+    const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
+    
     const { data: newReq } = await supabase.from('requests')
       .insert({
         request_number: selectedComponent.requests.request_number,
         sub_number: nextSub,
+        parent_request_number: parentReqNum, // V30.0: Link to mother request
         request_type: selectedComponent.requests.request_type,
         sub_category: selectedComponent.requests.sub_category,
         iso_number: selectedComponent.requests.iso_number,
         full_spool_number: selectedComponent.requests.full_spool_number,
         hf_number: selectedComponent.requests.hf_number,
-        test_pack_number: selectedComponent.requests.test_pack_number
+        test_pack_number: selectedComponent.requests.test_pack_number,
+        requester_user_id: selectedComponent.requests.requester_user_id, // V30.0: Preserve requester
+        created_by_name: selectedComponent.requests.created_by_name // V30.0: Preserve requester name
       })
       .select()
       .single();
@@ -5043,16 +5084,23 @@ function WHYardPage({ user }) {
       
       const nextSub = (subData?.[0]?.sub_number || 0) + 1;
       
+      // V30.0: Get parent_request_number - use existing parent or the mother request_number
+      const parentReqNumYard = selectedCheck.requests?.parent_request_number || reqNumber;
+      
       // Create new sub-request for NOT FOUND items
       const { data: newReq } = await supabase.from('requests')
         .insert({
           request_number: reqNumber,
           sub_number: nextSub,
+          parent_request_number: parentReqNumYard, // V30.0: Link to mother request
           request_type: selectedCheck.requests?.request_type,
           sub_category: selectedCheck.requests?.sub_category,
           iso_number: selectedCheck.requests?.iso_number,
           full_spool_number: selectedCheck.requests?.full_spool_number,
-          hf_number: selectedCheck.requests?.hf_number
+          hf_number: selectedCheck.requests?.hf_number,
+          test_pack_number: selectedCheck.requests?.test_pack_number, // V30.0: Preserve TP number
+          requester_user_id: selectedCheck.requests?.requester_user_id, // V30.0: Preserve requester
+          created_by_name: selectedCheck.requests?.created_by_name // V30.0: Preserve requester name
         })
         .select()
         .single();
@@ -6425,7 +6473,10 @@ function HFPage({ user }) {
   const [historyComponentId, setHistoryComponentId] = useState(null);
   const [inventoryMap, setInventoryMap] = useState({});
   const [activeTab, setActiveTab] = useState('materials');
-  const [completedCount, setCompletedCount] = useState(0);
+  // V30.0: Enhanced HF Log with counters and list
+  const [hfLogStats, setHfLogStats] = useState({ delivered: 0, inProgress: 0 });
+  const [hfLogList, setHfLogList] = useState([]);
+  const [hfLogSearchTerm, setHfLogSearchTerm] = useState('');
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -6491,26 +6542,62 @@ function HFPage({ user }) {
         
         setHfGroups(grouped);
 
-        // Calculate completed HF count
-        const { data: completedHF } = await supabase
+        // V30.0: Calculate enhanced HF Log stats
+        const { data: allHFRequests } = await supabase
           .from('requests')
-          .select('id')
+          .select('id, hf_number, created_by_name')
           .not('hf_number', 'is', null);
         
-        if (completedHF) {
-          let completed = 0;
-          for (const req of completedHF) {
-            const { data: comps } = await supabase
-              .from('request_components')
-              .select('status')
-              .eq('request_id', req.id);
+        if (allHFRequests) {
+          let stats = { delivered: 0, inProgress: 0 };
+          let logList = [];
+          
+          // Group by hf_number
+          const hfRequestGroups = {};
+          allHFRequests.forEach(req => {
+            if (!hfRequestGroups[req.hf_number]) {
+              hfRequestGroups[req.hf_number] = { requests: [], created_by_name: req.created_by_name };
+            }
+            hfRequestGroups[req.hf_number].requests.push(req);
+          });
+          
+          for (const [hfNum, group] of Object.entries(hfRequestGroups)) {
+            // Get all components for this HF
+            let allComponents = [];
+            for (const req of group.requests) {
+              const { data: comps } = await supabase
+                .from('request_components')
+                .select('status')
+                .eq('request_id', req.id);
+              if (comps) {
+                allComponents = allComponents.concat(comps);
+              }
+            }
             
-            if (comps && comps.length > 0) {
-              const allDone = comps.every(c => ['Trans', 'ToCollect', 'Done'].includes(c.status));
-              if (allDone) completed++;
+            if (allComponents.length > 0) {
+              const deliveredStatuses = ['Trans', 'ToCollect', 'Done'];
+              const deliveredCount = allComponents.filter(c => deliveredStatuses.includes(c.status)).length;
+              const allDelivered = deliveredCount === allComponents.length;
+              
+              if (allDelivered) {
+                stats.delivered++;
+                logList.push({
+                  hf_number: hfNum,
+                  status: 'delivered',
+                  total_components: allComponents.length,
+                  created_by_name: group.created_by_name || '-'
+                });
+              } else if (deliveredCount > 0) {
+                // Partial - but HF doesn't allow partial, so this shouldn't happen
+                stats.inProgress++;
+              } else {
+                stats.inProgress++;
+              }
             }
           }
-          setCompletedCount(completed);
+          
+          setHfLogStats(stats);
+          setHfLogList(logList);
         }
       }
     } catch (error) {
@@ -6657,7 +6744,7 @@ function HFPage({ user }) {
             color: activeTab === 'materials' ? 'white' : '#374151'
           }}
         >
-          📦 Materials ({totalComponents})
+          📦 Materials ({hfList.length})
         </button>
         <button
           onClick={() => setActiveTab('log')}
@@ -6672,17 +6759,27 @@ function HFPage({ user }) {
       </div>
 
       {activeTab === 'log' ? (
-        // Log Tab
+        // V30.0: Enhanced Log Tab with counters and list
         <div style={styles.card}>
-          <div style={styles.cardHeader}>
+          <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ fontWeight: '600' }}>📋 HF Completion Log</h3>
+            <input
+              type="text"
+              placeholder="🔍 Search HF#..."
+              value={hfLogSearchTerm}
+              onChange={(e) => setHfLogSearchTerm(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #d1d5db',
+                fontSize: '14px',
+                width: '200px'
+              }}
+            />
           </div>
           <div style={{ padding: '20px' }}>
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: '1fr', 
-              gap: '16px' 
-            }}>
+            {/* 2 Counters */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
               <div style={{ 
                 padding: '24px', 
                 backgroundColor: '#D1FAE5', 
@@ -6690,12 +6787,73 @@ function HFPage({ user }) {
                 textAlign: 'center',
                 border: '2px solid #10B981'
               }}>
-                <p style={{ fontSize: '32px', fontWeight: '700', color: COLORS.success }}>{completedCount}</p>
-                <p style={{ color: COLORS.success, fontWeight: '500' }}>✅ Completed</p>
+                <p style={{ fontSize: '32px', fontWeight: '700', color: COLORS.success }}>{hfLogStats.delivered}</p>
+                <p style={{ color: COLORS.success, fontWeight: '500' }}>✅ Delivered</p>
+              </div>
+              <div style={{ 
+                padding: '24px', 
+                backgroundColor: '#FEF3C7', 
+                borderRadius: '8px', 
+                textAlign: 'center',
+                border: '2px solid #F59E0B'
+              }}>
+                <p style={{ fontSize: '32px', fontWeight: '700', color: COLORS.warning }}>{hfLogStats.inProgress}</p>
+                <p style={{ color: '#92400E', fontWeight: '500' }}>⏳ In Progress</p>
               </div>
             </div>
+            
+            {/* HF Delivered List */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+              <h4 style={{ fontWeight: '600', marginBottom: '12px' }}>📦 Delivered HF ({hfLogList.filter(hf => 
+                !hfLogSearchTerm || hf.hf_number?.toLowerCase().includes(hfLogSearchTerm.toLowerCase())
+              ).length})</h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>HF#</th>
+                      <th style={styles.th}>Status</th>
+                      <th style={styles.th}>Components</th>
+                      <th style={styles.th}>Requester</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hfLogList
+                      .filter(hf => !hfLogSearchTerm || hf.hf_number?.toLowerCase().includes(hfLogSearchTerm.toLowerCase()))
+                      .map(hf => (
+                        <tr key={hf.hf_number}>
+                          <td style={{ ...styles.td, fontWeight: '600', fontFamily: 'monospace' }}>{hf.hf_number}</td>
+                          <td style={styles.td}>
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              backgroundColor: '#D1FAE5',
+                              color: '#065F46'
+                            }}>
+                              ✅ Delivered
+                            </span>
+                          </td>
+                          <td style={styles.td}>{hf.total_components}</td>
+                          <td style={{ ...styles.td, fontSize: '12px' }}>{hf.created_by_name}</td>
+                        </tr>
+                      ))}
+                    {hfLogList.filter(hf => 
+                      !hfLogSearchTerm || hf.hf_number?.toLowerCase().includes(hfLogSearchTerm.toLowerCase())
+                    ).length === 0 && (
+                      <tr>
+                        <td colSpan="4" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                          No delivered HF found
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            
             <p style={{ marginTop: '16px', color: '#6b7280', fontSize: '13px' }}>
-              Log tracks when HF groups are fully completed and delivered. 
               HF requires ALL components to be ready before delivery (no partial).
             </p>
           </div>
@@ -6882,8 +7040,13 @@ function TestPackPage({ user }) {
   const [inventoryMap, setInventoryMap] = useState({});
   // V28.11: Tab navigation
   const [activeTab, setActiveTab] = useState('materials'); // 'materials' or 'log'
-  // V28.11: Log data
-  const [completedRequests, setCompletedRequests] = useState({ total: 0, partial: 0 });
+  // V30.0: Enhanced Log data with 6 counters
+  const [logStats, setLogStats] = useState({ 
+    fullCompleted: 0, fullToCollect: 0, fullCollected: 0,
+    partialCompleted: 0, partialToCollect: 0, partialCollected: 0
+  });
+  const [logSearchTerm, setLogSearchTerm] = useState('');
+  const [tpLogList, setTpLogList] = useState([]);
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -6958,36 +7121,99 @@ function TestPackPage({ user }) {
       
       setTestPacks(grouped);
       
-      // V29.0: Calculate initial completed requests counters
+      // V30.0: Calculate enhanced Log stats with 6 counters
       // Get all TestPack requests and check their completion status
       const { data: tpRequests } = await supabase
         .from('requests')
-        .select('id, request_number, sub_number')
+        .select('id, request_number, sub_number, test_pack_number, created_by_name, completed_at, delivery_status')
         .not('test_pack_number', 'is', null);
       
       if (tpRequests) {
-        let fullyCompleted = 0;
-        let partiallyCompleted = 0;
+        let stats = { 
+          fullCompleted: 0, fullToCollect: 0, fullCollected: 0,
+          partialCompleted: 0, partialToCollect: 0, partialCollected: 0
+        };
+        let logList = [];
         
-        for (const req of tpRequests) {
-          const { data: reqComps } = await supabase
-            .from('request_components')
-            .select('status')
-            .eq('request_id', req.id);
+        // Group requests by test_pack_number
+        const tpGroups = {};
+        tpRequests.forEach(req => {
+          if (!tpGroups[req.test_pack_number]) {
+            tpGroups[req.test_pack_number] = [];
+          }
+          tpGroups[req.test_pack_number].push(req);
+        });
+        
+        for (const [tpNum, requests] of Object.entries(tpGroups)) {
+          // Get all components for this TestPack
+          let allComponents = [];
+          for (const req of requests) {
+            const { data: reqComps } = await supabase
+              .from('request_components')
+              .select('status, sub_category')
+              .eq('request_id', req.id);
+            if (reqComps) {
+              allComponents = allComponents.concat(reqComps);
+            }
+          }
           
-          if (reqComps && reqComps.length > 0) {
-            const deliveredStatuses = ['Trans', 'ToCollect', 'Done'];
-            const deliveredCount = reqComps.filter(c => deliveredStatuses.includes(c.status)).length;
+          if (allComponents.length > 0) {
+            const doneCount = allComponents.filter(c => c.status === 'Done').length;
+            const toCollectCount = allComponents.filter(c => c.status === 'ToCollect').length;
+            const transCount = allComponents.filter(c => c.status === 'Trans').length;
+            const deliveredCount = doneCount + toCollectCount + transCount;
+            const inProgressCount = allComponents.filter(c => ['TP', 'Eng', 'TP_Spool_Sent'].includes(c.status)).length;
             
-            if (deliveredCount === reqComps.length) {
-              fullyCompleted++;
-            } else if (deliveredCount > 0) {
-              partiallyCompleted++;
+            const isFull = deliveredCount === allComponents.length;
+            const isPartial = deliveredCount > 0 && deliveredCount < allComponents.length;
+            
+            // Determine status
+            let status = 'inProgress';
+            if (isFull) {
+              if (doneCount === allComponents.length) {
+                status = 'fullCollected';
+                stats.fullCollected++;
+              } else if (toCollectCount > 0 && doneCount === 0 && transCount === 0) {
+                status = 'fullToCollect';
+                stats.fullToCollect++;
+              } else {
+                status = 'fullCompleted';
+                stats.fullCompleted++;
+              }
+            } else if (isPartial) {
+              if (doneCount > 0) {
+                status = 'partialCollected';
+                stats.partialCollected++;
+              } else if (toCollectCount > 0) {
+                status = 'partialToCollect';
+                stats.partialToCollect++;
+              } else {
+                status = 'partialCompleted';
+                stats.partialCompleted++;
+              }
+            }
+            
+            // Add to log list if has any delivered items
+            if (deliveredCount > 0 || doneCount > 0) {
+              // Get unique sub-categories
+              const subCats = [...new Set(allComponents.map(c => c.sub_category).filter(Boolean))];
+              logList.push({
+                test_pack_number: tpNum,
+                status,
+                total_components: allComponents.length,
+                delivered: deliveredCount,
+                in_progress: inProgressCount,
+                done: doneCount,
+                to_collect: toCollectCount,
+                sub_categories: subCats.length,
+                created_by_name: requests[0]?.created_by_name || '-'
+              });
             }
           }
         }
         
-        setCompletedRequests({ total: fullyCompleted, partial: partiallyCompleted });
+        setLogStats(stats);
+        setTpLogList(logList.sort((a, b) => b.delivered - a.delivered));
       }
     }
     } catch (error) {
@@ -7107,13 +7333,18 @@ function TestPackPage({ user }) {
           
           const nextSubNumber = (existingSubs?.[0]?.sub_number || 0) + 1;
           
+          // V30.0: Get parent_request_number - use existing parent or the mother request_number
+          const parentReqNumTP = originalRequest.parent_request_number || originalRequest.request_number;
+          
           // Create new sub-request
           const { data: newRequest, error: insertError } = await supabase
             .from('requests')
             .insert({
               request_number: originalRequest.request_number,
               sub_number: nextSubNumber,
+              parent_request_number: parentReqNumTP, // V30.0: Link to mother request
               requester_user_id: originalRequest.requester_user_id,
+              created_by_name: originalRequest.created_by_name, // V30.0: Preserve requester name
               request_type: originalRequest.request_type,
               sub_category: originalRequest.sub_category,
               iso_number: originalRequest.iso_number,
@@ -7222,28 +7453,7 @@ function TestPackPage({ user }) {
         const deliveredCount = allReqComponents.filter(c => deliveredStatuses.includes(c.status)).length;
         const totalCount = allReqComponents.length;
         
-        // Check if this was the FIRST delivery (only the just-delivered items are in delivered status)
-        const justDeliveredCount = subCat.components.filter(c => isReady(c)).length;
-        const wasPartialBefore = deliveredCount > justDeliveredCount;
-        const isFullyComplete = deliveredCount === totalCount;
-        
-        setCompletedRequests(prev => {
-          if (isFullyComplete) {
-            // Fully completed: Fully +1, Partial -1 (if was partial before)
-            return {
-              total: prev.total + 1,
-              partial: wasPartialBefore ? prev.partial - 1 : prev.partial
-            };
-          } else if (!wasPartialBefore) {
-            // First partial delivery: Partial +1
-            return {
-              total: prev.total,
-              partial: prev.partial + 1
-            };
-          }
-          // Already partial, still partial: no change
-          return prev;
-        });
+        // V30.0: Counters will be recalculated on loadComponents
       }
     }
     
@@ -7322,21 +7532,7 @@ function TestPackPage({ user }) {
         .select('status')
         .eq('request_id', firstComp.request_id);
       
-      if (allReqComponents) {
-        const deliveredStatuses = ['Trans', 'ToCollect', 'Done'];
-        // Count how many were delivered BEFORE this action
-        const readyCount = Object.values(request.subCategories)
-          .flatMap(sc => sc.components)
-          .filter(c => isReady(c)).length;
-        const previouslyDelivered = allReqComponents.filter(c => deliveredStatuses.includes(c.status)).length - readyCount;
-        const wasPartialBefore = previouslyDelivered > 0;
-        
-        setCompletedRequests(prev => ({
-          total: prev.total + 1,
-          partial: wasPartialBefore ? prev.partial - 1 : prev.partial
-        }));
-      }
-    }
+    // V30.0: Counters will be recalculated on loadComponents
     
     loadComponents();
   };
@@ -7478,36 +7674,124 @@ function TestPackPage({ user }) {
 
       {activeTab === 'log' ? (
         <div style={styles.card}>
-          <div style={{ ...styles.cardHeader, backgroundColor: '#F3E8FF' }}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#F3E8FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ fontWeight: '600' }}>📋 TestPack Log</h3>
+            <input
+              type="text"
+              placeholder="🔍 Search TP#..."
+              value={logSearchTerm}
+              onChange={(e) => setLogSearchTerm(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #d1d5db',
+                fontSize: '14px',
+                width: '200px'
+              }}
+            />
           </div>
           <div style={{ padding: '16px' }}>
-            <div style={{ display: 'flex', gap: '24px', marginBottom: '24px' }}>
-              <div style={{ 
-                flex: 1, 
-                padding: '20px', 
-                backgroundColor: '#D1FAE5', 
-                borderRadius: '8px',
-                textAlign: 'center'
-              }}>
-                <div style={{ fontSize: '32px', fontWeight: '700', color: COLORS.success }}>{completedRequests.total}</div>
-                <div style={{ color: '#065F46', fontWeight: '500' }}>✅ Fully Completed</div>
-              </div>
-              <div style={{ 
-                flex: 1, 
-                padding: '20px', 
-                backgroundColor: '#FEF3C7', 
-                borderRadius: '8px',
-                textAlign: 'center'
-              }}>
-                <div style={{ fontSize: '32px', fontWeight: '700', color: COLORS.warning }}>{completedRequests.partial}</div>
-                <div style={{ color: '#92400E', fontWeight: '500' }}>⚠️ Partially Completed</div>
+            {/* V30.0: 6 Counters in 2 rows */}
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ fontWeight: '600', color: '#374151', marginBottom: '12px' }}>✅ Fully Completed TestPacks</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div style={{ padding: '16px', backgroundColor: '#D1FAE5', borderRadius: '8px', textAlign: 'center', border: '2px solid #10B981' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.success }}>{logStats.fullCompleted}</div>
+                  <div style={{ color: '#065F46', fontWeight: '500', fontSize: '12px' }}>✅ Completed</div>
+                </div>
+                <div style={{ padding: '16px', backgroundColor: '#DBEAFE', borderRadius: '8px', textAlign: 'center', border: '2px solid #3B82F6' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.info }}>{logStats.fullToCollect}</div>
+                  <div style={{ color: '#1E40AF', fontWeight: '500', fontSize: '12px' }}>⏳ To Collect</div>
+                </div>
+                <div style={{ padding: '16px', backgroundColor: '#F3F4F6', borderRadius: '8px', textAlign: 'center', border: '2px solid #6B7280' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.gray }}>{logStats.fullCollected}</div>
+                  <div style={{ color: '#374151', fontWeight: '500', fontSize: '12px' }}>📦 Collected</div>
+                </div>
               </div>
             </div>
-            <p style={{ color: '#6b7280', fontSize: '14px' }}>
-              Log functionality tracks when requests are fully or partially delivered. 
-              A request is "Fully Completed" when all sub-categories have been sent to Site IN or To Collect.
-            </p>
+            
+            <div style={{ marginBottom: '24px' }}>
+              <p style={{ fontWeight: '600', color: '#374151', marginBottom: '12px' }}>⚠️ Partially Completed TestPacks</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px', textAlign: 'center', border: '2px solid #F59E0B' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.warning }}>{logStats.partialCompleted}</div>
+                  <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>⚠️ Partial Done</div>
+                </div>
+                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px', textAlign: 'center', border: '2px solid #D97706' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#B45309' }}>{logStats.partialToCollect}</div>
+                  <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>⏳ To Collect</div>
+                </div>
+                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px', textAlign: 'center', border: '2px solid #92400E' }}>
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#78350F' }}>{logStats.partialCollected}</div>
+                  <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>📦 Collected</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* V30.0: Detailed TestPack List */}
+            <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+              <h4 style={{ fontWeight: '600', marginBottom: '12px' }}>📜 TestPack Details ({tpLogList.filter(tp => 
+                !logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())
+              ).length})</h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>TP#</th>
+                      <th style={styles.th}>Status</th>
+                      <th style={styles.th}>Progress</th>
+                      <th style={styles.th}>To Collect</th>
+                      <th style={styles.th}>Collected</th>
+                      <th style={styles.th}>Sub-Cats</th>
+                      <th style={styles.th}>Requester</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tpLogList
+                      .filter(tp => !logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase()))
+                      .map(tp => (
+                        <tr key={tp.test_pack_number}>
+                          <td style={{ ...styles.td, fontWeight: '600', fontFamily: 'monospace' }}>{tp.test_pack_number}</td>
+                          <td style={styles.td}>
+                            <span style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: '600',
+                              backgroundColor: tp.status.includes('full') 
+                                ? (tp.status === 'fullCollected' ? '#F3F4F6' : '#D1FAE5')
+                                : '#FEF3C7',
+                              color: tp.status.includes('full')
+                                ? (tp.status === 'fullCollected' ? '#374151' : '#065F46')
+                                : '#92400E'
+                            }}>
+                              {tp.status === 'fullCompleted' ? '✅ Full' : 
+                               tp.status === 'fullToCollect' ? '⏳ Full TC' :
+                               tp.status === 'fullCollected' ? '📦 Full Done' :
+                               tp.status === 'partialCompleted' ? '⚠️ Partial' :
+                               tp.status === 'partialToCollect' ? '⏳ Part TC' : '📦 Part Done'}
+                            </span>
+                          </td>
+                          <td style={styles.td}>{tp.delivered}/{tp.total_components}</td>
+                          <td style={styles.td}>{tp.to_collect}</td>
+                          <td style={styles.td}>{tp.done}</td>
+                          <td style={styles.td}>{tp.sub_categories}</td>
+                          <td style={{ ...styles.td, fontSize: '12px' }}>{tp.created_by_name}</td>
+                        </tr>
+                      ))}
+                    {tpLogList.filter(tp => 
+                      !logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())
+                    ).length === 0 && (
+                      <tr>
+                        <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                          No TestPacks with deliveries found
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -7625,7 +7909,7 @@ function TestPackPage({ user }) {
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                               <span style={{ fontWeight: '600' }}>
-                                {isSpoolCategory ? '🔧' : (subReady ? '🟢' : '🟡')} {subCat.name}
+                                {isSpoolCategory ? '◎' : (subReady ? '🟢' : '🟡')} {subCat.name}
                               </span>
                               <span style={{ 
                                 fontSize: '12px', 
@@ -7684,7 +7968,7 @@ function TestPackPage({ user }) {
                                 return (
                                 <tr key={comp.id} style={{ backgroundColor: rowBgColor }}>
                                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>
-                                    {isSpool ? '🔧 SPOOL' : comp.ident_code}
+                                    {isSpool ? '◎ SPOOL' : comp.ident_code}
                                   </td>
                                   <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {comp.description || '-'}
@@ -10305,6 +10589,47 @@ function ManagementPage({ user }) {
     loadComponents();
   };
 
+  // V30.0: Handle all Management actions via dropdown
+  const handleAction = async (component, action) => {
+    try {
+      if (action === 'internal') {
+        await handleDecision(component, 'Internal');
+      } else if (action === 'client') {
+        await handleDecision(component, 'Client');
+      } else if (action === 'return') {
+        // Return to Engineering
+        await supabase.from('request_components')
+          .update({ status: 'Eng', mng_note: null })
+          .eq('id', component.id);
+        await supabase.from('component_history').insert({
+          component_id: component.id,
+          action: 'Returned from Management to Engineering',
+          from_status: 'Mng',
+          to_status: 'Eng',
+          performed_by_user_id: user.id,
+          performed_by_name: user.full_name
+        });
+        loadComponents();
+      } else if (action === 'delete') {
+        if (!window.confirm('Delete this component?')) return;
+        await supabase.from('request_components')
+          .update({ status: 'Deleted' })
+          .eq('id', component.id);
+        await supabase.from('component_history').insert({
+          component_id: component.id,
+          action: 'Deleted from Management',
+          from_status: 'Mng',
+          to_status: 'Deleted',
+          performed_by_user_id: user.id,
+          performed_by_name: user.full_name
+        });
+        loadComponents();
+      }
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
   const canModify = canModifyPage(user, 'management');
 
   // Filter by search
@@ -10411,10 +10736,17 @@ function ManagementPage({ user }) {
                     ) : null}
                   </td>
                   <td style={styles.td}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleDecision(comp, 'Internal')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '6px 12px', fontSize: '12px' }}>🏢 Internal</button>
-                      <button onClick={() => handleDecision(comp, 'Client')} disabled={!canModify} style={{ ...styles.button, backgroundColor: COLORS.cyan, color: 'white', padding: '6px 12px', fontSize: '12px' }}>👤 Client</button>
-                    </div>
+                    <ActionDropdown
+                      actions={[
+                        { id: 'internal', icon: '🏢', label: 'Internal Order' },
+                        { id: 'client', icon: '👤', label: 'Client Order' },
+                        { id: 'return', icon: '↩️', label: 'Return to Engineering' },
+                        { id: 'delete', icon: '🗑️', label: 'Delete' }
+                      ]}
+                      onExecute={(action) => handleAction(comp, action)}
+                      disabled={!canModify}
+                      componentId={comp.id}
+                    />
                   </td>
                 </tr>
               ))}
