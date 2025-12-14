@@ -2859,10 +2859,10 @@ function RequestsPage({ user }) {
             }}>
               <h4 style={{ fontWeight: '600', marginBottom: '16px' }}>📦 Add Materials</h4>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 100px 80px', gap: '12px', alignItems: 'end' }}>
-                <div>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'end' }}>
+                <div style={{ flex: 1 }}>
                   <label style={styles.label}>
-                    Ident Code <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 3+ chars)</span>
+                    Ident Code * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 3+ chars)</span>
                   </label>
                   <AsyncSearchInput
                     value={currentMaterial.ident_code}
@@ -2873,10 +2873,35 @@ function RequestsPage({ user }) {
                     onSearch={searchIdentCodeGlobal}
                     onSelect={(val) => handleIdentCodeChange(val)}
                     minChars={3}
-                    placeholder="Type ident code (3+ chars)..."
+                    placeholder="Type 3+ chars to search..."
                     disabled={!canModify}
                   />
                 </div>
+                {/* Description (auto-filled) */}
+                <div style={{ flex: 2 }}>
+                  <label style={styles.label}>Description</label>
+                  <input
+                    type="text"
+                    value={currentMaterial.description || ''}
+                    readOnly
+                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                    placeholder="Auto-filled"
+                  />
+                </div>
+                {/* Diam (auto-filled) */}
+                <div style={{ width: '80px' }}>
+                  <label style={styles.label}>Diam</label>
+                  <input
+                    type="text"
+                    value={currentMaterial.dia1 || ''}
+                    readOnly
+                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                    placeholder="Auto"
+                  />
+                </div>
+              </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 80px', gap: '12px', alignItems: 'end', marginTop: '12px' }}>
                 <div>
                   <label style={styles.label}>Tag</label>
                   <select
@@ -2917,33 +2942,6 @@ function RequestsPage({ user }) {
                   + Add
                 </button>
               </div>
-
-              {/* Material Preview - Shows Description and Diam after selection */}
-              {currentMaterial.ident_code && (
-                <div style={{
-                  marginTop: '12px',
-                  padding: '12px 16px',
-                  backgroundColor: '#EFF6FF',
-                  borderRadius: '6px',
-                  border: '1px solid #BFDBFE',
-                  display: 'flex',
-                  gap: '24px',
-                  alignItems: 'center'
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontSize: '11px', color: '#6b7280', textTransform: 'uppercase' }}>Description</span>
-                    <p style={{ fontSize: '14px', color: '#1f2937', marginTop: '2px' }}>
-                      {currentMaterial.description || '(no description)'}
-                    </p>
-                  </div>
-                  <div style={{ minWidth: '80px' }}>
-                    <span style={{ fontSize: '11px', color: '#6b7280', textTransform: 'uppercase' }}>Diam</span>
-                    <p style={{ fontSize: '14px', color: '#1f2937', fontWeight: '600', marginTop: '2px' }}>
-                      {currentMaterial.dia1 || '-'}
-                    </p>
-                  </div>
-                </div>
-              )}
 
               {/* Quantity Exhausted Warning */}
               {projectQtyExhausted && (
@@ -6257,14 +6255,16 @@ function TestPackPage({ user }) {
     setLoading(true);
     
     try {
-      // V28.11: Load components with status 'TP' or 'TP_Spool_Sent'
-      // - TP: Materials waiting in TestPack queue
-      // - TP_Spool_Sent: Spools that have been sent to site (ready for delivery)
+      // V28.12: Load components for TestPack monitoring
+      // - Eng: Items in Engineering (waiting for check)
+      // - TP: Materials ready in TestPack queue
+      // - TP_Spool_Sent: Spools sent to site (ready for delivery)
+      // Exclude: Trans, ToCollect, Done, Cancelled (already delivered/completed)
       const { data } = await supabase
         .from('request_components')
         .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, requester_user_id, secondary_collector)`)
         .not('requests.test_pack_number', 'is', null)
-        .in('status', ['TP', 'TP_Spool_Sent']); // Include both TP and Spool ready
+        .in('status', ['Eng', 'TP', 'TP_Spool_Sent']); // Include Eng for monitoring
       
       if (data) {
         // V28.11: Get unique ident_codes and load inventory
@@ -6340,29 +6340,45 @@ function TestPackPage({ user }) {
     });
   };
 
-  // V28.11: Check if a component is ready based on inventory availability
-  // Ready = qty_requested <= WH_Site + WH_Yard
-  // For Spools: Ready = status is 'TP_Spool_Sent'
+  // V28.12: Check if a component is ready based on status and inventory
   const isReady = (comp) => {
+    // Items in Engineering are NOT ready
+    if (comp.status === 'Eng') {
+      return false;
+    }
     // V28.11: Spool items are ready when status = TP_Spool_Sent
     if (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL') {
       return comp.status === 'TP_Spool_Sent';
     }
-    // Regular materials: check inventory
-    const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
-    const totalAvailable = inv.site + inv.yard;
-    return totalAvailable >= comp.quantity;
+    // Regular materials with status='TP': check inventory
+    if (comp.status === 'TP') {
+      const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+      const totalAvailable = inv.site + inv.yard;
+      return totalAvailable >= comp.quantity;
+    }
+    return false;
   };
+  
+  // V28.12: Check if in Engineering
+  const isInEngineering = (comp) => comp.status === 'Eng';
   
   // V28.11: Check if partial ready (some but not all qty available)
   const isPartialReady = (comp) => {
+    // Items in Engineering are not partial
+    if (comp.status === 'Eng') {
+      return false;
+    }
     // Spools don't have partial - they're either sent or not
     if (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL') {
       return false;
     }
-    const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
-    const totalAvailable = inv.site + inv.yard;
-    return totalAvailable > 0 && totalAvailable < comp.quantity;
+    // Only check partial for TP status
+    if (comp.status === 'TP') {
+      const inv = inventoryMap[comp.ident_code] || { site: 0, yard: 0 };
+      const totalAvailable = inv.site + inv.yard;
+      return totalAvailable > 0 && totalAvailable < comp.quantity;
+    }
+    return false;
   };
   
   // Check if all components in a sub-category are ready
@@ -6942,11 +6958,15 @@ function TestPackPage({ user }) {
                                 const totalAvail = inv.site + inv.yard;
                                 const compReady = isReady(comp);
                                 const compPartial = isPartialReady(comp);
+                                const compInEng = isInEngineering(comp);
                                 // V28.11: Check if this is a Spool item
                                 const isSpool = (comp.sub_category === 'Spool' || comp.ident_code === 'SPOOL');
                                 
+                                // V28.12: Row background color
+                                const rowBgColor = compReady ? '#F0FDF4' : compInEng ? '#F3E8FF' : compPartial ? '#FFFBEB' : '#FEE2E2';
+                                
                                 return (
-                                <tr key={comp.id} style={{ backgroundColor: compReady ? '#F0FDF4' : compPartial ? '#FFFBEB' : '#FEE2E2' }}>
+                                <tr key={comp.id} style={{ backgroundColor: rowBgColor }}>
                                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>
                                     {isSpool ? '🔧 SPOOL' : comp.ident_code}
                                   </td>
@@ -6954,14 +6974,16 @@ function TestPackPage({ user }) {
                                     {comp.description || '-'}
                                   </td>
                                   <td style={styles.td}>{comp.quantity}</td>
-                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (inv.site >= comp.quantity ? COLORS.success : '#6b7280') }}>
-                                    {isSpool ? '-' : inv.site}
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (compInEng ? '#9ca3af' : (inv.site >= comp.quantity ? COLORS.success : '#6b7280')) }}>
+                                    {isSpool ? '-' : (compInEng ? '-' : inv.site)}
                                   </td>
-                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (inv.yard > 0 ? COLORS.secondary : '#6b7280') }}>
-                                    {isSpool ? '-' : inv.yard}
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (compInEng ? '#9ca3af' : (inv.yard > 0 ? COLORS.secondary : '#6b7280')) }}>
+                                    {isSpool ? '-' : (compInEng ? '-' : inv.yard)}
                                   </td>
                                   <td style={styles.td}>
-                                    {isSpool ? (
+                                    {compInEng ? (
+                                      <span style={{ ...styles.statusBadge, backgroundColor: COLORS.purple }}>⏳ In Engineering</span>
+                                    ) : isSpool ? (
                                       compReady ? (
                                         <span style={{ ...styles.statusBadge, backgroundColor: COLORS.success }}>✅ Sent to Site</span>
                                       ) : (
