@@ -2381,7 +2381,8 @@ function RequestsPage({ user }) {
 
   const canModify = canModifyPage(user, 'requests');
   const hasWarning = overQuantityWarning !== null;
-  const siteYardDisabled = projectQtyExhausted || hfError;
+  // V28.10: TestPack requests must go to Engineering only
+  const siteYardDisabled = projectQtyExhausted || hfError || requestType === 'TestPack';
 
   return (
     <div>
@@ -2983,7 +2984,7 @@ function RequestsPage({ user }) {
                 color: 'white',
                 cursor: siteYardDisabled ? 'not-allowed' : 'pointer'
               }}
-              title={siteYardDisabled ? 'Disabled - use Engineering' : ''}
+              title={siteYardDisabled ? (requestType === 'TestPack' ? 'TestPack → Solo Engineering' : 'Disabled - use Engineering') : ''}
             >
               📤 Send to WH Site
             </button>
@@ -2996,7 +2997,7 @@ function RequestsPage({ user }) {
                 color: 'white',
                 cursor: siteYardDisabled ? 'not-allowed' : 'pointer'
               }}
-              title={siteYardDisabled ? 'Disabled - use Engineering' : ''}
+              title={siteYardDisabled ? (requestType === 'TestPack' ? 'TestPack → Solo Engineering' : 'Disabled - use Engineering') : ''}
             >
               📤 Send to WH Yard
             </button>
@@ -3046,8 +3047,19 @@ function WHSitePage({ user }) {
   const [checkPartialQty, setCheckPartialQty] = useState('');
   const [checkFoundDest, setCheckFoundDest] = useState('ToCollect');
   const [checkNotFoundDest, setCheckNotFoundDest] = useState('Eng');
+  // V28.10: Collector selection for notifications
+  const [showCollectorModal, setShowCollectorModal] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [selectedCollectorId, setSelectedCollectorId] = useState('');
+  const [collectorSearchTerm, setCollectorSearchTerm] = useState('');
 
-  useEffect(() => { loadComponents(); }, []);
+  useEffect(() => { loadComponents(); loadUsers(); }, []);
+
+  // V28.10: Load all active users for collector selection
+  const loadUsers = async () => {
+    const { data } = await supabase.from('users').select('id, full_name, role').eq('is_active', true).order('full_name');
+    if (data) setAllUsers(data);
+  };
 
   const loadComponents = async () => {
     setLoading(true);
@@ -3190,14 +3202,18 @@ function WHSitePage({ user }) {
 
   const handleDestinationSelect = async (dest) => {
     const component = selectedComponent;
+    
+    // V28.10: If going to ToCollect, show collector selection modal first
+    if (dest === 'siteIn') {
+      setShowDestPopup(false);
+      setShowCollectorModal(true);
+      return;
+    }
+    
     let newStatus;
     let note = '';
     
     switch(dest) {
-      case 'siteIn':
-        newStatus = 'ToCollect';
-        note = 'Ready for collection (normal)';
-        break;
       case 'hf':
         newStatus = 'HF';
         note = 'Sent to HF Page for completion';
@@ -3215,6 +3231,43 @@ function WHSitePage({ user }) {
     await logHistory(component.id, `Ready - ${dest.toUpperCase()}`, 'WH_Site', newStatus, note);
     
     setShowDestPopup(false);
+    setSelectedComponent(null);
+    loadComponents();
+  };
+
+  // V28.10: Complete ToCollect with collector selection and notification
+  const completeToCollect = async () => {
+    const component = selectedComponent;
+    const collectorUser = allUsers.find(u => u.id === selectedCollectorId);
+    
+    await supabase.from('request_components')
+      .update({ 
+        status: 'ToCollect',
+        designated_collector_id: selectedCollectorId || null
+      })
+      .eq('id', component.id);
+    
+    await logHistory(component.id, 'Ready for Collection', 'WH_Site', 'ToCollect', 
+      collectorUser ? `Assigned to: ${collectorUser.full_name}` : 'Ready for collection');
+    
+    // V28.10: Send notification to selected user
+    if (selectedCollectorId) {
+      try {
+        await supabase.from('notifications').insert({
+          user_id: selectedCollectorId,
+          title: 'Material Ready for Collection',
+          message: `${component.ident_code} (Qty: ${component.quantity}) is ready to collect at Site warehouse`,
+          type: 'collect',
+          related_component_id: component.id
+        });
+      } catch (err) {
+        console.log('Notification not sent - table may not exist yet');
+      }
+    }
+    
+    setShowCollectorModal(false);
+    setSelectedCollectorId('');
+    setCollectorSearchTerm('');
     setSelectedComponent(null);
     loadComponents();
   };
@@ -3936,6 +3989,100 @@ function WHSitePage({ user }) {
         </div>
       </Modal>
 
+      {/* V28.10: Collector Selection Modal */}
+      <Modal isOpen={showCollectorModal} onClose={() => { setShowCollectorModal(false); setSelectedCollectorId(''); setCollectorSearchTerm(''); }} title="📦 Ready for Collection">
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '8px' }}>
+            <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
+          </p>
+          <p style={{ marginBottom: '16px' }}>
+            <strong>Qty:</strong> {selectedComponent?.quantity}
+          </p>
+        </div>
+        
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>🔔 Notify User for Collection (optional)</label>
+          <input
+            type="text"
+            value={collectorSearchTerm}
+            onChange={(e) => setCollectorSearchTerm(e.target.value)}
+            placeholder="Search user name..."
+            style={styles.input}
+          />
+          
+          {collectorSearchTerm.length >= 2 && (
+            <div style={{ 
+              maxHeight: '200px', 
+              overflowY: 'auto', 
+              border: '1px solid #e5e7eb', 
+              borderRadius: '6px',
+              marginTop: '8px'
+            }}>
+              {allUsers
+                .filter(u => u.full_name.toLowerCase().includes(collectorSearchTerm.toLowerCase()))
+                .map(u => (
+                  <div
+                    key={u.id}
+                    onClick={() => {
+                      setSelectedCollectorId(u.id);
+                      setCollectorSearchTerm(u.full_name);
+                    }}
+                    style={{
+                      padding: '10px 12px',
+                      cursor: 'pointer',
+                      backgroundColor: selectedCollectorId === u.id ? '#DBEAFE' : 'white',
+                      borderBottom: '1px solid #f3f4f6',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = selectedCollectorId === u.id ? '#DBEAFE' : '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedCollectorId === u.id ? '#DBEAFE' : 'white'}
+                  >
+                    <span>{u.full_name}</span>
+                    <span style={{ fontSize: '11px', color: '#6b7280' }}>{u.role}</span>
+                  </div>
+                ))}
+            </div>
+          )}
+          
+          {selectedCollectorId && (
+            <div style={{ 
+              marginTop: '12px', 
+              padding: '10px', 
+              backgroundColor: '#DCFCE7', 
+              borderRadius: '6px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <span>🔔 Notification will be sent to: <strong>{allUsers.find(u => u.id === selectedCollectorId)?.full_name}</strong></span>
+              <button
+                onClick={() => { setSelectedCollectorId(''); setCollectorSearchTerm(''); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px' }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+        
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button 
+            onClick={() => { setShowCollectorModal(false); setSelectedCollectorId(''); setCollectorSearchTerm(''); }} 
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={completeToCollect}
+            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+          >
+            ✓ {selectedCollectorId ? 'Ready & Notify' : 'Ready (No Notification)'}
+          </button>
+        </div>
+      </Modal>
+
       {/* History Popup */}
       <HistoryPopup
         isOpen={showHistory}
@@ -4109,11 +4256,14 @@ function WHYardPage({ user }) {
     const component = selectedComponent;
     const available = inventoryMap[component.ident_code]?.yard || 0;
     
-    // Decrement yard
-    await supabase.rpc('decrement_yard_qty', { 
-      p_ident_code: component.ident_code, 
-      p_qty: component.quantity 
-    });
+    // V28.10: Decrement yard ONLY if NOT going to Site IN (Trans)
+    // For Site IN, inventory changes only when confirmed at Site
+    if (dest !== 'siteIn') {
+      await supabase.rpc('decrement_yard_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+    }
     
     let newStatus;
     let note = '';
@@ -4121,7 +4271,7 @@ function WHYardPage({ user }) {
     switch(dest) {
       case 'siteIn':
         newStatus = 'Trans';
-        note = 'In transit to Site';
+        note = 'In transit to Site (inventory unchanged until confirmed)';
         break;
       case 'hf':
         newStatus = 'HF';
@@ -4173,11 +4323,14 @@ function WHYardPage({ user }) {
       })
       .eq('id', selectedComponent.id);
     
-    // Decrement yard inventory for found items
-    await supabase.rpc('decrement_yard_qty', { 
-      p_ident_code: selectedComponent.ident_code, 
-      p_qty: foundQty 
-    });
+    // V28.10: Decrement yard inventory ONLY if NOT going to Trans (Site IN)
+    // For Trans, inventory updated when Site confirms receipt
+    if (partialFoundDest !== 'Trans') {
+      await supabase.rpc('decrement_yard_qty', { 
+        p_ident_code: selectedComponent.ident_code, 
+        p_qty: foundQty 
+      });
+    }
 
     await logHistory(selectedComponent.id, 'Partial Found', 'Yard', partialFoundDest, 
       `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
@@ -4244,11 +4397,8 @@ function WHYardPage({ user }) {
           alert(`Only ${available} available in YARD!`);
           return;
         }
-        // Found → decrement yard, move to Trans (Site IN)
-        await supabase.rpc('decrement_yard_qty', { 
-          p_ident_code: check.ident_code, 
-          p_qty: check.quantity 
-        });
+        // V28.10: Found → move to Trans (Site IN) - inventory changes ONLY when Site confirms
+        // Do NOT decrement yard here
         await supabase.from('request_components')
           .update({ 
             status: 'Trans', 
@@ -4257,7 +4407,7 @@ function WHYardPage({ user }) {
             eng_check_sent_to: null
           })
           .eq('id', check.id);
-        await logHistory(check.id, 'Check - Found', 'Yard', 'Trans', 'Item found in Yard after Engineering check, sent to Site IN');
+        await logHistory(check.id, 'Check - Found', 'Yard', 'Trans', 'Item found in Yard, sent to Site IN (inventory updated on receipt)');
         loadComponents();
       } else if (action === 'check_notfound') {
         // Not Found → return to Engineering
@@ -4402,8 +4552,10 @@ function WHYardPage({ user }) {
         eng_check_sent_to: null
       });
       
-      // If found items go to Trans (Site IN), decrement yard inventory
-      if (checkFoundDest === 'Trans') {
+      // V28.10: If found items go to Trans (Site IN), do NOT decrement yard here
+      // Inventory will be updated when Site confirms receipt
+      // Only decrement if NOT going to Trans
+      if (checkFoundDest !== 'Trans') {
         await supabase.rpc('decrement_yard_qty', { 
           p_ident_code: selectedCheck.ident_code, 
           p_qty: foundQty 
@@ -4962,12 +5114,20 @@ function SiteInPage({ user }) {
   };
 
   // V28.5: Receive → WH_Site (not ToCollect)
+  // V28.10: Inventory changes ONLY here (yard_qty decreases, site_qty increases)
   const handleReceive = async (component) => {
     try {
       await supabase.from('request_components')
         .update({ status: 'WH_Site', current_location: 'SITE', previous_status: 'Trans' })
         .eq('id', component.id);
       
+      // V28.10: Decrement yard (was not done when sent to Trans)
+      await supabase.rpc('decrement_yard_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+      
+      // Increment site
       await supabase.rpc('increment_site_qty', { 
         p_ident_code: component.ident_code, 
         p_qty: component.quantity 
@@ -4980,16 +5140,17 @@ function SiteInPage({ user }) {
         to_status: 'WH_Site',
         performed_by_user_id: user.id,
         performed_by_name: user.full_name,
-        note: 'Material arrived at Site warehouse'
+        note: 'Material arrived at Site warehouse - inventory updated'
       });
 
       await supabase.from('movements').insert({
         ident_code: component.ident_code,
-        movement_type: 'IN',
+        movement_type: 'TRANSFER',
         quantity: component.quantity,
         from_location: 'YARD',
         to_location: 'SITE',
-        performed_by: user.full_name
+        performed_by: user.full_name,
+        note: 'Confirmed receipt at Site'
       });
 
       loadComponents();
@@ -10450,10 +10611,53 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [badges, setBadges] = useState({});
+  // V28.10: Notification system
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
 
   useEffect(() => {
-    if (user) loadBadges();
+    if (user) {
+      loadBadges();
+      loadNotifications();
+    }
   }, [user, currentPage]);
+
+  // V28.10: Load user notifications
+  const loadNotifications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      
+      if (data) setNotifications(data);
+    } catch (err) {
+      console.log('Notifications not available yet');
+    }
+  };
+
+  // V28.10: Mark notification as read
+  const markAsRead = async (notifId) => {
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notifId);
+    loadNotifications();
+  };
+
+  // V28.10: Mark all as read
+  const markAllAsRead = async () => {
+    await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', user.id)
+      .eq('is_read', false);
+    setNotifications([]);
+    setShowNotifications(false);
+  };
 
   const loadBadges = async () => {
     const counts = {};
@@ -10563,6 +10767,108 @@ export default function App() {
             </p>
           </div>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {/* V28.10: Notification Bell */}
+            <div style={{ position: 'relative' }}>
+              <button 
+                onClick={() => setShowNotifications(!showNotifications)}
+                style={{ 
+                  ...styles.button, 
+                  backgroundColor: notifications.length > 0 ? '#FEF3C7' : '#f3f4f6',
+                  border: notifications.length > 0 ? '2px solid #F59E0B' : '1px solid #d1d5db',
+                  padding: '8px 12px',
+                  position: 'relative'
+                }}
+              >
+                🔔
+                {notifications.length > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    backgroundColor: COLORS.primary,
+                    color: 'white',
+                    borderRadius: '50%',
+                    width: '20px',
+                    height: '20px',
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    {notifications.length > 9 ? '9+' : notifications.length}
+                  </span>
+                )}
+              </button>
+              
+              {/* Notification Dropdown */}
+              {showNotifications && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '8px',
+                  width: '350px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  backgroundColor: 'white',
+                  borderRadius: '8px',
+                  boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
+                  border: '1px solid #e5e7eb',
+                  zIndex: 1000
+                }}>
+                  <div style={{ 
+                    padding: '12px 16px', 
+                    borderBottom: '1px solid #e5e7eb',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    backgroundColor: '#f9fafb'
+                  }}>
+                    <span style={{ fontWeight: '600', color: '#374151' }}>🔔 Notifiche</span>
+                    {notifications.length > 0 && (
+                      <button 
+                        onClick={markAllAsRead}
+                        style={{ fontSize: '12px', color: COLORS.info, background: 'none', border: 'none', cursor: 'pointer' }}
+                      >
+                        Segna tutte lette
+                      </button>
+                    )}
+                  </div>
+                  
+                  {notifications.length === 0 ? (
+                    <div style={{ padding: '24px', textAlign: 'center', color: '#9ca3af' }}>
+                      ✅ Nessuna nuova notifica
+                    </div>
+                  ) : (
+                    notifications.map(notif => (
+                      <div 
+                        key={notif.id}
+                        onClick={() => markAsRead(notif.id)}
+                        style={{
+                          padding: '12px 16px',
+                          borderBottom: '1px solid #f3f4f6',
+                          cursor: 'pointer',
+                          backgroundColor: 'white',
+                          transition: 'background 0.2s'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                      >
+                        <div style={{ fontWeight: '500', color: '#1f2937', marginBottom: '4px' }}>
+                          {notif.type === 'collect' ? '📦' : notif.type === 'warning' ? '⚠️' : 'ℹ️'} {notif.title}
+                        </div>
+                        <div style={{ fontSize: '13px', color: '#6b7280' }}>{notif.message}</div>
+                        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                          {new Date(notif.created_at).toLocaleString('it-IT')}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+            
             <button onClick={loadBadges} style={{ ...styles.button, ...styles.buttonSecondary }}>🔄 Refresh</button>
             <button onClick={handleLogout} style={{ ...styles.button, backgroundColor: COLORS.gray, color: 'white' }}>🚪 Logout</button>
           </div>
