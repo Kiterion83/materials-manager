@@ -196,7 +196,7 @@ const RK_TEMPLATE_URL = '/RK_0020_TEMPLATE.docx';
 
 // V31.0: Generate RK Document function
 // Uses JSZip to modify the DOCX template and replace placeholders
-async function generateRKDocument(mirNumber, rkNumber, onProgress) {
+async function generateRKDocument(mirNumber, rkNumber, description, onProgress) {
   try {
     if (onProgress) onProgress('Loading template...');
     
@@ -227,38 +227,56 @@ async function generateRKDocument(mirNumber, rkNumber, onProgress) {
     // Get document.xml
     let docXml = await zip.file('word/document.xml').async('string');
     
-    // Get current date in DD/MM/YYYY format
+    // Get current date parts
     const today = new Date();
-    const dateStr = today.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = String(today.getFullYear());
     
-    // Replace placeholders
-    // 1. Replace all XX/XX/XXXX with current date
-    docXml = docXml.replace(/XX\/XX\/XXXX/g, dateStr);
+    // ============================================================
+    // Simple approach: Find and replace specific text patterns
+    // The template has these placeholders:
+    // 1. XX/XX/XXXX - header date (single node)
+    // 2. RDCG/MIRS + XXXX + /0 - in row 1 (three nodes)
+    // 3. RK0020_ + XXXX - in Remarks (two nodes)  
+    // 4. Date: + XX + / + XX + / + XXXX - Section A date (split nodes)
+    // ============================================================
     
-    // 2. Replace MIRS placeholder (the XXXX after RDCG/MIRS in separate run)
-    // Pattern: ...MIRS</w:t></w:r><w:r...><w:t>XXXX</w:t>...
+    // STEP 1: Header date XX/XX/XXXX -> DD/MM/YYYY
+    docXml = docXml.replace(/<w:t>XX\/XX\/XXXX<\/w:t>/g, `<w:t>${day}/${month}/${year}</w:t>`);
+    
+    // STEP 2: MIRS number - the text RDCG/MIRS followed by XXXX in next node
+    // If MIR exists, just replace the XXXX node after MIRS
+    // Template structure: <w:t>RDCG/MIRS</w:t></w:r><w:r...><...><w:t>XXXX</w:t></w:r><w:r...><w:t>/0</w:t>
     if (mirNumber) {
-      // First try with specific rsidR pattern
-      let replaced = false;
-      docXml = docXml.replace(
-        /(RDCG\/MIRS<\/w:t><\/w:r><w:r[^>]*><w:rPr>(?:[^<]*<[^>]*>)*<\/w:rPr><w:t>)XXXX(<\/w:t>)/,
-        (match, p1, p2) => { replaced = true; return p1 + mirNumber + p2; }
-      );
-      // If not replaced, try simpler pattern
-      if (!replaced) {
-        docXml = docXml.replace(/RDCG\/MIRS<\/w:t>([^X]*)<w:t>XXXX<\/w:t>/, 
-          `RDCG/MIRS</w:t>$1<w:t>${mirNumber}</w:t>`);
-      }
+      // Find RDCG/MIRS and replace the XXXX that follows
+      const mirsPattern = /RDCG\/MIRS<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
+      docXml = docXml.replace(mirsPattern, `RDCG/MIRS</w:t></w:r>$1${mirNumber}$2`);
+    } else {
+      // No MIR (Mechanical) - replace RDCG/MIRS with description and remove XXXX and /0
+      const descText = (description || 'MECHANICAL').substring(0, 25);
+      // Replace RDCG/MIRS with description
+      docXml = docXml.replace(/<w:t>RDCG\/MIRS<\/w:t>/, `<w:t>${descText}</w:t>`);
+      // Remove the XXXX that was after (now it's after description) - keep the run but empty text
+      docXml = docXml.replace(/(<w:t>)XXXX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)\/0(<\/w:t>)/, '$1$2$3');
     }
     
-    // 3. Replace RK0020_ placeholder (the XXXX after RK0020_ in separate run)
-    docXml = docXml.replace(
-      /(RK0020_<\/w:t><\/w:r><w:r[^>]*><w:rPr>(?:[^<]*<[^>]*>)*<\/w:rPr><w:t>)XXXX(<\/w:t>)/,
-      `$1${rkNumber}$2`
-    );
-    // Fallback pattern
-    docXml = docXml.replace(/RK0020_<\/w:t>([^X]*)<w:t>XXXX<\/w:t>/, 
-      `RK0020_</w:t>$1<w:t>${rkNumber}</w:t>`);
+    // STEP 3: RK number - RK0020_ followed by XXXX
+    const rkPattern = /RK0020_<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
+    docXml = docXml.replace(rkPattern, `RK0020_</w:t></w:r>$1${rkNumber}$2`);
+    
+    // STEP 4: Section A date - Date: followed by XX / XX / XXXX in separate nodes
+    // Find the pattern where Date: is followed by XX then / then XX then / then XXXX
+    // We need to replace these individually
+    
+    // The pattern in the template is:
+    // <w:t>Date:</w:t></w:r><w:r...><w:t>XX</w:t></w:r><w:r...><w:t>/</w:t></w:r><w:r...><w:t>XX</w:t></w:r><w:r...><w:t>/</w:t></w:r><w:r...><w:t>XXXX</w:t>
+    
+    // Strategy: Find Date: and then replace the XX and XXXX that follow before the next section
+    // Use a marker to identify we're in the right section
+    
+    const datePattern = /(Date:<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)XX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>\/<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)XX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>\/<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
+    docXml = docXml.replace(datePattern, `$1${day}$2${month}$3${year}$4`);
     
     // Save modified document.xml
     zip.file('word/document.xml', docXml);
@@ -10947,6 +10965,7 @@ function MIRPage({ user }) {
       const success = await generateRKDocument(
         mir.mir_number || '',
         mir.rk_number || '',
+        mir.description || '',  // V31.0: Pass description for Mechanical type
         null
       );
       
