@@ -10985,9 +10985,11 @@ function MIRPage({ user }) {
   };
 
   // V31.0: RK Download Info Tooltip component
+  // V31.0: RK Download Info - Modal popup instead of tooltip
   const RKDownloadInfo = ({ mir }) => {
-    const [showTooltip, setShowTooltip] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     
+    // Gray icon if not downloaded
     if (!mir.rk_downloaded_at) {
       return (
         <span 
@@ -11003,46 +11005,135 @@ function MIRPage({ user }) {
       );
     }
     
+    // Green icon with click to show modal
     return (
-      <span
-        style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-      >
-        <span style={{ color: COLORS.success, fontSize: '16px' }}>ℹ️</span>
-        {showTooltip && (
+      <>
+        <span
+          style={{ cursor: 'pointer' }}
+          onClick={() => setShowModal(true)}
+        >
+          <span style={{ color: COLORS.success, fontSize: '16px' }}>ℹ️</span>
+        </span>
+        
+        {/* Modal */}
+        {showModal && (
           <div style={{
-            position: 'absolute',
-            bottom: '100%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: '#1f2937',
-            color: 'white',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            fontSize: '12px',
-            whiteSpace: 'nowrap',
-            zIndex: 1000,
-            marginBottom: '4px',
-            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ fontWeight: '600', marginBottom: '4px' }}>✅ RK Downloaded</div>
-            <div>By: {mir.rk_downloaded_by_name || 'Unknown'}</div>
-            <div>Date: {new Date(mir.rk_downloaded_at).toLocaleString()}</div>
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999
+          }} onClick={() => setShowModal(false)}>
             <div style={{
-              position: 'absolute',
-              top: '100%',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: 0,
-              height: 0,
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderTop: '6px solid #1f2937'
-            }} />
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              minWidth: '320px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+              position: 'relative'
+            }} onClick={e => e.stopPropagation()}>
+              {/* Close button */}
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  color: '#6b7280'
+                }}
+              >
+                ✕
+              </button>
+              
+              {/* Header */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '12px',
+                marginBottom: '20px',
+                paddingBottom: '16px',
+                borderBottom: '1px solid #e5e7eb'
+              }}>
+                <span style={{ 
+                  fontSize: '32px',
+                  backgroundColor: '#DEF7EC',
+                  borderRadius: '50%',
+                  width: '48px',
+                  height: '48px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>✅</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>
+                    RK Downloaded
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>
+                    MIR {mir.mir_number || '-'} / RK {mir.rk_number}
+                  </p>
+                </div>
+              </div>
+              
+              {/* Info */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '20px' }}>👤</span>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>Downloaded by</div>
+                    <div style={{ fontWeight: '500', color: '#1f2937' }}>
+                      {mir.rk_downloaded_by_name || 'Unknown'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '20px' }}>📅</span>
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>Date & Time</div>
+                    <div style={{ fontWeight: '500', color: '#1f2937' }}>
+                      {new Date(mir.rk_downloaded_at).toLocaleString('it-IT', {
+                        day: '2-digit',
+                        month: '2-digit', 
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Close button */}
+              <button
+                onClick={() => setShowModal(false)}
+                style={{
+                  marginTop: '24px',
+                  width: '100%',
+                  padding: '10px',
+                  backgroundColor: COLORS.info,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
         )}
-      </span>
+      </>
     );
   };
 
