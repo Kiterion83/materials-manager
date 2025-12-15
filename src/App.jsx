@@ -1,6 +1,10 @@
 // ============================================================
-// MATERIALS MANAGER V31.0 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.0 Changes:
+//   - Engineering Checks: "Found (All)" disabled when qty_site < qty_requested
+//   - Engineering Checks: Only "Partial" available when quantity insufficient
+//   - Preparation for 4-level request numbering system (00058-01-02-01)
 // V31.0 Changes:
 //   - MIR Page: Generate RK Document (📄) - auto-fills template with MIR/RK numbers and date
 //   - MIR Page: Download tracking - records who downloaded and when
@@ -96,7 +100,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V31.0';
+const APP_VERSION = 'V32.0';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -4216,9 +4220,14 @@ function WHSitePage({ user }) {
                           // V28.8: Build actions based on inventory in THIS warehouse (Site)
                           const actions = [];
                           
-                          // Found/Partial only if site_qty > 0 (this is WH Site page)
-                          if (hasSiteQty) {
+                          // V32: Found (All) only if site_qty >= requested qty
+                          const canFulfillSite = inv.site >= check.quantity;
+                          if (canFulfillSite) {
                             actions.push({ id: 'check_found', icon: '✓', label: 'Found (All)' });
+                          }
+                          
+                          // Partial only if site_qty > 0 but < requested
+                          if (hasSiteQty) {
                             actions.push({ id: 'check_partial', icon: '✂️', label: 'Partial' });
                           }
                           
