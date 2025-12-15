@@ -6351,10 +6351,11 @@ function EngineeringPage({ user }) {
 
   // V32.0: Send Check - supporta Site, Yard, o Both
   // When "Both" is selected, creates parallel sub-requests for Site and Yard
+  // Format: XXXXX-LL-SS-PP where LL=component, SS=wh_split (1=Site, 2=Yard), PP=yard_split
   const sendCheck = async () => {
     try {
       if (checkDestination === 'Both') {
-        // V32.0: "Send to Both" - Create two parallel sub-requests
+        // V32.0: "Send to Both" - Create two parallel sub-requests with 4-level format
         const reqNumber = selectedComponent.requests?.request_number;
         const currentReq = selectedComponent.requests;
         
@@ -6363,24 +6364,20 @@ function EngineeringPage({ user }) {
           return;
         }
         
-        // Calculate new level numbers
-        const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
+        // Get the component level from the original request
+        const componentLevel = currentReq?.level_component || currentReq?.sub_number || 0;
         
-        // Get next sub_number for the new requests
-        const { data: subData } = await supabase
-          .from('requests')
-          .select('sub_number')
-          .eq('request_number', reqNumber)
-          .order('sub_number', { ascending: false })
-          .limit(1);
-        
-        const baseSubNumber = (subData?.[0]?.sub_number || 0);
-        
-        // Create sub-request for WH Site
+        // Create sub-request for WH Site (level_wh_split = 1)
         const siteInsertData = {
           request_number: reqNumber,
-          sub_number: baseSubNumber + 1,
+          sub_number: componentLevel, // Keep same component level
+          level_component: componentLevel,
+          level_wh_split: 1, // Site = 1
+          level_yard_split: 0,
+          request_number_full: formatRequestNumber(reqNumber, componentLevel, 1, 0),
+          parent_request_id: currentReq?.id,
           parent_request_number: currentReq?.parent_request_number || reqNumber,
+          sent_to: 'WH_Site',
           request_type: currentReq?.request_type,
           sub_category: currentReq?.sub_category,
           iso_number: currentReq?.iso_number,
@@ -6390,18 +6387,6 @@ function EngineeringPage({ user }) {
           requester_user_id: currentReq?.requester_user_id,
           created_by_name: currentReq?.created_by_name
         };
-        
-        // Add V32 fields if migration was run (they exist)
-        try {
-          siteInsertData.level_component = currentComponent;
-          siteInsertData.level_wh_split = 1;
-          siteInsertData.level_yard_split = 0;
-          siteInsertData.request_number_full = formatRequestNumber(reqNumber, currentComponent, 1, 0);
-          siteInsertData.parent_request_id = currentReq?.id;
-          siteInsertData.sent_to = 'WH_Site';
-        } catch (e) {
-          console.log('V32 fields not available, using basic insert');
-        }
         
         const { data: siteReq, error: siteError } = await supabase.from('requests')
           .insert(siteInsertData)
@@ -6435,11 +6420,17 @@ function EngineeringPage({ user }) {
           console.error('Site component insert error:', siteCompError);
         }
         
-        // Create sub-request for WH Yard
+        // Create sub-request for WH Yard (level_wh_split = 2)
         const yardInsertData = {
           request_number: reqNumber,
-          sub_number: baseSubNumber + 2,
+          sub_number: componentLevel, // Keep same component level
+          level_component: componentLevel,
+          level_wh_split: 2, // Yard = 2
+          level_yard_split: 0,
+          request_number_full: formatRequestNumber(reqNumber, componentLevel, 2, 0),
+          parent_request_id: currentReq?.id,
           parent_request_number: currentReq?.parent_request_number || reqNumber,
+          sent_to: 'Yard',
           request_type: currentReq?.request_type,
           sub_category: currentReq?.sub_category,
           iso_number: currentReq?.iso_number,
@@ -6449,18 +6440,6 @@ function EngineeringPage({ user }) {
           requester_user_id: currentReq?.requester_user_id,
           created_by_name: currentReq?.created_by_name
         };
-        
-        // Add V32 fields if migration was run
-        try {
-          yardInsertData.level_component = currentComponent;
-          yardInsertData.level_wh_split = 2;
-          yardInsertData.level_yard_split = 0;
-          yardInsertData.request_number_full = formatRequestNumber(reqNumber, currentComponent, 2, 0);
-          yardInsertData.parent_request_id = currentReq?.id;
-          yardInsertData.sent_to = 'Yard';
-        } catch (e) {
-          console.log('V32 fields not available, using basic insert');
-        }
         
         const { data: yardReq, error: yardError } = await supabase.from('requests')
           .insert(yardInsertData)
@@ -6504,13 +6483,18 @@ function EngineeringPage({ user }) {
           })
           .eq('id', selectedComponent.id);
         
-        // Update original request
+        // Update original request with 4-level format
         await supabase.from('requests')
-          .update({ sent_to: 'Both' })
+          .update({ 
+            sent_to: 'Both',
+            level_wh_split: 0 // Mark as parent (no split)
+          })
           .eq('id', currentReq?.id);
         
+        const siteNum = formatRequestNumber(reqNumber, componentLevel, 1, 0);
+        const yardNum = formatRequestNumber(reqNumber, componentLevel, 2, 0);
         await logHistory(selectedComponent.id, `Check sent to Both (Site & Yard)`, 'Eng', 'Eng', 
-          `Split: ${reqNumber}-${baseSubNumber + 1} (Site) + ${reqNumber}-${baseSubNumber + 2} (Yard)`);
+          `Split: ${siteNum} (Site) + ${yardNum} (Yard)`);
         
       } else {
         // Single destination (WH_Site or Yard) - original behavior
@@ -6601,7 +6585,7 @@ function EngineeringPage({ user }) {
         <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
         <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-          {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+          {comp.requests?.request_number_full || `${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}`}
         </td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
         <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
