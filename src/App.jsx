@@ -1,6 +1,12 @@
 // ============================================================
-// MATERIALS MANAGER V30.0 - APP.JSX COMPLETE
+// MATERIALS MANAGER V31.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V31.0 Changes:
+//   - MIR Page: Generate RK Document (📄) - auto-fills template with MIR/RK numbers and date
+//   - MIR Page: Download tracking - records who downloaded and when
+//   - MIR Page: Info icon (ℹ️) shows download history on hover
+//   - RK Template: Uses docx template with placeholder substitution
+//   - Database: Added rk_downloaded_at, rk_downloaded_by, rk_downloaded_by_name to mirs table
 // V30.0 Changes:
 //   - Database: Added parent_request_number for mother/child request tracking
 //   - Partial Split: Sub-requests now link to mother request via parent_request_number
@@ -90,7 +96,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V30.0';
+const APP_VERSION = 'V31.0';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -180,6 +186,103 @@ function canModifyPage(user, page) {
       return role === 'buyer';
     default:
       return false;
+  }
+}
+
+// V31.0: RK Document Template URL
+// Option 1: Put RK_0020_TEMPLATE.docx in public folder and use '/RK_0020_TEMPLATE.docx'
+// Option 2: Upload to Supabase Storage and use the public URL
+const RK_TEMPLATE_URL = '/RK_0020_TEMPLATE.docx';
+
+// V31.0: Generate RK Document function
+// Uses JSZip to modify the DOCX template and replace placeholders
+async function generateRKDocument(mirNumber, rkNumber, onProgress) {
+  try {
+    if (onProgress) onProgress('Loading template...');
+    
+    // Load JSZip dynamically if not available
+    if (typeof JSZip === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    
+    // Fetch template
+    const response = await fetch(RK_TEMPLATE_URL);
+    if (!response.ok) {
+      alert(`Template not found!\n\nPlease upload RK_0020_TEMPLATE.docx to:\n1. The public folder of your project, OR\n2. Supabase Storage and update RK_TEMPLATE_URL`);
+      return null;
+    }
+    const templateBlob = await response.blob();
+    
+    if (onProgress) onProgress('Processing document...');
+    
+    // Load ZIP
+    const zip = await JSZip.loadAsync(templateBlob);
+    
+    // Get document.xml
+    let docXml = await zip.file('word/document.xml').async('string');
+    
+    // Get current date in DD/MM/YYYY format
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    
+    // Replace placeholders
+    // 1. Replace all XX/XX/XXXX with current date
+    docXml = docXml.replace(/XX\/XX\/XXXX/g, dateStr);
+    
+    // 2. Replace MIRS placeholder (the XXXX after RDCG/MIRS in separate run)
+    // Pattern: ...MIRS</w:t></w:r><w:r...><w:t>XXXX</w:t>...
+    if (mirNumber) {
+      // First try with specific rsidR pattern
+      let replaced = false;
+      docXml = docXml.replace(
+        /(RDCG\/MIRS<\/w:t><\/w:r><w:r[^>]*><w:rPr>(?:[^<]*<[^>]*>)*<\/w:rPr><w:t>)XXXX(<\/w:t>)/,
+        (match, p1, p2) => { replaced = true; return p1 + mirNumber + p2; }
+      );
+      // If not replaced, try simpler pattern
+      if (!replaced) {
+        docXml = docXml.replace(/RDCG\/MIRS<\/w:t>([^X]*)<w:t>XXXX<\/w:t>/, 
+          `RDCG/MIRS</w:t>$1<w:t>${mirNumber}</w:t>`);
+      }
+    }
+    
+    // 3. Replace RK0020_ placeholder (the XXXX after RK0020_ in separate run)
+    docXml = docXml.replace(
+      /(RK0020_<\/w:t><\/w:r><w:r[^>]*><w:rPr>(?:[^<]*<[^>]*>)*<\/w:rPr><w:t>)XXXX(<\/w:t>)/,
+      `$1${rkNumber}$2`
+    );
+    // Fallback pattern
+    docXml = docXml.replace(/RK0020_<\/w:t>([^X]*)<w:t>XXXX<\/w:t>/, 
+      `RK0020_</w:t>$1<w:t>${rkNumber}</w:t>`);
+    
+    // Save modified document.xml
+    zip.file('word/document.xml', docXml);
+    
+    if (onProgress) onProgress('Generating file...');
+    
+    // Generate new DOCX
+    const newDocx = await zip.generateAsync({ type: 'blob' });
+    
+    // Create download link
+    const url = URL.createObjectURL(newDocx);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RK0020_${rkNumber}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    return true;
+  } catch (error) {
+    console.error('Error generating RK document:', error);
+    alert('Error generating document: ' + error.message);
+    return false;
   }
 }
 
@@ -5002,17 +5105,17 @@ function WHYardPage({ user }) {
         await logHistory(check.id, 'Check - To TestPack', 'Yard', 'TP', 'Sent to TestPack from Engineering check');
         loadComponents();
       } else if (action === 'check_to_site') {
-        // V28.8: Send to Site for checking there
+        // V30.0: Send to Site IN (Trans) - inventory will be transferred when Site accepts
         await supabase.from('request_components')
           .update({ 
-            status: 'WH_Site', 
-            current_location: 'SITE',
+            status: 'Trans', 
+            current_location: 'TRANSIT',
             has_eng_check: false,
             eng_check_message: null,
             eng_check_sent_to: null
           })
           .eq('id', check.id);
-        await logHistory(check.id, 'Check - To Site', 'Yard', 'WH_Site', 'Sent to Site from Engineering check (no stock in Yard)');
+        await logHistory(check.id, 'Check - To Site IN', 'Yard', 'Trans', 'Sent to Site IN from Engineering check (inventory transferred on receipt)');
         loadComponents();
       } else if (action === 'check_partial') {
         // Open partial modal
@@ -5243,25 +5346,12 @@ function WHYardPage({ user }) {
                               actions.push({ id: 'check_partial', icon: '✂️', label: 'Partial' });
                             }
                             
-                            // To HF only if yard_qty > 0 AND has hf_number
-                            if (hasYardQty && (check.requests?.hf_number || check.previous_status === 'HF')) {
-                              actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
-                            }
+                            // V30.0: Removed To HF - material must go through Site IN first
+                            // V30.0: Removed To TestPack - material must go through Site IN first
+                            // Flow: Yard → Site IN → WH Site → HF/TP
                             
-                            // V28.11: To TestPack only if FULL qty available (yard_qty >= requested)
-                            const isTestPackItem = check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP';
-                            if (isTestPackItem) {
-                              // Only show To TestPack if full qty available
-                              if (canFulfill) {
-                                actions.push({ id: 'check_to_tp', icon: '📋', label: 'To TestPack' });
-                              }
-                              // Partial is already added above, so user can use Partial if not full qty
-                            }
-                            
-                            // To Site always available if site has qty
-                            if (hasSiteQty) {
-                              actions.push({ id: 'check_to_site', icon: '🏭', label: 'To Site' });
-                            }
+                            // V30.0: To Site IN always available - sends request to Site IN for transfer
+                            actions.push({ id: 'check_to_site', icon: '🏭', label: 'To Site IN' });
                             
                             // Not Found always available
                             actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
@@ -10848,6 +10938,95 @@ function MIRPage({ user }) {
     }
   };
 
+  // V31.0: Download RK Document
+  const [downloadingRK, setDownloadingRK] = useState(null);
+  
+  const handleDownloadRK = async (mir) => {
+    setDownloadingRK(mir.id);
+    try {
+      const success = await generateRKDocument(
+        mir.mir_number || '',
+        mir.rk_number || '',
+        null
+      );
+      
+      if (success) {
+        // Update database with download info
+        await supabase.from('mirs').update({
+          rk_downloaded_at: new Date().toISOString(),
+          rk_downloaded_by: user.id,
+          rk_downloaded_by_name: user.full_name || user.email
+        }).eq('id', mir.id);
+        
+        loadMirs();
+      }
+    } finally {
+      setDownloadingRK(null);
+    }
+  };
+
+  // V31.0: RK Download Info Tooltip component
+  const RKDownloadInfo = ({ mir }) => {
+    const [showTooltip, setShowTooltip] = useState(false);
+    
+    if (!mir.rk_downloaded_at) {
+      return (
+        <span 
+          style={{ 
+            color: '#9ca3af', 
+            cursor: 'help',
+            fontSize: '16px'
+          }}
+          title="RK not downloaded yet"
+        >
+          ℹ️
+        </span>
+      );
+    }
+    
+    return (
+      <span
+        style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <span style={{ color: COLORS.success, fontSize: '16px' }}>ℹ️</span>
+        {showTooltip && (
+          <div style={{
+            position: 'absolute',
+            bottom: '100%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#1f2937',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: '6px',
+            fontSize: '12px',
+            whiteSpace: 'nowrap',
+            zIndex: 1000,
+            marginBottom: '4px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+          }}>
+            <div style={{ fontWeight: '600', marginBottom: '4px' }}>✅ RK Downloaded</div>
+            <div>By: {mir.rk_downloaded_by_name || 'Unknown'}</div>
+            <div>Date: {new Date(mir.rk_downloaded_at).toLocaleString()}</div>
+            <div style={{
+              position: 'absolute',
+              top: '100%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: '6px solid #1f2937'
+            }} />
+          </div>
+        )}
+      </span>
+    );
+  };
+
   const canModify = canModifyPage(user, 'mir');
 
   // Filter MIRs by tab and search
@@ -10972,6 +11151,8 @@ function MIRPage({ user }) {
               <th style={styles.th}>Created</th>
               {activeTab === 'open' && <th style={styles.th}>Actions</th>}
               {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>ℹ️</th>
             </tr>
           </thead>
           <tbody>
@@ -11027,11 +11208,33 @@ function MIRPage({ user }) {
                     {mir.closed_at ? new Date(mir.closed_at).toLocaleDateString() : '-'}
                   </td>
                 )}
+                {/* V31.0: RK Document Download */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => handleDownloadRK(mir)}
+                    disabled={downloadingRK === mir.id}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: downloadingRK === mir.id ? 'wait' : 'pointer',
+                      fontSize: '18px',
+                      opacity: downloadingRK === mir.id ? 0.5 : 1,
+                      padding: '4px'
+                    }}
+                    title="Download RK Document"
+                  >
+                    {downloadingRK === mir.id ? '⏳' : '📄'}
+                  </button>
+                </td>
+                {/* V31.0: RK Download Info */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <RKDownloadInfo mir={mir} />
+                </td>
               </tr>
             ))}
             {displayedMirs.length === 0 && (
               <tr>
-                <td colSpan={activeTab === 'open' ? 11 : 11} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                <td colSpan={13} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                   No {activeTab === 'open' ? 'open' : 'closed'} MIRs
                 </td>
               </tr>
