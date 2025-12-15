@@ -3940,66 +3940,79 @@ function WHSitePage({ user }) {
     const foundQty = parseInt(partialQty);
     const notFoundQty = selectedComponent.quantity - foundQty;
     
-    // V28.7: Update original component with found quantity and destination
-    await supabase.from('request_components')
-      .update({ 
-        quantity: foundQty, 
-        status: partialFoundDest,
-        previous_status: 'WH_Site',
-        current_location: partialFoundDest === 'Yard' ? 'YARD' : 'SITE'
-      })
-      .eq('id', selectedComponent.id);
-    
-    await logHistory(selectedComponent.id, 'Partial Split', 'WH_Site', partialFoundDest, 
-      `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
-    
-    // Create new sub-request for not found items
-    const { data: subData } = await supabase
-      .from('requests')
-      .select('sub_number')
-      .eq('request_number', selectedComponent.requests.request_number)
-      .order('sub_number', { ascending: false })
-      .limit(1);
-    
-    const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-    
-    // V30.0: Get parent_request_number - use existing parent or the mother request_number
-    const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
-    
-    const { data: newReq } = await supabase.from('requests')
-      .insert({
-        request_number: selectedComponent.requests.request_number,
-        sub_number: nextSub,
-        parent_request_number: parentReqNum, // V30.0: Link to mother request
-        request_type: selectedComponent.requests.request_type,
-        sub_category: selectedComponent.requests.sub_category,
-        iso_number: selectedComponent.requests.iso_number,
-        full_spool_number: selectedComponent.requests.full_spool_number,
-        hf_number: selectedComponent.requests.hf_number,
-        test_pack_number: selectedComponent.requests.test_pack_number,
-        requester_user_id: selectedComponent.requests.requester_user_id, // V30.0: Preserve requester
-        created_by_name: selectedComponent.requests.created_by_name // V30.0: Preserve requester name
-      })
-      .select()
-      .single();
-    
-    // V28.7: Create component for not found quantity with selected destination
-    await supabase.from('request_components').insert({
-      request_id: newReq.id,
-      ident_code: selectedComponent.ident_code,
-      description: selectedComponent.description,
-      tag: selectedComponent.tag,
-      dia1: selectedComponent.dia1,
-      quantity: notFoundQty,
-      status: partialNotFoundDest,
-      current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
-    });
+    try {
+      // V28.7: Update original component with found quantity and destination
+      await supabase.from('request_components')
+        .update({ 
+          quantity: foundQty, 
+          status: partialFoundDest,
+          previous_status: 'WH_Site',
+          current_location: partialFoundDest === 'Yard' ? 'YARD' : 'SITE'
+        })
+        .eq('id', selectedComponent.id);
+      
+      await logHistory(selectedComponent.id, 'Partial Split', 'WH_Site', partialFoundDest, 
+        `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
+      
+      // Create new sub-request for not found items
+      const { data: subData } = await supabase
+        .from('requests')
+        .select('sub_number')
+        .eq('request_number', selectedComponent.requests.request_number)
+        .order('sub_number', { ascending: false })
+        .limit(1);
+      
+      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+      
+      // V30.0: Get parent_request_number - use existing parent or the mother request_number
+      const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
+      
+      const { data: newReq, error: reqError } = await supabase.from('requests')
+        .insert({
+          request_number: selectedComponent.requests.request_number,
+          sub_number: nextSub,
+          parent_request_number: parentReqNum,
+          request_type: selectedComponent.requests.request_type,
+          sub_category: selectedComponent.requests.sub_category,
+          iso_number: selectedComponent.requests.iso_number,
+          full_spool_number: selectedComponent.requests.full_spool_number,
+          hf_number: selectedComponent.requests.hf_number,
+          test_pack_number: selectedComponent.requests.test_pack_number,
+          requester_user_id: selectedComponent.requests.requester_user_id,
+          created_by_name: selectedComponent.requests.created_by_name
+        })
+        .select()
+        .single();
+      
+      if (reqError || !newReq) {
+        console.error('Request insert error:', reqError);
+        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+        loadComponents();
+        return;
+      }
+      
+      // V28.7: Create component for not found quantity with selected destination
+      await supabase.from('request_components').insert({
+        request_id: newReq.id,
+        ident_code: selectedComponent.ident_code,
+        description: selectedComponent.description,
+        tag: selectedComponent.tag,
+        dia1: selectedComponent.dia1,
+        quantity: notFoundQty,
+        status: partialNotFoundDest,
+        current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
+      });
 
-    setShowPartialModal(false);
-    setPartialQty('');
-    setPartialFoundDest('ToCollect');
-    setPartialNotFoundDest('Eng');
-    loadComponents();
+      setShowPartialModal(false);
+      setPartialQty('');
+      setPartialFoundDest('ToCollect');
+      setPartialNotFoundDest('Eng');
+      loadComponents();
+    } catch (error) {
+      console.error('Partial split error:', error);
+      alert('Error during partial split: ' + error.message);
+      loadComponents();
+    }
   };
 
   // Handle Engineering Check actions
@@ -4144,48 +4157,42 @@ function WHSitePage({ user }) {
       const currentReq = selectedCheck.requests;
       const reqNumber = currentReq?.request_number;
       
-      // V32.0: Calculate new level numbers
-      const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
-      const currentWhSplit = currentReq?.level_wh_split || 0;
-      
-      // Get next yard_split number
-      const { data: yardSplitData } = await supabase
+      // Get next sub_number
+      const { data: subData } = await supabase
         .from('requests')
-        .select('level_yard_split')
+        .select('sub_number')
         .eq('request_number', reqNumber)
-        .eq('level_component', currentComponent)
-        .eq('level_wh_split', currentWhSplit > 0 ? currentWhSplit : 1) // Use current or default to Site (1)
-        .order('level_yard_split', { ascending: false })
+        .order('sub_number', { ascending: false })
         .limit(1);
       
-      const nextYardSplit = (yardSplitData?.[0]?.level_yard_split || 0) + 1;
-      const whSplitLevel = currentWhSplit > 0 ? currentWhSplit : 1;
+      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
       
-      // V32.0: Create sub-request for NOT FOUND items
-      const notFoundReqNumber = formatRequestNumber(reqNumber, currentComponent, whSplitLevel, nextYardSplit);
+      // Create sub-request for NOT FOUND items
+      const insertData = {
+        request_number: reqNumber,
+        sub_number: nextSub,
+        parent_request_number: currentReq?.parent_request_number || reqNumber,
+        request_type: currentReq?.request_type,
+        sub_category: currentReq?.sub_category,
+        iso_number: currentReq?.iso_number,
+        full_spool_number: currentReq?.full_spool_number,
+        hf_number: currentReq?.hf_number,
+        test_pack_number: currentReq?.test_pack_number,
+        requester_user_id: currentReq?.requester_user_id,
+        created_by_name: currentReq?.created_by_name
+      };
       
-      const { data: newReq } = await supabase.from('requests')
-        .insert({
-          request_number: reqNumber,
-          sub_number: currentComponent,
-          level_component: currentComponent,
-          level_wh_split: whSplitLevel,
-          level_yard_split: nextYardSplit,
-          request_number_full: notFoundReqNumber,
-          parent_request_id: currentReq?.id,
-          parent_request_number: currentReq?.parent_request_number || reqNumber,
-          sent_to: null,
-          request_type: currentReq?.request_type,
-          sub_category: currentReq?.sub_category,
-          iso_number: currentReq?.iso_number,
-          full_spool_number: currentReq?.full_spool_number,
-          hf_number: currentReq?.hf_number,
-          test_pack_number: currentReq?.test_pack_number,
-          requester_user_id: currentReq?.requester_user_id,
-          created_by_name: currentReq?.created_by_name
-        })
+      const { data: newReq, error: reqError } = await supabase.from('requests')
+        .insert(insertData)
         .select()
         .single();
+      
+      if (reqError || !newReq) {
+        console.error('Request insert error:', reqError);
+        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+        loadComponents();
+        return;
+      }
       
       // Create component for NOT FOUND quantity - goes to destination
       await supabase.from('request_components').insert({
@@ -5070,85 +5077,98 @@ function WHYardPage({ user }) {
     const foundQty = parseInt(partialQty);
     const notFoundQty = selectedComponent.quantity - foundQty;
     
-    // V28.7: Update original component with found quantity and destination
-    await supabase.from('request_components')
-      .update({ 
-        quantity: foundQty, 
-        status: partialFoundDest,
-        previous_status: 'Yard',
-        current_location: partialFoundDest === 'Yard' ? 'YARD' : 'SITE'
-      })
-      .eq('id', selectedComponent.id);
-    
-    // V28.10: Decrement yard inventory ONLY if NOT going to Trans (Site IN)
-    // For Trans, inventory updated when Site confirms receipt
-    if (partialFoundDest !== 'Trans') {
-      await supabase.rpc('decrement_yard_qty', { 
-        p_ident_code: selectedComponent.ident_code, 
-        p_qty: foundQty 
+    try {
+      // V28.7: Update original component with found quantity and destination
+      await supabase.from('request_components')
+        .update({ 
+          quantity: foundQty, 
+          status: partialFoundDest,
+          previous_status: 'Yard',
+          current_location: partialFoundDest === 'Yard' ? 'YARD' : 'SITE'
+        })
+        .eq('id', selectedComponent.id);
+      
+      // V28.10: Decrement yard inventory ONLY if NOT going to Trans (Site IN)
+      // For Trans, inventory updated when Site confirms receipt
+      if (partialFoundDest !== 'Trans') {
+        await supabase.rpc('decrement_yard_qty', { 
+          p_ident_code: selectedComponent.ident_code, 
+          p_qty: foundQty 
+        });
+      }
+
+      await logHistory(selectedComponent.id, 'Partial Found', 'Yard', partialFoundDest, 
+        `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
+
+      // Create new sub-request for not found items
+      const { data: subData } = await supabase
+        .from('requests')
+        .select('sub_number')
+        .eq('request_number', selectedComponent.requests.request_number)
+        .order('sub_number', { ascending: false })
+        .limit(1);
+      
+      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+      
+      // V30.0: Get parent_request_number - use existing parent or the mother request_number
+      const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
+      
+      const { data: newReq, error: reqError } = await supabase.from('requests')
+        .insert({
+          request_number: selectedComponent.requests.request_number,
+          sub_number: nextSub,
+          parent_request_number: parentReqNum,
+          request_type: selectedComponent.requests.request_type,
+          sub_category: selectedComponent.requests.sub_category,
+          iso_number: selectedComponent.requests.iso_number,
+          full_spool_number: selectedComponent.requests.full_spool_number,
+          hf_number: selectedComponent.requests.hf_number,
+          test_pack_number: selectedComponent.requests.test_pack_number,
+          requester_user_id: selectedComponent.requests.requester_user_id,
+          created_by_name: selectedComponent.requests.created_by_name
+        })
+        .select()
+        .single();
+      
+      if (reqError || !newReq) {
+        console.error('Request insert error:', reqError);
+        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+        loadComponents();
+        return;
+      }
+      
+      // V28.7: Create component for not found quantity with selected destination
+      await supabase.from('request_components').insert({
+        request_id: newReq.id,
+        ident_code: selectedComponent.ident_code,
+        description: selectedComponent.description,
+        tag: selectedComponent.tag,
+        dia1: selectedComponent.dia1,
+        quantity: notFoundQty,
+        status: partialNotFoundDest,
+        current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
       });
+
+      await supabase.from('movements').insert({
+        ident_code: selectedComponent.ident_code,
+        movement_type: 'TRANSFER',
+        quantity: foundQty,
+        from_location: 'YARD',
+        to_location: partialFoundDest === 'Trans' ? 'TRANSIT' : partialFoundDest,
+        performed_by: user.full_name,
+        note: `Partial - ${notFoundQty} to ${partialNotFoundDest}`
+      });
+
+      setShowPartialModal(false);
+      setPartialQty('');
+      setPartialFoundDest('Trans');
+      setPartialNotFoundDest('Eng');
+      loadComponents();
+    } catch (error) {
+      console.error('Partial split error:', error);
+      alert('Error during partial split: ' + error.message);
+      loadComponents();
     }
-
-    await logHistory(selectedComponent.id, 'Partial Found', 'Yard', partialFoundDest, 
-      `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
-
-    // Create new sub-request for not found items
-    const { data: subData } = await supabase
-      .from('requests')
-      .select('sub_number')
-      .eq('request_number', selectedComponent.requests.request_number)
-      .order('sub_number', { ascending: false })
-      .limit(1);
-    
-    const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-    
-    // V30.0: Get parent_request_number - use existing parent or the mother request_number
-    const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
-    
-    const { data: newReq } = await supabase.from('requests')
-      .insert({
-        request_number: selectedComponent.requests.request_number,
-        sub_number: nextSub,
-        parent_request_number: parentReqNum, // V30.0: Link to mother request
-        request_type: selectedComponent.requests.request_type,
-        sub_category: selectedComponent.requests.sub_category,
-        iso_number: selectedComponent.requests.iso_number,
-        full_spool_number: selectedComponent.requests.full_spool_number,
-        hf_number: selectedComponent.requests.hf_number,
-        test_pack_number: selectedComponent.requests.test_pack_number,
-        requester_user_id: selectedComponent.requests.requester_user_id, // V30.0: Preserve requester
-        created_by_name: selectedComponent.requests.created_by_name // V30.0: Preserve requester name
-      })
-      .select()
-      .single();
-    
-    // V28.7: Create component for not found quantity with selected destination
-    await supabase.from('request_components').insert({
-      request_id: newReq.id,
-      ident_code: selectedComponent.ident_code,
-      description: selectedComponent.description,
-      tag: selectedComponent.tag,
-      dia1: selectedComponent.dia1,
-      quantity: notFoundQty,
-      status: partialNotFoundDest,
-      current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
-    });
-
-    await supabase.from('movements').insert({
-      ident_code: selectedComponent.ident_code,
-      movement_type: 'TRANSFER',
-      quantity: foundQty,
-      from_location: 'YARD',
-      to_location: partialFoundDest === 'Trans' ? 'TRANSIT' : partialFoundDest,
-      performed_by: user.full_name,
-      note: `Partial - ${notFoundQty} to ${partialNotFoundDest}`
-    });
-
-    setShowPartialModal(false);
-    setPartialQty('');
-    setPartialFoundDest('Trans');
-    setPartialNotFoundDest('Eng');
-    loadComponents();
   };
 
   // Handle Engineering Check actions for Yard
@@ -5306,48 +5326,42 @@ function WHYardPage({ user }) {
       const currentReq = selectedCheck.requests;
       const reqNumber = currentReq?.request_number;
       
-      // V32.0: Calculate new level numbers based on current position
-      const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
-      const currentWhSplit = currentReq?.level_wh_split || 0;
-      
-      // Get next yard_split number
-      const { data: yardSplitData } = await supabase
+      // Get next sub_number
+      const { data: subData } = await supabase
         .from('requests')
-        .select('level_yard_split')
+        .select('sub_number')
         .eq('request_number', reqNumber)
-        .eq('level_component', currentComponent)
-        .eq('level_wh_split', currentWhSplit > 0 ? currentWhSplit : 2) // Use current or default to Yard (2)
-        .order('level_yard_split', { ascending: false })
+        .order('sub_number', { ascending: false })
         .limit(1);
       
-      const nextYardSplit = (yardSplitData?.[0]?.level_yard_split || 0) + 1;
-      const whSplitLevel = currentWhSplit > 0 ? currentWhSplit : 2; // Default to Yard if not set
+      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
       
-      // V32.0: Create sub-request for NOT FOUND items with new 4-level format
-      const notFoundReqNumber = formatRequestNumber(reqNumber, currentComponent, whSplitLevel, nextYardSplit);
+      // Create sub-request for NOT FOUND items
+      const insertData = {
+        request_number: reqNumber,
+        sub_number: nextSub,
+        parent_request_number: currentReq?.parent_request_number || reqNumber,
+        request_type: currentReq?.request_type,
+        sub_category: currentReq?.sub_category,
+        iso_number: currentReq?.iso_number,
+        full_spool_number: currentReq?.full_spool_number,
+        hf_number: currentReq?.hf_number,
+        test_pack_number: currentReq?.test_pack_number,
+        requester_user_id: currentReq?.requester_user_id,
+        created_by_name: currentReq?.created_by_name
+      };
       
-      const { data: newReq } = await supabase.from('requests')
-        .insert({
-          request_number: reqNumber,
-          sub_number: currentComponent,
-          level_component: currentComponent,
-          level_wh_split: whSplitLevel,
-          level_yard_split: nextYardSplit,
-          request_number_full: notFoundReqNumber,
-          parent_request_id: currentReq?.id,
-          parent_request_number: currentReq?.parent_request_number || reqNumber,
-          sent_to: null, // Goes to Engineering To Process
-          request_type: currentReq?.request_type,
-          sub_category: currentReq?.sub_category,
-          iso_number: currentReq?.iso_number,
-          full_spool_number: currentReq?.full_spool_number,
-          hf_number: currentReq?.hf_number,
-          test_pack_number: currentReq?.test_pack_number,
-          requester_user_id: currentReq?.requester_user_id,
-          created_by_name: currentReq?.created_by_name
-        })
+      const { data: newReq, error: reqError } = await supabase.from('requests')
+        .insert(insertData)
         .select()
         .single();
+      
+      if (reqError || !newReq) {
+        console.error('Request insert error:', reqError);
+        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+        loadComponents();
+        return;
+      }
       
       // Create component for NOT FOUND quantity - goes to Engineering "To Process"
       await supabase.from('request_components').insert({
@@ -5357,7 +5371,7 @@ function WHYardPage({ user }) {
         tag: selectedCheck.tag,
         dia1: selectedCheck.dia1,
         quantity: notFoundQty,
-        status: 'Eng', // V32.0: Not found items go to Engineering To Process
+        status: 'Eng',
         current_location: 'SITE',
         has_eng_check: false,
         eng_check_message: null,
