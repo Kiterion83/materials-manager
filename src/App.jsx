@@ -6233,12 +6233,15 @@ function EngineeringPage({ user }) {
     
     try {
       // Waiting for Check: items sent to Site/Yard for verification
+      // V32.0: Exclude parent items with 'Both' - only show child items with 'WH_Site' or 'Yard'
       const { data: waitingData } = await supabase
         .from('request_components')
         .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
-        .eq('has_eng_check', true);
+        .eq('has_eng_check', true)
+        .neq('eng_check_sent_to', 'Both'); // Exclude parent items
       
       // To Process: items in Eng status without pending check
+      // V32.0: Also exclude Eng_Both status (parent waiting for children)
       const { data: processData } = await supabase
         .from('request_components')
         .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
