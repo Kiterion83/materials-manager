@@ -2873,12 +2873,16 @@ function RequestsPage({ user }) {
       const { data: counterData } = await supabase.rpc('get_next_request_number');
       const reqNumber = counterData || nextNumber;
 
-      // Create request
+      // Create request with 4-level format
       const { data: request, error: reqError } = await supabase
         .from('requests')
         .insert({
           request_number: reqNumber,
           sub_number: 0,
+          level_component: 0,
+          level_wh_split: 0,
+          level_yard_split: 0,
+          request_number_full: formatRequestNumber(reqNumber, 0, 0, 0),
           requester_user_id: user.id,
           created_by_name: user.full_name,  // V29.0: Store requester name
           request_type: requestType,
@@ -2957,12 +2961,12 @@ function RequestsPage({ user }) {
             to_status: status,
             performed_by_user_id: user.id,
             performed_by_name: user.full_name,
-            note: `Request ${String(reqNumber).padStart(5, '0')}-0 created and sent to ${destination.toUpperCase()}`
+            note: `Request ${String(reqNumber).padStart(5, '0')}-00-00-00 created and sent to ${destination.toUpperCase()}`
           });
         }
       }
 
-      setMessage({ type: 'success', text: `Request ${String(reqNumber).padStart(5, '0')}-0 created successfully!` });
+      setMessage({ type: 'success', text: `Request ${String(reqNumber).padStart(5, '0')}-00-00-00 created successfully!` });
       
       // Reset form
       setIsoNumber('');
@@ -3002,7 +3006,7 @@ function RequestsPage({ user }) {
           borderRadius: '6px',
           fontSize: '14px'
         }}>
-          Preview: <strong>{String(nextNumber).padStart(5, '0')}-0</strong>
+          Preview: <strong>{String(nextNumber).padStart(5, '0')}-00-00-00</strong>
         </div>
       </div>
 
