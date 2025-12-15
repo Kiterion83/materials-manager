@@ -2,9 +2,14 @@
 // MATERIALS MANAGER V32.0 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
 // V32.0 Changes:
-//   - Engineering Checks: "Found (All)" disabled when qty_site < qty_requested
-//   - Engineering Checks: Only "Partial" available when quantity insufficient
-//   - Preparation for 4-level request numbering system (00058-01-02-01)
+//   - Request Numbering: 4-level system XXXXX-LL-SS-PP
+//     - LL = level_component (00-99)
+//     - SS = level_wh_split (00=none, 01=Site, 02=Yard)
+//     - PP = level_yard_split (00=none, 01+=sub-split)
+//   - Engineering Checks: "Found (All)" disabled when qty < requested
+//   - Send to Both: Creates parallel sub-requests for Site and Yard
+//   - Partial from Yard: Auto-creates not-found sub-request in Eng
+//   - sent_to tracking: Both → Site/Yard → (complete)
 // V31.0 Changes:
 //   - MIR Page: Generate RK Document (📄) - auto-fills template with MIR/RK numbers and date
 //   - MIR Page: Download tracking - records who downloaded and when
@@ -215,16 +220,31 @@ function formatRequestNumber(base, component = 0, whSplit = 0, yardSplit = 0) {
   return `${String(base).padStart(5, '0')}-${String(component).padStart(2, '0')}-${String(whSplit).padStart(2, '0')}-${String(yardSplit).padStart(2, '0')}`;
 }
 
-// Get display version of request number (can show short or full)
-function displayRequestNumber(request, showFull = false) {
+// Get display version of request number (shows 4-level format when available)
+function displayRequestNumber(request, showFull = true) {
   // If request_number_full exists, use it
   if (request?.request_number_full) {
     return request.request_number_full;
   }
-  // Fallback to old format
+  // Check if we have level info
+  if (request?.level_component !== undefined || request?.level_wh_split !== undefined || request?.level_yard_split !== undefined) {
+    const base = String(request?.request_number || 0).padStart(5, '0');
+    const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
+    const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
+    const yard = String(request?.level_yard_split ?? 0).padStart(2, '0');
+    return `${base}-${comp}-${wh}-${yard}`;
+  }
+  // Fallback to old format (backward compatible)
   const reqNum = String(request?.request_number || 0).padStart(5, '0');
-  const subNum = String(request?.sub_number || 0).padStart(2, '0');
-  return `${reqNum}-${subNum}-00-00`;
+  const subNum = String(request?.sub_number ?? 0);
+  return `${reqNum}-${subNum}`;
+}
+
+// Short display version (just base-component for tables)
+function displayRequestNumberShort(request) {
+  const reqNum = String(request?.request_number || 0).padStart(5, '0');
+  const subNum = String(request?.sub_number ?? request?.level_component ?? 0);
+  return `${reqNum}-${subNum}`;
 }
 
 // Check if this is a sub-request (has parent)
@@ -3721,7 +3741,7 @@ function WHSitePage({ user }) {
     // Load components with full request info
     const { data: siteData, error: siteError } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'WH_Site');
 
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
@@ -3730,7 +3750,7 @@ function WHSitePage({ user }) {
     // V28.10: Include "Both" in filter
     const { data: checksData, error: checksError } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
       .in('eng_check_sent_to', ['WH_Site', 'Both']);
 
@@ -3986,7 +4006,19 @@ function WHSitePage({ user }) {
   const handleCheckAction = async (check, action) => {
     try {
       if (action === 'check_found') {
-        // Found → move to ToCollect
+        // V32.0: If sent to "Both", Site has found - update to wait for Yard
+        if (check.eng_check_sent_to === 'Both') {
+          await supabase.from('request_components')
+            .update({ 
+              eng_check_sent_to: 'Yard',
+              eng_check_message: (check.eng_check_message || '') + ' [Site: Found ✓]'
+            })
+            .eq('id', check.id);
+          await logHistory(check.id, 'Check - Site Found', 'WH_Site', 'Eng', 'Found in Site, waiting for Yard response');
+          loadComponents();
+          return;
+        }
+        // Single destination: Found → move to ToCollect
         await supabase.from('request_components')
           .update({ 
             status: 'ToCollect', 
@@ -4865,14 +4897,14 @@ function WHYardPage({ user }) {
     
     const { data: yardData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Yard');
 
     // Load Engineering Checks sent to Yard
     // V28.10: Include "Both" in filter
     const { data: checksData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('has_eng_check', true)
       .in('eng_check_sent_to', ['Yard', 'Both']);
 
@@ -5126,6 +5158,18 @@ function WHYardPage({ user }) {
       if (action === 'check_found') {
         if (available < check.quantity) {
           alert(`Only ${available} available in YARD!`);
+          return;
+        }
+        // V32.0: If sent to "Both", Yard has found - update to wait for Site
+        if (check.eng_check_sent_to === 'Both') {
+          await supabase.from('request_components')
+            .update({ 
+              eng_check_sent_to: 'WH_Site',
+              eng_check_message: (check.eng_check_message || '') + ' [Yard: Found ✓]'
+            })
+            .eq('id', check.id);
+          await logHistory(check.id, 'Check - Yard Found', 'Yard', 'Eng', 'Found in Yard, waiting for Site response');
+          loadComponents();
           return;
         }
         // V28.10: Found → move to Trans (Site IN) - inventory changes ONLY when Site confirms
@@ -6177,13 +6221,13 @@ function EngineeringPage({ user }) {
       // Waiting for Check: items sent to Site/Yard for verification
       const { data: waitingData } = await supabase
         .from('request_components')
-        .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+        .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
         .eq('has_eng_check', true);
       
       // To Process: items in Eng status without pending check
       const { data: processData } = await supabase
         .from('request_components')
-        .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+        .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
         .eq('status', 'Eng')
         .eq('has_eng_check', false);
       
@@ -6300,42 +6344,71 @@ function EngineeringPage({ user }) {
         const reqNumber = selectedComponent.requests?.request_number;
         const currentReq = selectedComponent.requests;
         
+        if (!reqNumber) {
+          alert('Error: Request number not found');
+          return;
+        }
+        
         // Calculate new level numbers
         const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
         
-        // Create sub-request for WH Site (level_wh_split = 1)
-        const { data: siteReq } = await supabase.from('requests')
-          .insert({
-            request_number: reqNumber,
-            sub_number: currentComponent, // Keep same component level
-            level_component: currentComponent,
-            level_wh_split: 1, // Site
-            level_yard_split: 0,
-            request_number_full: formatRequestNumber(reqNumber, currentComponent, 1, 0),
-            parent_request_id: currentReq?.id,
-            parent_request_number: currentReq?.parent_request_number || reqNumber,
-            sent_to: 'WH_Site',
-            request_type: currentReq?.request_type,
-            sub_category: currentReq?.sub_category,
-            iso_number: currentReq?.iso_number,
-            full_spool_number: currentReq?.full_spool_number,
-            hf_number: currentReq?.hf_number,
-            test_pack_number: currentReq?.test_pack_number,
-            requester_user_id: currentReq?.requester_user_id,
-            created_by_name: currentReq?.created_by_name
-          })
+        // Get next sub_number for the new requests
+        const { data: subData } = await supabase
+          .from('requests')
+          .select('sub_number')
+          .eq('request_number', reqNumber)
+          .order('sub_number', { ascending: false })
+          .limit(1);
+        
+        const baseSubNumber = (subData?.[0]?.sub_number || 0);
+        
+        // Create sub-request for WH Site
+        const siteInsertData = {
+          request_number: reqNumber,
+          sub_number: baseSubNumber + 1,
+          parent_request_number: currentReq?.parent_request_number || reqNumber,
+          request_type: currentReq?.request_type,
+          sub_category: currentReq?.sub_category,
+          iso_number: currentReq?.iso_number,
+          full_spool_number: currentReq?.full_spool_number,
+          hf_number: currentReq?.hf_number,
+          test_pack_number: currentReq?.test_pack_number,
+          requester_user_id: currentReq?.requester_user_id,
+          created_by_name: currentReq?.created_by_name
+        };
+        
+        // Add V32 fields if migration was run (they exist)
+        try {
+          siteInsertData.level_component = currentComponent;
+          siteInsertData.level_wh_split = 1;
+          siteInsertData.level_yard_split = 0;
+          siteInsertData.request_number_full = formatRequestNumber(reqNumber, currentComponent, 1, 0);
+          siteInsertData.parent_request_id = currentReq?.id;
+          siteInsertData.sent_to = 'WH_Site';
+        } catch (e) {
+          console.log('V32 fields not available, using basic insert');
+        }
+        
+        const { data: siteReq, error: siteError } = await supabase.from('requests')
+          .insert(siteInsertData)
           .select()
           .single();
         
+        if (siteError || !siteReq) {
+          console.error('Site request insert error:', siteError);
+          alert('Error creating Site sub-request: ' + (siteError?.message || 'Unknown error'));
+          return;
+        }
+        
         // Create component for Site sub-request
-        await supabase.from('request_components').insert({
+        const { error: siteCompError } = await supabase.from('request_components').insert({
           request_id: siteReq.id,
           ident_code: selectedComponent.ident_code,
           description: selectedComponent.description,
           tag: selectedComponent.tag,
           dia1: selectedComponent.dia1,
           quantity: selectedComponent.quantity,
-          status: 'Eng', // Will be shown in WH Site Engineering Checks
+          status: 'Eng',
           current_location: 'SITE',
           has_eng_check: true,
           eng_check_message: checkMessage,
@@ -6344,32 +6417,50 @@ function EngineeringPage({ user }) {
           split_type: 'site'
         });
         
-        // Create sub-request for WH Yard (level_wh_split = 2)
-        const { data: yardReq } = await supabase.from('requests')
-          .insert({
-            request_number: reqNumber,
-            sub_number: currentComponent,
-            level_component: currentComponent,
-            level_wh_split: 2, // Yard
-            level_yard_split: 0,
-            request_number_full: formatRequestNumber(reqNumber, currentComponent, 2, 0),
-            parent_request_id: currentReq?.id,
-            parent_request_number: currentReq?.parent_request_number || reqNumber,
-            sent_to: 'Yard',
-            request_type: currentReq?.request_type,
-            sub_category: currentReq?.sub_category,
-            iso_number: currentReq?.iso_number,
-            full_spool_number: currentReq?.full_spool_number,
-            hf_number: currentReq?.hf_number,
-            test_pack_number: currentReq?.test_pack_number,
-            requester_user_id: currentReq?.requester_user_id,
-            created_by_name: currentReq?.created_by_name
-          })
+        if (siteCompError) {
+          console.error('Site component insert error:', siteCompError);
+        }
+        
+        // Create sub-request for WH Yard
+        const yardInsertData = {
+          request_number: reqNumber,
+          sub_number: baseSubNumber + 2,
+          parent_request_number: currentReq?.parent_request_number || reqNumber,
+          request_type: currentReq?.request_type,
+          sub_category: currentReq?.sub_category,
+          iso_number: currentReq?.iso_number,
+          full_spool_number: currentReq?.full_spool_number,
+          hf_number: currentReq?.hf_number,
+          test_pack_number: currentReq?.test_pack_number,
+          requester_user_id: currentReq?.requester_user_id,
+          created_by_name: currentReq?.created_by_name
+        };
+        
+        // Add V32 fields if migration was run
+        try {
+          yardInsertData.level_component = currentComponent;
+          yardInsertData.level_wh_split = 2;
+          yardInsertData.level_yard_split = 0;
+          yardInsertData.request_number_full = formatRequestNumber(reqNumber, currentComponent, 2, 0);
+          yardInsertData.parent_request_id = currentReq?.id;
+          yardInsertData.sent_to = 'Yard';
+        } catch (e) {
+          console.log('V32 fields not available, using basic insert');
+        }
+        
+        const { data: yardReq, error: yardError } = await supabase.from('requests')
+          .insert(yardInsertData)
           .select()
           .single();
         
+        if (yardError || !yardReq) {
+          console.error('Yard request insert error:', yardError);
+          alert('Error creating Yard sub-request: ' + (yardError?.message || 'Unknown error'));
+          return;
+        }
+        
         // Create component for Yard sub-request
-        await supabase.from('request_components').insert({
+        const { error: yardCompError } = await supabase.from('request_components').insert({
           request_id: yardReq.id,
           ident_code: selectedComponent.ident_code,
           description: selectedComponent.description,
@@ -6385,23 +6476,27 @@ function EngineeringPage({ user }) {
           split_type: 'yard'
         });
         
+        if (yardCompError) {
+          console.error('Yard component insert error:', yardCompError);
+        }
+        
         // Update original component - mark as parent with "Both" status
         await supabase.from('request_components')
           .update({ 
             has_eng_check: true, 
             eng_check_message: checkMessage,
             eng_check_sent_to: 'Both',
-            status: 'Eng_Both' // New status to indicate waiting for both
+            status: 'Eng_Both'
           })
           .eq('id', selectedComponent.id);
         
-        // Update original request with sent_to
+        // Update original request
         await supabase.from('requests')
           .update({ sent_to: 'Both' })
           .eq('id', currentReq?.id);
         
         await logHistory(selectedComponent.id, `Check sent to Both (Site & Yard)`, 'Eng', 'Eng', 
-          `Split: ${formatRequestNumber(reqNumber, currentComponent, 1, 0)} (Site) + ${formatRequestNumber(reqNumber, currentComponent, 2, 0)} (Yard)`);
+          `Split: ${reqNumber}-${baseSubNumber + 1} (Site) + ${reqNumber}-${baseSubNumber + 2} (Yard)`);
         
       } else {
         // Single destination (WH_Site or Yard) - original behavior
@@ -10094,7 +10189,7 @@ function SparePartsPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     const { data } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Spare');
     
     if (data) {
@@ -10869,7 +10964,7 @@ function ManagementPage({ user }) {
   const loadComponents = async () => {
     setLoading(true);
     const { data } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
       .eq('status', 'Mng');
     if (data) setComponents(data);
     setLoading(false);
