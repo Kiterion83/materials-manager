@@ -193,6 +193,48 @@ function canModifyPage(user, page) {
   }
 }
 
+// ============================================================
+// V32.0: 4-Level Request Numbering System Helper Functions
+// Format: XXXXX-LL-SS-PP (base-component-wh_split-yard_split)
+// ============================================================
+
+// Parse request_number_full into components
+function parseRequestNumber(requestNumberFull) {
+  if (!requestNumberFull) return { base: 0, component: 0, whSplit: 0, yardSplit: 0 };
+  const parts = String(requestNumberFull).split('-');
+  return {
+    base: parseInt(parts[0]) || 0,
+    component: parseInt(parts[1]) || 0,
+    whSplit: parseInt(parts[2]) || 0,
+    yardSplit: parseInt(parts[3]) || 0
+  };
+}
+
+// Format request number from components
+function formatRequestNumber(base, component = 0, whSplit = 0, yardSplit = 0) {
+  return `${String(base).padStart(5, '0')}-${String(component).padStart(2, '0')}-${String(whSplit).padStart(2, '0')}-${String(yardSplit).padStart(2, '0')}`;
+}
+
+// Get display version of request number (can show short or full)
+function displayRequestNumber(request, showFull = false) {
+  // If request_number_full exists, use it
+  if (request?.request_number_full) {
+    return request.request_number_full;
+  }
+  // Fallback to old format
+  const reqNum = String(request?.request_number || 0).padStart(5, '0');
+  const subNum = String(request?.sub_number || 0).padStart(2, '0');
+  return `${reqNum}-${subNum}-00-00`;
+}
+
+// Check if this is a sub-request (has parent)
+function isSubRequest(request) {
+  return request?.parent_request_id || 
+         request?.level_component > 0 || 
+         request?.level_wh_split > 0 || 
+         request?.level_yard_split > 0;
+}
+
 // V31.0: RK Document Template URL
 // Option 1: Put RK_0020_TEMPLATE.docx in public folder and use '/RK_0020_TEMPLATE.docx'
 // Option 2: Upload to Supabase Storage and use the public URL
@@ -4054,7 +4096,7 @@ function WHSitePage({ user }) {
     }
   };
 
-  // Handle Engineering Check Partial Submit
+  // V32.0: Handle Engineering Check Partial Submit for WH Site
   const handleCheckPartialSubmit = async () => {
     if (!selectedCheck || !checkPartialQty) return;
     
@@ -4067,41 +4109,53 @@ function WHSitePage({ user }) {
     }
     
     try {
-      // Get current request info
-      const reqNumber = selectedCheck.requests?.request_number;
+      const currentReq = selectedCheck.requests;
+      const reqNumber = currentReq?.request_number;
       
-      // Get next sub_number for this request
-      const { data: subData } = await supabase
+      // V32.0: Calculate new level numbers
+      const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
+      const currentWhSplit = currentReq?.level_wh_split || 0;
+      
+      // Get next yard_split number
+      const { data: yardSplitData } = await supabase
         .from('requests')
-        .select('sub_number')
+        .select('level_yard_split')
         .eq('request_number', reqNumber)
-        .order('sub_number', { ascending: false })
+        .eq('level_component', currentComponent)
+        .eq('level_wh_split', currentWhSplit > 0 ? currentWhSplit : 1) // Use current or default to Site (1)
+        .order('level_yard_split', { ascending: false })
         .limit(1);
       
-      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+      const nextYardSplit = (yardSplitData?.[0]?.level_yard_split || 0) + 1;
+      const whSplitLevel = currentWhSplit > 0 ? currentWhSplit : 1;
       
-      // V30.0: Get parent_request_number - use existing parent or the mother request_number
-      const parentReqNum = selectedCheck.requests?.parent_request_number || reqNumber;
+      // V32.0: Create sub-request for NOT FOUND items
+      const notFoundReqNumber = formatRequestNumber(reqNumber, currentComponent, whSplitLevel, nextYardSplit);
       
-      // Create new sub-request for NOT FOUND items
       const { data: newReq } = await supabase.from('requests')
         .insert({
           request_number: reqNumber,
-          sub_number: nextSub,
-          parent_request_number: parentReqNum, // V30.0: Link to mother request
-          request_type: selectedCheck.requests?.request_type,
-          sub_category: selectedCheck.requests?.sub_category,
-          iso_number: selectedCheck.requests?.iso_number,
-          full_spool_number: selectedCheck.requests?.full_spool_number,
-          hf_number: selectedCheck.requests?.hf_number,
-          test_pack_number: selectedCheck.requests?.test_pack_number, // V30.0: Preserve TP number
-          requester_user_id: selectedCheck.requests?.requester_user_id, // V30.0: Preserve requester
-          created_by_name: selectedCheck.requests?.created_by_name // V30.0: Preserve requester name
+          sub_number: currentComponent,
+          level_component: currentComponent,
+          level_wh_split: whSplitLevel,
+          level_yard_split: nextYardSplit,
+          request_number_full: notFoundReqNumber,
+          parent_request_id: currentReq?.id,
+          parent_request_number: currentReq?.parent_request_number || reqNumber,
+          sent_to: null,
+          request_type: currentReq?.request_type,
+          sub_category: currentReq?.sub_category,
+          iso_number: currentReq?.iso_number,
+          full_spool_number: currentReq?.full_spool_number,
+          hf_number: currentReq?.hf_number,
+          test_pack_number: currentReq?.test_pack_number,
+          requester_user_id: currentReq?.requester_user_id,
+          created_by_name: currentReq?.created_by_name
         })
         .select()
         .single();
       
-      // Create component for NOT FOUND quantity in new sub-request
+      // Create component for NOT FOUND quantity - goes to destination
       await supabase.from('request_components').insert({
         request_id: newReq.id,
         ident_code: selectedCheck.ident_code,
@@ -4109,27 +4163,30 @@ function WHSitePage({ user }) {
         tag: selectedCheck.tag,
         dia1: selectedCheck.dia1,
         quantity: notFoundQty,
-        status: checkNotFoundDest,
+        status: checkNotFoundDest === 'Eng' ? 'Eng' : checkNotFoundDest,
         current_location: checkNotFoundDest === 'Yard' ? 'YARD' : 'SITE',
         has_eng_check: false,
         eng_check_message: null,
-        eng_check_sent_to: null
+        eng_check_sent_to: null,
+        parent_component_id: selectedCheck.id,
+        split_type: 'not_found'
       });
       
-      // Update original component with FOUND quantity and new status
+      // Update original component with FOUND quantity
       await supabase.from('request_components')
         .update({ 
           quantity: foundQty,
           status: checkFoundDest,
           has_eng_check: false,
           eng_check_message: null,
-          eng_check_sent_to: null
+          eng_check_sent_to: null,
+          split_type: 'found'
         })
         .eq('id', selectedCheck.id);
       
-      // Log history for original (found)
+      // Log history
       await logHistory(selectedCheck.id, 'Check - Partial Found', 'WH_Site', checkFoundDest, 
-        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${String(reqNumber).padStart(5, '0')}-${nextSub})`);
+        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${notFoundReqNumber})`);
       
       setShowCheckPartialModal(false);
       setSelectedCheck(null);
@@ -5182,7 +5239,8 @@ function WHYardPage({ user }) {
     }
   };
 
-  // Handle Engineering Check Partial Submit for Yard
+  // V32.0: Handle Engineering Check Partial Submit for Yard
+  // When Yard does Partial, creates sub-request for "not found" items → Engineering
   const handleCheckPartialSubmit = async () => {
     if (!selectedCheck || !checkPartialQty) return;
     
@@ -5201,41 +5259,53 @@ function WHYardPage({ user }) {
     }
     
     try {
-      // Get current request info
-      const reqNumber = selectedCheck.requests?.request_number;
+      const currentReq = selectedCheck.requests;
+      const reqNumber = currentReq?.request_number;
       
-      // Get next sub_number for this request
-      const { data: subData } = await supabase
+      // V32.0: Calculate new level numbers based on current position
+      const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
+      const currentWhSplit = currentReq?.level_wh_split || 0;
+      
+      // Get next yard_split number
+      const { data: yardSplitData } = await supabase
         .from('requests')
-        .select('sub_number')
+        .select('level_yard_split')
         .eq('request_number', reqNumber)
-        .order('sub_number', { ascending: false })
+        .eq('level_component', currentComponent)
+        .eq('level_wh_split', currentWhSplit > 0 ? currentWhSplit : 2) // Use current or default to Yard (2)
+        .order('level_yard_split', { ascending: false })
         .limit(1);
       
-      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+      const nextYardSplit = (yardSplitData?.[0]?.level_yard_split || 0) + 1;
+      const whSplitLevel = currentWhSplit > 0 ? currentWhSplit : 2; // Default to Yard if not set
       
-      // V30.0: Get parent_request_number - use existing parent or the mother request_number
-      const parentReqNumYard = selectedCheck.requests?.parent_request_number || reqNumber;
+      // V32.0: Create sub-request for NOT FOUND items with new 4-level format
+      const notFoundReqNumber = formatRequestNumber(reqNumber, currentComponent, whSplitLevel, nextYardSplit);
       
-      // Create new sub-request for NOT FOUND items
       const { data: newReq } = await supabase.from('requests')
         .insert({
           request_number: reqNumber,
-          sub_number: nextSub,
-          parent_request_number: parentReqNumYard, // V30.0: Link to mother request
-          request_type: selectedCheck.requests?.request_type,
-          sub_category: selectedCheck.requests?.sub_category,
-          iso_number: selectedCheck.requests?.iso_number,
-          full_spool_number: selectedCheck.requests?.full_spool_number,
-          hf_number: selectedCheck.requests?.hf_number,
-          test_pack_number: selectedCheck.requests?.test_pack_number, // V30.0: Preserve TP number
-          requester_user_id: selectedCheck.requests?.requester_user_id, // V30.0: Preserve requester
-          created_by_name: selectedCheck.requests?.created_by_name // V30.0: Preserve requester name
+          sub_number: currentComponent,
+          level_component: currentComponent,
+          level_wh_split: whSplitLevel,
+          level_yard_split: nextYardSplit,
+          request_number_full: notFoundReqNumber,
+          parent_request_id: currentReq?.id,
+          parent_request_number: currentReq?.parent_request_number || reqNumber,
+          sent_to: null, // Goes to Engineering To Process
+          request_type: currentReq?.request_type,
+          sub_category: currentReq?.sub_category,
+          iso_number: currentReq?.iso_number,
+          full_spool_number: currentReq?.full_spool_number,
+          hf_number: currentReq?.hf_number,
+          test_pack_number: currentReq?.test_pack_number,
+          requester_user_id: currentReq?.requester_user_id,
+          created_by_name: currentReq?.created_by_name
         })
         .select()
         .single();
       
-      // Create component for NOT FOUND quantity in new sub-request
+      // Create component for NOT FOUND quantity - goes to Engineering "To Process"
       await supabase.from('request_components').insert({
         request_id: newReq.id,
         ident_code: selectedCheck.ident_code,
@@ -5243,16 +5313,16 @@ function WHYardPage({ user }) {
         tag: selectedCheck.tag,
         dia1: selectedCheck.dia1,
         quantity: notFoundQty,
-        status: checkNotFoundDest,
-        current_location: checkNotFoundDest === 'WH_Site' ? 'SITE' : (checkNotFoundDest === 'Yard' ? 'YARD' : 'SITE'),
+        status: 'Eng', // V32.0: Not found items go to Engineering To Process
+        current_location: 'SITE',
         has_eng_check: false,
         eng_check_message: null,
-        eng_check_sent_to: null
+        eng_check_sent_to: null,
+        parent_component_id: selectedCheck.id,
+        split_type: 'not_found'
       });
       
       // V28.10: If found items go to Trans (Site IN), do NOT decrement yard here
-      // Inventory will be updated when Site confirms receipt
-      // Only decrement if NOT going to Trans
       if (checkFoundDest !== 'Trans') {
         await supabase.rpc('decrement_yard_qty', { 
           p_ident_code: selectedCheck.ident_code, 
@@ -5260,20 +5330,21 @@ function WHYardPage({ user }) {
         });
       }
       
-      // Update original component with FOUND quantity and new status
+      // Update original component with FOUND quantity - goes to Site IN
       await supabase.from('request_components')
         .update({ 
           quantity: foundQty,
           status: checkFoundDest,
           has_eng_check: false,
           eng_check_message: null,
-          eng_check_sent_to: null
+          eng_check_sent_to: null,
+          split_type: 'found'
         })
         .eq('id', selectedCheck.id);
       
-      // Log history for original (found)
+      // Log history with new format
       await logHistory(selectedCheck.id, 'Check - Partial Found', 'Yard', checkFoundDest, 
-        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${String(reqNumber).padStart(5, '0')}-${nextSub})`);
+        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → Eng (${notFoundReqNumber})`);
       
       setShowCheckPartialModal(false);
       setSelectedCheck(null);
@@ -6220,23 +6291,138 @@ function EngineeringPage({ user }) {
     }
   };
 
-  // Send Check - supporta Site, Yard, o Both
+  // V32.0: Send Check - supporta Site, Yard, o Both
+  // When "Both" is selected, creates parallel sub-requests for Site and Yard
   const sendCheck = async () => {
-    // V28.10: Fix - when "Both" is selected, save "Both" directly instead of looping
-    await supabase.from('request_components')
-      .update({ 
-        has_eng_check: true, 
-        eng_check_message: checkMessage,
-        eng_check_sent_to: checkDestination  // "WH_Site", "Yard", or "Both"
-      })
-      .eq('id', selectedComponent.id);
-    
-    await logHistory(selectedComponent.id, `Check sent to ${checkDestination}`, 'Eng', 'Eng', checkMessage);
-    
-    setShowCheckModal(false);
-    setCheckMessage('');
-    setCheckDestination('WH_Site');
-    loadComponents();
+    try {
+      if (checkDestination === 'Both') {
+        // V32.0: "Send to Both" - Create two parallel sub-requests
+        const reqNumber = selectedComponent.requests?.request_number;
+        const currentReq = selectedComponent.requests;
+        
+        // Calculate new level numbers
+        const currentComponent = currentReq?.level_component || currentReq?.sub_number || 0;
+        
+        // Create sub-request for WH Site (level_wh_split = 1)
+        const { data: siteReq } = await supabase.from('requests')
+          .insert({
+            request_number: reqNumber,
+            sub_number: currentComponent, // Keep same component level
+            level_component: currentComponent,
+            level_wh_split: 1, // Site
+            level_yard_split: 0,
+            request_number_full: formatRequestNumber(reqNumber, currentComponent, 1, 0),
+            parent_request_id: currentReq?.id,
+            parent_request_number: currentReq?.parent_request_number || reqNumber,
+            sent_to: 'WH_Site',
+            request_type: currentReq?.request_type,
+            sub_category: currentReq?.sub_category,
+            iso_number: currentReq?.iso_number,
+            full_spool_number: currentReq?.full_spool_number,
+            hf_number: currentReq?.hf_number,
+            test_pack_number: currentReq?.test_pack_number,
+            requester_user_id: currentReq?.requester_user_id,
+            created_by_name: currentReq?.created_by_name
+          })
+          .select()
+          .single();
+        
+        // Create component for Site sub-request
+        await supabase.from('request_components').insert({
+          request_id: siteReq.id,
+          ident_code: selectedComponent.ident_code,
+          description: selectedComponent.description,
+          tag: selectedComponent.tag,
+          dia1: selectedComponent.dia1,
+          quantity: selectedComponent.quantity,
+          status: 'Eng', // Will be shown in WH Site Engineering Checks
+          current_location: 'SITE',
+          has_eng_check: true,
+          eng_check_message: checkMessage,
+          eng_check_sent_to: 'WH_Site',
+          parent_component_id: selectedComponent.id,
+          split_type: 'site'
+        });
+        
+        // Create sub-request for WH Yard (level_wh_split = 2)
+        const { data: yardReq } = await supabase.from('requests')
+          .insert({
+            request_number: reqNumber,
+            sub_number: currentComponent,
+            level_component: currentComponent,
+            level_wh_split: 2, // Yard
+            level_yard_split: 0,
+            request_number_full: formatRequestNumber(reqNumber, currentComponent, 2, 0),
+            parent_request_id: currentReq?.id,
+            parent_request_number: currentReq?.parent_request_number || reqNumber,
+            sent_to: 'Yard',
+            request_type: currentReq?.request_type,
+            sub_category: currentReq?.sub_category,
+            iso_number: currentReq?.iso_number,
+            full_spool_number: currentReq?.full_spool_number,
+            hf_number: currentReq?.hf_number,
+            test_pack_number: currentReq?.test_pack_number,
+            requester_user_id: currentReq?.requester_user_id,
+            created_by_name: currentReq?.created_by_name
+          })
+          .select()
+          .single();
+        
+        // Create component for Yard sub-request
+        await supabase.from('request_components').insert({
+          request_id: yardReq.id,
+          ident_code: selectedComponent.ident_code,
+          description: selectedComponent.description,
+          tag: selectedComponent.tag,
+          dia1: selectedComponent.dia1,
+          quantity: selectedComponent.quantity,
+          status: 'Eng',
+          current_location: 'YARD',
+          has_eng_check: true,
+          eng_check_message: checkMessage,
+          eng_check_sent_to: 'Yard',
+          parent_component_id: selectedComponent.id,
+          split_type: 'yard'
+        });
+        
+        // Update original component - mark as parent with "Both" status
+        await supabase.from('request_components')
+          .update({ 
+            has_eng_check: true, 
+            eng_check_message: checkMessage,
+            eng_check_sent_to: 'Both',
+            status: 'Eng_Both' // New status to indicate waiting for both
+          })
+          .eq('id', selectedComponent.id);
+        
+        // Update original request with sent_to
+        await supabase.from('requests')
+          .update({ sent_to: 'Both' })
+          .eq('id', currentReq?.id);
+        
+        await logHistory(selectedComponent.id, `Check sent to Both (Site & Yard)`, 'Eng', 'Eng', 
+          `Split: ${formatRequestNumber(reqNumber, currentComponent, 1, 0)} (Site) + ${formatRequestNumber(reqNumber, currentComponent, 2, 0)} (Yard)`);
+        
+      } else {
+        // Single destination (WH_Site or Yard) - original behavior
+        await supabase.from('request_components')
+          .update({ 
+            has_eng_check: true, 
+            eng_check_message: checkMessage,
+            eng_check_sent_to: checkDestination
+          })
+          .eq('id', selectedComponent.id);
+        
+        await logHistory(selectedComponent.id, `Check sent to ${checkDestination}`, 'Eng', 'Eng', checkMessage);
+      }
+      
+      setShowCheckModal(false);
+      setCheckMessage('');
+      setCheckDestination('WH_Site');
+      loadComponents();
+    } catch (error) {
+      alert('Error sending check: ' + error.message);
+    }
   };
 
   // V28: Submit Management Note
