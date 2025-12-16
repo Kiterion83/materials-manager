@@ -1,6 +1,11 @@
 // ============================================================
-// MATERIALS MANAGER V32.1 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.2 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.2 Changes:
+//   - Fixed: 4-level request number format (XXXXX-LL-SS-PP) everywhere
+//   - Fixed: sub_category propagated from component in Both requests
+//   - Fixed: Ident code input converts to UPPERCASE automatically
+//   - Enhanced: displayRequestNumber always generates 4-level format
 // V32.1 Changes:
 //   - Both with Visibility: Site/Yard see each other's sent qty
 //   - New columns: "Site Sent" / "Yard Sent" + "Da Trovare"
@@ -113,7 +118,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.1';
+const APP_VERSION = 'V32.2';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -160,14 +165,16 @@ function abbrevCategory(cat) {
 
 function abbrevSubCategory(sub) {
   if (!sub) return '-';
+  // V32.1: Case-insensitive matching
+  const normalized = sub.toLowerCase();
   const map = {
-    'Erection': 'E',
-    'Support': 'S',
-    'Instrument': 'I',
-    'Bulk': 'B',
-    'Spool': 'SP'  // V28.11: Spool sub-category
+    'erection': 'E',
+    'support': 'S',
+    'instrument': 'I',
+    'bulk': 'B',
+    'spool': 'SP'  // V28.11: Spool sub-category
   };
-  return map[sub] || sub.substring(0, 1).toUpperCase();
+  return map[normalized] || sub.substring(0, 1).toUpperCase();
 }
 
 function abbrevSpool(spool) {
@@ -228,24 +235,18 @@ function formatRequestNumber(base, component = 0, whSplit = 0, yardSplit = 0) {
   return `${String(base).padStart(5, '0')}-${String(component).padStart(2, '0')}-${String(whSplit).padStart(2, '0')}-${String(yardSplit).padStart(2, '0')}`;
 }
 
-// Get display version of request number (shows 4-level format when available)
+// Get display version of request number (ALWAYS shows 4-level format)
 function displayRequestNumber(request, showFull = true) {
   // If request_number_full exists, use it
   if (request?.request_number_full) {
     return request.request_number_full;
   }
-  // Check if we have level info
-  if (request?.level_component !== undefined || request?.level_wh_split !== undefined || request?.level_yard_split !== undefined) {
-    const base = String(request?.request_number || 0).padStart(5, '0');
-    const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
-    const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
-    const yard = String(request?.level_yard_split ?? 0).padStart(2, '0');
-    return `${base}-${comp}-${wh}-${yard}`;
-  }
-  // Fallback to old format (backward compatible)
-  const reqNum = String(request?.request_number || 0).padStart(5, '0');
-  const subNum = String(request?.sub_number ?? 0);
-  return `${reqNum}-${subNum}`;
+  // Always generate 4-level format
+  const base = String(request?.request_number || 0).padStart(5, '0');
+  const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
+  const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
+  const yard = String(request?.level_yard_split ?? 0).padStart(2, '0');
+  return `${base}-${comp}-${wh}-${yard}`;
 }
 
 // Short display version (just base-component for tables)
@@ -1005,6 +1006,9 @@ function LabelPrintModal({ isOpen, onClose, component }) {
   const yardSending = component.quantity;
   const totalSentSoFar = siteSent + yardSending;
   const remaining = originalQty - totalSentSoFar;
+  
+  // V32.1: Always use 4-level format
+  const requestNumberDisplay = displayRequestNumber(component.requests);
 
   const printLabel = () => {
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -1126,7 +1130,7 @@ function LabelPrintModal({ isOpen, onClose, component }) {
             <span class="status">${component.status === 'Trans' ? (isBothRequest ? '🚚 YARD → SITE IN' : 'SITE IN') : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}</span>
           </div>
           
-          <div class="request-num">${component.requests?.request_number_full || (String(component.requests?.request_number || component.request_number || '').padStart(5, '0') + '-' + (component.requests?.sub_number ?? component.sub_number ?? 0))}</div>
+          <div class="request-num">${requestNumberDisplay}</div>
           
           <div class="info-grid">
             <div class="info-item"><span class="info-label">Cat:</span> ${component.requests?.request_type || component.request_type || '-'}</div>
@@ -1196,7 +1200,7 @@ function LabelPrintModal({ isOpen, onClose, component }) {
           </div>
           
           <div style={{ fontSize: '20px', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '12px' }}>
-            {component.requests?.request_number_full || (String(component.requests?.request_number || '').padStart(5, '0') + '-' + (component.requests?.sub_number ?? 0))}
+            {requestNumberDisplay}
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', marginBottom: '12px' }}>
@@ -1962,7 +1966,7 @@ function HistoryPopup({ isOpen, onClose, componentId }) {
                 <span style={{ color: '#6b7280' }}>Qty: {componentInfo.quantity}</span>
               </div>
               <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '4px' }}>
-                Request: {String(componentInfo.requests?.request_number).padStart(5, '0')}-{componentInfo.requests?.sub_number}
+                Request: {displayRequestNumber(componentInfo.requests)}
                 {componentInfo.requests?.created_by_name && ` • Created by: ${componentInfo.requests.created_by_name}`}
               </div>
               {(componentInfo.description || componentInfo.requests?.description) && (
@@ -4216,57 +4220,67 @@ function WHSitePage({ user }) {
         })
         .eq('id', selectedComponent.id);
       
-      await logHistory(selectedComponent.id, 'Partial Split', 'WH_Site', partialFoundDest, 
-        `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
+      let notFoundReqNumber = 'Closed';
       
-      // Create new sub-request for not found items
-      const { data: subData } = await supabase
-        .from('requests')
-        .select('sub_number')
-        .eq('request_number', selectedComponent.requests.request_number)
-        .order('sub_number', { ascending: false })
-        .limit(1);
-      
-      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-      
-      // V30.0: Get parent_request_number - use existing parent or the mother request_number
-      const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
-      
-      const { data: newReq, error: reqError } = await supabase.from('requests')
-        .insert({
-          request_number: selectedComponent.requests.request_number,
-          sub_number: nextSub,
-          parent_request_number: parentReqNum,
-          request_type: selectedComponent.requests.request_type,
-          sub_category: selectedComponent.requests.sub_category,
-          iso_number: selectedComponent.requests.iso_number,
-          full_spool_number: selectedComponent.requests.full_spool_number,
-          hf_number: selectedComponent.requests.hf_number,
-          test_pack_number: selectedComponent.requests.test_pack_number,
-          requester_user_id: selectedComponent.requests.requester_user_id,
-          created_by_name: selectedComponent.requests.created_by_name
-        })
-        .select()
-        .single();
-      
-      if (reqError || !newReq) {
-        console.error('Request insert error:', reqError);
-        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
-        loadComponents();
-        return;
+      // V32.1: Only create sub-request if NOT "None"
+      if (partialNotFoundDest !== 'None') {
+        // Create new sub-request for not found items
+        const { data: subData } = await supabase
+          .from('requests')
+          .select('sub_number')
+          .eq('request_number', selectedComponent.requests.request_number)
+          .order('sub_number', { ascending: false })
+          .limit(1);
+        
+        const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+        
+        // V30.0: Get parent_request_number - use existing parent or the mother request_number
+        const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
+        
+        const { data: newReq, error: reqError } = await supabase.from('requests')
+          .insert({
+            request_number: selectedComponent.requests.request_number,
+            sub_number: nextSub,
+            parent_request_number: parentReqNum,
+            request_type: selectedComponent.requests.request_type,
+            sub_category: selectedComponent.requests.sub_category,
+            iso_number: selectedComponent.requests.iso_number,
+            full_spool_number: selectedComponent.requests.full_spool_number,
+            hf_number: selectedComponent.requests.hf_number,
+            test_pack_number: selectedComponent.requests.test_pack_number,
+            requester_user_id: selectedComponent.requests.requester_user_id,
+            created_by_name: selectedComponent.requests.created_by_name
+          })
+          .select()
+          .single();
+        
+        if (reqError || !newReq) {
+          console.error('Request insert error:', reqError);
+          alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+          loadComponents();
+          return;
+        }
+        
+        notFoundReqNumber = newReq.request_number_full || formatRequestNumber(newReq.request_number, newReq.sub_number || 0, 0, 0);
+        
+        // V28.7: Create component for not found quantity with selected destination
+        await supabase.from('request_components').insert({
+          request_id: newReq.id,
+          ident_code: selectedComponent.ident_code,
+          description: selectedComponent.description,
+          tag: selectedComponent.tag,
+          dia1: selectedComponent.dia1,
+          quantity: notFoundQty,
+          status: partialNotFoundDest,
+          current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
+        });
       }
       
-      // V28.7: Create component for not found quantity with selected destination
-      await supabase.from('request_components').insert({
-        request_id: newReq.id,
-        ident_code: selectedComponent.ident_code,
-        description: selectedComponent.description,
-        tag: selectedComponent.tag,
-        dia1: selectedComponent.dia1,
-        quantity: notFoundQty,
-        status: partialNotFoundDest,
-        current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
-      });
+      // V32.1: Log history with proper message
+      const logNote = partialNotFoundDest === 'None' 
+        ? `Partial: ${foundQty} found → ${partialFoundDest}, ${notFoundQty} not found → Closed (no sub-request)`
+        : `Partial: ${foundQty} found → ${partialFoundDest}, ${notFoundQty} not found → ${partialNotFoundDest} (${notFoundReqNumber})`;
+      await logHistory(selectedComponent.id, 'Partial Split', 'WH_Site', partialFoundDest, logNote);
 
       setShowPartialModal(false);
       setPartialQty('');
@@ -4487,59 +4501,67 @@ function WHSitePage({ user }) {
       const currentReq = selectedCheck.requests;
       const reqNumber = currentReq?.request_number;
       
-      // Get next sub_number
-      const { data: subData } = await supabase
-        .from('requests')
-        .select('sub_number')
-        .eq('request_number', reqNumber)
-        .order('sub_number', { ascending: false })
-        .limit(1);
+      let notFoundReqNumber = 'Closed';
       
-      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-      
-      // Create sub-request for NOT FOUND items
-      const insertData = {
-        request_number: reqNumber,
-        sub_number: nextSub,
-        parent_request_number: currentReq?.parent_request_number || reqNumber,
-        request_type: currentReq?.request_type,
-        sub_category: currentReq?.sub_category,
-        iso_number: currentReq?.iso_number,
-        full_spool_number: currentReq?.full_spool_number,
-        hf_number: currentReq?.hf_number,
-        test_pack_number: currentReq?.test_pack_number,
-        requester_user_id: currentReq?.requester_user_id,
-        created_by_name: currentReq?.created_by_name
-      };
-      
-      const { data: newReq, error: reqError } = await supabase.from('requests')
-        .insert(insertData)
-        .select()
-        .single();
-      
-      if (reqError || !newReq) {
-        console.error('Request insert error:', reqError);
-        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
-        loadComponents();
-        return;
+      // V32.1: Only create sub-request if NOT "None"
+      if (checkNotFoundDest !== 'None') {
+        // Get next sub_number
+        const { data: subData } = await supabase
+          .from('requests')
+          .select('sub_number')
+          .eq('request_number', reqNumber)
+          .order('sub_number', { ascending: false })
+          .limit(1);
+        
+        const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+        
+        // Create sub-request for NOT FOUND items
+        const insertData = {
+          request_number: reqNumber,
+          sub_number: nextSub,
+          parent_request_number: currentReq?.parent_request_number || reqNumber,
+          request_type: currentReq?.request_type,
+          sub_category: currentReq?.sub_category,
+          iso_number: currentReq?.iso_number,
+          full_spool_number: currentReq?.full_spool_number,
+          hf_number: currentReq?.hf_number,
+          test_pack_number: currentReq?.test_pack_number,
+          requester_user_id: currentReq?.requester_user_id,
+          created_by_name: currentReq?.created_by_name
+        };
+        
+        const { data: newReq, error: reqError } = await supabase.from('requests')
+          .insert(insertData)
+          .select()
+          .single();
+        
+        if (reqError || !newReq) {
+          console.error('Request insert error:', reqError);
+          alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+          loadComponents();
+          return;
+        }
+        
+        // Create component for NOT FOUND quantity - goes to destination
+        await supabase.from('request_components').insert({
+          request_id: newReq.id,
+          ident_code: selectedCheck.ident_code,
+          description: selectedCheck.description,
+          tag: selectedCheck.tag,
+          dia1: selectedCheck.dia1,
+          quantity: notFoundQty,
+          status: checkNotFoundDest === 'Eng' ? 'Eng' : checkNotFoundDest,
+          current_location: checkNotFoundDest === 'Yard' ? 'YARD' : 'SITE',
+          has_eng_check: false,
+          eng_check_message: null,
+          eng_check_sent_to: null,
+          parent_component_id: selectedCheck.id,
+          split_type: 'not_found'
+        });
+        
+        // V32.1: Build the new request number string
+        notFoundReqNumber = newReq.request_number_full || formatRequestNumber(newReq.request_number, newReq.sub_number || 0, 0, 0);
       }
-      
-      // Create component for NOT FOUND quantity - goes to destination
-      await supabase.from('request_components').insert({
-        request_id: newReq.id,
-        ident_code: selectedCheck.ident_code,
-        description: selectedCheck.description,
-        tag: selectedCheck.tag,
-        dia1: selectedCheck.dia1,
-        quantity: notFoundQty,
-        status: checkNotFoundDest === 'Eng' ? 'Eng' : checkNotFoundDest,
-        current_location: checkNotFoundDest === 'Yard' ? 'YARD' : 'SITE',
-        has_eng_check: false,
-        eng_check_message: null,
-        eng_check_sent_to: null,
-        parent_component_id: selectedCheck.id,
-        split_type: 'not_found'
-      });
       
       // Update original component with FOUND quantity
       await supabase.from('request_components')
@@ -4554,8 +4576,10 @@ function WHSitePage({ user }) {
         .eq('id', selectedCheck.id);
       
       // Log history
-      await logHistory(selectedCheck.id, 'Check - Partial Found', 'WH_Site', checkFoundDest, 
-        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${notFoundReqNumber})`);
+      const logNote = checkNotFoundDest === 'None' 
+        ? `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → Closed (no sub-request)`
+        : `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${checkNotFoundDest} (${notFoundReqNumber})`;
+      await logHistory(selectedCheck.id, 'Check - Partial Found', 'WH_Site', checkFoundDest, logNote);
       
       setShowCheckPartialModal(false);
       setSelectedCheck(null);
@@ -4630,7 +4654,7 @@ function WHSitePage({ user }) {
                     <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
                     <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                      {check.requests?.request_number_full || `${String(check.requests?.request_number).padStart(5, '0')}-${check.requests?.sub_number}`}
+                      {displayRequestNumber(check.requests)}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
                     <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
@@ -4745,7 +4769,7 @@ function WHSitePage({ user }) {
                       <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
-                      <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                      <td>${displayRequestNumber(comp.requests)}</td>
                       <td>${comp.ident_code}</td>
                       <td>${comp.description || '-'}</td>
                       <td>${comp.quantity}</td>
@@ -4802,7 +4826,7 @@ function WHSitePage({ user }) {
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                    {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                    {displayRequestNumber(comp.requests)}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
@@ -4900,7 +4924,7 @@ function WHSitePage({ user }) {
         <>
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: COLORS.info }}>
-            📋 Request: {String(selectedComponent?.requests?.request_number).padStart(5, '0')}-{selectedComponent?.requests?.sub_number}
+            📋 Request: {displayRequestNumber(selectedComponent?.requests)}
           </p>
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
@@ -4957,6 +4981,7 @@ function WHSitePage({ user }) {
             onChange={(e) => setPartialNotFoundDest(e.target.value)}
             style={styles.input}
           >
+            <option value="None">→ None (Close)</option>
             <option value="Eng">→ Engineering</option>
             <option value="Yard">→ WH Yard</option>
             <option value="WH_Site">→ WH Site</option>
@@ -5057,6 +5082,7 @@ function WHSitePage({ user }) {
             onChange={(e) => setCheckNotFoundDest(e.target.value)}
             style={styles.input}
           >
+            <option value="None">→ None (Close)</option>
             <option value="Eng">→ Engineering</option>
             <option value="Yard">→ WH Yard</option>
             {(selectedCheck?.requests?.test_pack_number || selectedCheck?.requests?.request_type === 'TestPack') && (
@@ -5441,57 +5467,67 @@ function WHYardPage({ user }) {
         });
       }
 
-      await logHistory(selectedComponent.id, 'Partial Found', 'Yard', partialFoundDest, 
-        `Qty ${foundQty} → ${partialFoundDest}, ${notFoundQty} → ${partialNotFoundDest}`);
-
-      // Create new sub-request for not found items
-      const { data: subData } = await supabase
-        .from('requests')
-        .select('sub_number')
-        .eq('request_number', selectedComponent.requests.request_number)
-        .order('sub_number', { ascending: false })
-        .limit(1);
+      let notFoundReqNumber = 'Closed';
       
-      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-      
-      // V30.0: Get parent_request_number - use existing parent or the mother request_number
-      const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
-      
-      const { data: newReq, error: reqError } = await supabase.from('requests')
-        .insert({
-          request_number: selectedComponent.requests.request_number,
-          sub_number: nextSub,
-          parent_request_number: parentReqNum,
-          request_type: selectedComponent.requests.request_type,
-          sub_category: selectedComponent.requests.sub_category,
-          iso_number: selectedComponent.requests.iso_number,
-          full_spool_number: selectedComponent.requests.full_spool_number,
-          hf_number: selectedComponent.requests.hf_number,
-          test_pack_number: selectedComponent.requests.test_pack_number,
-          requester_user_id: selectedComponent.requests.requester_user_id,
-          created_by_name: selectedComponent.requests.created_by_name
-        })
-        .select()
-        .single();
-      
-      if (reqError || !newReq) {
-        console.error('Request insert error:', reqError);
-        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
-        loadComponents();
-        return;
+      // V32.1: Only create sub-request if NOT "None"
+      if (partialNotFoundDest !== 'None') {
+        // Create new sub-request for not found items
+        const { data: subData } = await supabase
+          .from('requests')
+          .select('sub_number')
+          .eq('request_number', selectedComponent.requests.request_number)
+          .order('sub_number', { ascending: false })
+          .limit(1);
+        
+        const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+        
+        // V30.0: Get parent_request_number - use existing parent or the mother request_number
+        const parentReqNum = selectedComponent.requests.parent_request_number || selectedComponent.requests.request_number;
+        
+        const { data: newReq, error: reqError } = await supabase.from('requests')
+          .insert({
+            request_number: selectedComponent.requests.request_number,
+            sub_number: nextSub,
+            parent_request_number: parentReqNum,
+            request_type: selectedComponent.requests.request_type,
+            sub_category: selectedComponent.requests.sub_category,
+            iso_number: selectedComponent.requests.iso_number,
+            full_spool_number: selectedComponent.requests.full_spool_number,
+            hf_number: selectedComponent.requests.hf_number,
+            test_pack_number: selectedComponent.requests.test_pack_number,
+            requester_user_id: selectedComponent.requests.requester_user_id,
+            created_by_name: selectedComponent.requests.created_by_name
+          })
+          .select()
+          .single();
+        
+        if (reqError || !newReq) {
+          console.error('Request insert error:', reqError);
+          alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+          loadComponents();
+          return;
+        }
+        
+        notFoundReqNumber = newReq.request_number_full || formatRequestNumber(newReq.request_number, newReq.sub_number || 0, 0, 0);
+        
+        // V28.7: Create component for not found quantity with selected destination
+        await supabase.from('request_components').insert({
+          request_id: newReq.id,
+          ident_code: selectedComponent.ident_code,
+          description: selectedComponent.description,
+          tag: selectedComponent.tag,
+          dia1: selectedComponent.dia1,
+          quantity: notFoundQty,
+          status: partialNotFoundDest,
+          current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
+        });
       }
-      
-      // V28.7: Create component for not found quantity with selected destination
-      await supabase.from('request_components').insert({
-        request_id: newReq.id,
-        ident_code: selectedComponent.ident_code,
-        description: selectedComponent.description,
-        tag: selectedComponent.tag,
-        dia1: selectedComponent.dia1,
-        quantity: notFoundQty,
-        status: partialNotFoundDest,
-        current_location: partialNotFoundDest === 'Yard' ? 'YARD' : 'SITE'
-      });
+
+      // V32.1: Log history with proper message
+      const logNote = partialNotFoundDest === 'None' 
+        ? `Partial: ${foundQty} found → ${partialFoundDest}, ${notFoundQty} not found → Closed (no sub-request)`
+        : `Partial: ${foundQty} found → ${partialFoundDest}, ${notFoundQty} not found → ${partialNotFoundDest} (${notFoundReqNumber})`;
+      await logHistory(selectedComponent.id, 'Partial Found', 'Yard', partialFoundDest, logNote);
 
       await supabase.from('movements').insert({
         ident_code: selectedComponent.ident_code,
@@ -5500,7 +5536,7 @@ function WHYardPage({ user }) {
         from_location: 'YARD',
         to_location: partialFoundDest === 'Trans' ? 'TRANSIT' : partialFoundDest,
         performed_by: user.full_name,
-        note: `Partial - ${notFoundQty} to ${partialNotFoundDest}`
+        note: partialNotFoundDest === 'None' ? `Partial - ${notFoundQty} closed` : `Partial - ${notFoundQty} to ${partialNotFoundDest}`
       });
 
       setShowPartialModal(false);
@@ -5788,59 +5824,67 @@ function WHYardPage({ user }) {
       const currentReq = selectedCheck.requests;
       const reqNumber = currentReq?.request_number;
       
-      // Get next sub_number
-      const { data: subData } = await supabase
-        .from('requests')
-        .select('sub_number')
-        .eq('request_number', reqNumber)
-        .order('sub_number', { ascending: false })
-        .limit(1);
+      let notFoundReqNumber = 'Closed';
       
-      const nextSub = (subData?.[0]?.sub_number || 0) + 1;
-      
-      // Create sub-request for NOT FOUND items
-      const insertData = {
-        request_number: reqNumber,
-        sub_number: nextSub,
-        parent_request_number: currentReq?.parent_request_number || reqNumber,
-        request_type: currentReq?.request_type,
-        sub_category: currentReq?.sub_category,
-        iso_number: currentReq?.iso_number,
-        full_spool_number: currentReq?.full_spool_number,
-        hf_number: currentReq?.hf_number,
-        test_pack_number: currentReq?.test_pack_number,
-        requester_user_id: currentReq?.requester_user_id,
-        created_by_name: currentReq?.created_by_name
-      };
-      
-      const { data: newReq, error: reqError } = await supabase.from('requests')
-        .insert(insertData)
-        .select()
-        .single();
-      
-      if (reqError || !newReq) {
-        console.error('Request insert error:', reqError);
-        alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
-        loadComponents();
-        return;
+      // V32.1: Only create sub-request if NOT "None"
+      if (checkNotFoundDest !== 'None') {
+        // Get next sub_number
+        const { data: subData } = await supabase
+          .from('requests')
+          .select('sub_number')
+          .eq('request_number', reqNumber)
+          .order('sub_number', { ascending: false })
+          .limit(1);
+        
+        const nextSub = (subData?.[0]?.sub_number || 0) + 1;
+        
+        // Create sub-request for NOT FOUND items
+        const insertData = {
+          request_number: reqNumber,
+          sub_number: nextSub,
+          parent_request_number: currentReq?.parent_request_number || reqNumber,
+          request_type: currentReq?.request_type,
+          sub_category: currentReq?.sub_category,
+          iso_number: currentReq?.iso_number,
+          full_spool_number: currentReq?.full_spool_number,
+          hf_number: currentReq?.hf_number,
+          test_pack_number: currentReq?.test_pack_number,
+          requester_user_id: currentReq?.requester_user_id,
+          created_by_name: currentReq?.created_by_name
+        };
+        
+        const { data: newReq, error: reqError } = await supabase.from('requests')
+          .insert(insertData)
+          .select()
+          .single();
+        
+        if (reqError || !newReq) {
+          console.error('Request insert error:', reqError);
+          alert('Error creating sub-request: ' + (reqError?.message || 'Unknown error'));
+          loadComponents();
+          return;
+        }
+        
+        // Create component for NOT FOUND quantity - goes to Engineering "To Process"
+        await supabase.from('request_components').insert({
+          request_id: newReq.id,
+          ident_code: selectedCheck.ident_code,
+          description: selectedCheck.description,
+          tag: selectedCheck.tag,
+          dia1: selectedCheck.dia1,
+          quantity: notFoundQty,
+          status: checkNotFoundDest === 'Eng' ? 'Eng' : checkNotFoundDest,
+          current_location: 'SITE',
+          has_eng_check: false,
+          eng_check_message: null,
+          eng_check_sent_to: null,
+          parent_component_id: selectedCheck.id,
+          split_type: 'not_found'
+        });
+        
+        // V32.1: Build the new request number string
+        notFoundReqNumber = newReq.request_number_full || formatRequestNumber(newReq.request_number, newReq.sub_number || 0, 0, 0);
       }
-      
-      // Create component for NOT FOUND quantity - goes to Engineering "To Process"
-      await supabase.from('request_components').insert({
-        request_id: newReq.id,
-        ident_code: selectedCheck.ident_code,
-        description: selectedCheck.description,
-        tag: selectedCheck.tag,
-        dia1: selectedCheck.dia1,
-        quantity: notFoundQty,
-        status: 'Eng',
-        current_location: 'SITE',
-        has_eng_check: false,
-        eng_check_message: null,
-        eng_check_sent_to: null,
-        parent_component_id: selectedCheck.id,
-        split_type: 'not_found'
-      });
       
       // V28.10: If found items go to Trans (Site IN), do NOT decrement yard here
       if (checkFoundDest !== 'Trans') {
@@ -5863,8 +5907,11 @@ function WHYardPage({ user }) {
         .eq('id', selectedCheck.id);
       
       // Log history with new format
-      await logHistory(selectedCheck.id, 'Check - Partial Found', 'Yard', checkFoundDest, 
-        `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → Eng (${notFoundReqNumber})`);
+      const destLabel = checkNotFoundDest === 'None' ? 'Closed' : checkNotFoundDest;
+      const logNote = checkNotFoundDest === 'None' 
+        ? `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → Closed (no sub-request)`
+        : `Partial: ${foundQty} found → ${checkFoundDest}, ${notFoundQty} not found → ${destLabel} (${notFoundReqNumber})`;
+      await logHistory(selectedCheck.id, 'Check - Partial Found', 'Yard', checkFoundDest, logNote);
       
       setShowCheckPartialModal(false);
       setSelectedCheck(null);
@@ -5942,7 +5989,7 @@ function WHYardPage({ user }) {
                       <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
                       <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                        {check.requests?.request_number_full || `${String(check.requests?.request_number).padStart(5, '0')}-${check.requests?.sub_number}`}
+                        {displayRequestNumber(check.requests)}
                       </td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
                       <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
@@ -6042,7 +6089,7 @@ function WHYardPage({ user }) {
                       <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
-                      <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                      <td>${displayRequestNumber(comp.requests)}</td>
                       <td>${comp.ident_code}</td>
                       <td>${comp.description || '-'}</td>
                       <td>${comp.quantity}</td>
@@ -6130,7 +6177,7 @@ function WHYardPage({ user }) {
                     <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                     <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                      {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                      {displayRequestNumber(comp.requests)}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                     <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
@@ -6191,7 +6238,7 @@ function WHYardPage({ user }) {
         <>
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '8px', fontSize: '14px', fontWeight: '600', color: COLORS.info }}>
-            📋 Request: {String(selectedComponent?.requests?.request_number).padStart(5, '0')}-{selectedComponent?.requests?.sub_number}
+            📋 Request: {displayRequestNumber(selectedComponent?.requests)}
           </p>
           <p style={{ marginBottom: '8px' }}>
             <strong>Item:</strong> <span style={{ fontFamily: 'monospace' }}>{selectedComponent?.ident_code}</span>
@@ -6248,6 +6295,7 @@ function WHYardPage({ user }) {
             onChange={(e) => setPartialNotFoundDest(e.target.value)}
             style={styles.input}
           >
+            <option value="None">→ None (Close)</option>
             <option value="Eng">→ Engineering</option>
             <option value="Order">→ Orders</option>
             <option value="WH_Site">→ WH Site</option>
@@ -6348,6 +6396,7 @@ function WHYardPage({ user }) {
             onChange={(e) => setCheckNotFoundDest(e.target.value)}
             style={styles.input}
           >
+            <option value="None">→ None (Close)</option>
             <option value="Eng">→ Engineering</option>
             <option value="WH_Site">→ WH Site</option>
             {(selectedCheck?.requests?.test_pack_number || selectedCheck?.requests?.request_type === 'TestPack') && (
@@ -6631,7 +6680,7 @@ function SiteInPage({ user }) {
                     <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
                     <td>${comp.quantity}</td>
@@ -6688,7 +6737,7 @@ function SiteInPage({ user }) {
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                    {comp.requests?.request_number_full || `${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}`}
+                    {displayRequestNumber(comp.requests)}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
@@ -6947,7 +6996,7 @@ function EngineeringPage({ user }) {
           parent_request_number: currentReq?.parent_request_number || reqNumber,
           sent_to: 'WH_Site',
           request_type: currentReq?.request_type,
-          sub_category: currentReq?.sub_category,
+          sub_category: selectedComponent.sub_category || currentReq?.sub_category, // V32.2: Use component's sub_category first
           iso_number: currentReq?.iso_number,
           full_spool_number: currentReq?.full_spool_number,
           hf_number: currentReq?.hf_number,
@@ -6975,6 +7024,7 @@ function EngineeringPage({ user }) {
           tag: selectedComponent.tag,
           dia1: selectedComponent.dia1,
           quantity: selectedComponent.quantity,
+          sub_category: selectedComponent.sub_category, // V32.2: Preserve component's sub_category
           status: 'Eng',
           current_location: 'SITE',
           has_eng_check: true,
@@ -7000,7 +7050,7 @@ function EngineeringPage({ user }) {
           parent_request_number: currentReq?.parent_request_number || reqNumber,
           sent_to: 'Yard',
           request_type: currentReq?.request_type,
-          sub_category: currentReq?.sub_category,
+          sub_category: selectedComponent.sub_category || currentReq?.sub_category, // V32.2: Use component's sub_category first
           iso_number: currentReq?.iso_number,
           full_spool_number: currentReq?.full_spool_number,
           hf_number: currentReq?.hf_number,
@@ -7028,6 +7078,7 @@ function EngineeringPage({ user }) {
           tag: selectedComponent.tag,
           dia1: selectedComponent.dia1,
           quantity: selectedComponent.quantity,
+          sub_category: selectedComponent.sub_category, // V32.2: Preserve component's sub_category
           status: 'Eng',
           current_location: 'YARD',
           has_eng_check: true,
@@ -7156,7 +7207,7 @@ function EngineeringPage({ user }) {
         <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
         <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-          {comp.requests?.request_number_full || `${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}`}
+          {displayRequestNumber(comp.requests)}
         </td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
         <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
@@ -7239,7 +7290,7 @@ function EngineeringPage({ user }) {
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${comp.requests?.hf_number || '-'}</td>
                       <td>${comp.requests?.test_pack_number || '-'}</td>
-                      <td>${comp.requests?.request_number_full || `${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}`}</td>
+                      <td>${displayRequestNumber(comp.requests)}</td>
                       <td>${comp.ident_code}</td>
                       <td>${comp.description || '-'}</td>
                       <td>${comp.quantity}</td>
@@ -7319,7 +7370,7 @@ function EngineeringPage({ user }) {
                     <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
                     <td>${comp.quantity}</td>
@@ -7908,7 +7959,7 @@ function HFPage({ user }) {
                     borderBottom: '1px solid #e5e7eb'
                   }}>
                     <span style={{ fontWeight: '600' }}>
-                      Request {String(request.request_number).padStart(5, '0')}-{request.sub_number}
+                      Request {displayRequestNumber(request)}
                     </span>
                     <span style={{ marginLeft: '12px', color: '#6b7280', fontSize: '13px' }}>
                       ({request.components.filter(isReady).length}/{request.components.length} ready)
@@ -8572,7 +8623,7 @@ function TestPackPage({ user }) {
               ${tpList.map(tp => `
                 <h2>TestPack: ${tp.test_pack_number}</h2>
                 ${Object.values(tp.requests).map(req => `
-                  <h3>Request ${String(req.request_number).padStart(5, '0')}-${req.sub_number || 0}</h3>
+                  <h3>Request ${displayRequestNumber(req)}</h3>
                   ${Object.values(req.subCategories).map(subCat => `
                     <p><strong>${subCat.name}</strong> (${getReadyCount(subCat)}/${subCat.components.length} ready)</p>
                     <table>
@@ -8799,7 +8850,7 @@ function TestPackPage({ user }) {
                   }}>
                     <div>
                       <span style={{ fontWeight: '600' }}>
-                        Request {String(request.request_number).padStart(5, '0')}-{request.sub_number || 0}
+                        Request {displayRequestNumber(request)}
                       </span>
                       <span style={{ marginLeft: '12px', color: '#6b7280', fontSize: '13px' }}>
                         {readyCount}/{allComponents.length} ready
@@ -9018,7 +9069,7 @@ function ToBeCollectedPage({ user }) {
     setLoading(true);
     const { data } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, requester_user_id, request_type, sub_category, iso_number, full_spool_number, hf_number, test_pack_number, created_by_name)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, requester_user_id, request_type, sub_category, iso_number, full_spool_number, hf_number, test_pack_number, created_by_name)`)
       .eq('status', 'ToCollect');
     
     // V29.0: Enrich with requester names for old requests
@@ -9132,7 +9183,7 @@ function ToBeCollectedPage({ user }) {
 
   // V28.5: Delete action
   const handleDelete = async (comp) => {
-    if (!confirm(`Delete request ${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}?`)) return;
+    if (!confirm(`Delete request ${displayRequestNumber(comp.requests)}?`)) return;
     
     try {
       await supabase.from('request_components')
@@ -9209,7 +9260,7 @@ function ToBeCollectedPage({ user }) {
                     <td>${comp.requests?.full_spool_number || '-'}</td>
                     <td>${comp.requests?.hf_number || '-'}</td>
                     <td>${comp.requests?.test_pack_number || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
                     <td>${comp.quantity}</td>
@@ -9256,7 +9307,7 @@ function ToBeCollectedPage({ user }) {
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                    {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                    {displayRequestNumber(comp.requests)}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>
@@ -9976,8 +10027,9 @@ function MaterialInPage({ user }) {
                     type="text"
                     value={identCode}
                     onChange={(e) => {
-                      setIdentCode(e.target.value);
-                      searchIdentCode(e.target.value);
+                      const upperValue = e.target.value.toUpperCase();
+                      setIdentCode(upperValue);
+                      searchIdentCode(upperValue);
                     }}
                     onFocus={() => searchResults.length > 0 && setShowSearchResults(true)}
                     onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
@@ -10906,7 +10958,7 @@ function SparePartsPage({ user }) {
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || '-'}</td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                {displayRequestNumber(comp.requests)}
               </td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
               <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>
@@ -10977,7 +11029,7 @@ function SparePartsPage({ user }) {
                     <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
                     <td>${comp.quantity}</td>
@@ -11025,7 +11077,7 @@ function SparePartsPage({ user }) {
                     <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
                     <td>${comp.quantity}</td>
@@ -11257,7 +11309,7 @@ function OrdersPage({ user }) {
             <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
             <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
             <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-              {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+              {displayRequestNumber(comp.requests)}
             </td>
             <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
             <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>
@@ -11317,7 +11369,7 @@ function OrdersPage({ user }) {
               <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
               <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                {displayRequestNumber(comp.requests)}
               </td>
               <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
               <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>
@@ -11632,7 +11684,7 @@ function ManagementPage({ user }) {
                     <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
                     <td>${comp.requests?.full_spool_number || '-'}</td>
-                    <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                    <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
                     <td>${comp.quantity}</td>
@@ -11678,7 +11730,7 @@ function ManagementPage({ user }) {
                   <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
-                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{displayRequestNumber(comp.requests)}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '180px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
                     {comp.description ? (comp.description.length > 40 ? comp.description.substring(0, 40) + '...' : comp.description) : '-'}
