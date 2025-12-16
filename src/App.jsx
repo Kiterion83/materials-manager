@@ -3683,7 +3683,7 @@ function RequestsPage({ user }) {
                     </div>
                   )}
                   <p style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                    In TestPack, HF è solo informativo. La richiesta segue il flusso TestPack.
+                    In TestPack, HF is for reference only. The request follows the TestPack workflow.
                   </p>
                 </div>
               )}
@@ -7077,7 +7077,7 @@ function SiteInPage({ user }) {
                   <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
                     {comp.description ? (comp.description.length > 35 ? comp.description.substring(0, 35) + '...' : comp.description) : '-'}
                   </td>
-                  {/* V32.1: Qty Richiesta (original total requested) */}
+                  {/* V32.1: Qty Requested (original total requested) */}
                   <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: '#7C3AED' }}>
                     {isBothRequest ? originalQty : comp.quantity}
                   </td>
@@ -11382,8 +11382,37 @@ function SparePartsPage({ user }) {
 
   const handleToSite = async (component) => {
     try {
-      // V32.5: Increment inventory
-      await supabase.rpc('increment_site_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      console.log('handleToSite (Spare) called:', component.ident_code, 'qty:', component.quantity);
+      
+      // V32.5: Increment inventory with error checking
+      const { error: rpcError } = await supabase.rpc('increment_site_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+      
+      if (rpcError) {
+        console.error('RPC increment_site_qty error:', rpcError);
+        // Fallback: try direct update if RPC fails
+        const { data: existingInv } = await supabase
+          .from('inventory')
+          .select('site_qty')
+          .eq('ident_code', component.ident_code)
+          .single();
+        
+        if (existingInv) {
+          await supabase
+            .from('inventory')
+            .update({ site_qty: (existingInv.site_qty || 0) + component.quantity })
+            .eq('ident_code', component.ident_code);
+        } else {
+          await supabase.from('inventory').insert({ 
+            ident_code: component.ident_code, 
+            description: component.description || 'Unknown',
+            site_qty: component.quantity,
+            yard_qty: 0, lost_qty: 0, broken_qty: 0
+          });
+        }
+      }
       
       await supabase.from('request_components')
         .update({ status: 'WH_Site', forecast_date: null })
@@ -11402,6 +11431,7 @@ function SparePartsPage({ user }) {
       });
       
       await logHistory(component.id, 'Delivered - To Site', 'Spare', 'WH_Site', '');
+      alert(`✅ Spare Parts delivered to Site: ${component.quantity} pcs`);
       loadComponents();
     } catch (err) {
       console.error('handleToSite (Spare) error:', err);
@@ -11411,8 +11441,37 @@ function SparePartsPage({ user }) {
 
   const handleToYard = async (component) => {
     try {
-      // V32.5: Increment inventory
-      await supabase.rpc('increment_yard_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      console.log('handleToYard (Spare) called:', component.ident_code, 'qty:', component.quantity);
+      
+      // V32.5: Increment inventory with error checking
+      const { error: rpcError } = await supabase.rpc('increment_yard_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+      
+      if (rpcError) {
+        console.error('RPC increment_yard_qty error:', rpcError);
+        // Fallback: try direct update if RPC fails
+        const { data: existingInv } = await supabase
+          .from('inventory')
+          .select('yard_qty')
+          .eq('ident_code', component.ident_code)
+          .single();
+        
+        if (existingInv) {
+          await supabase
+            .from('inventory')
+            .update({ yard_qty: (existingInv.yard_qty || 0) + component.quantity })
+            .eq('ident_code', component.ident_code);
+        } else {
+          await supabase.from('inventory').insert({ 
+            ident_code: component.ident_code, 
+            description: component.description || 'Unknown',
+            yard_qty: component.quantity,
+            site_qty: 0, lost_qty: 0, broken_qty: 0
+          });
+        }
+      }
       
       await supabase.from('request_components')
         .update({ status: 'Yard', forecast_date: null })
@@ -11431,6 +11490,7 @@ function SparePartsPage({ user }) {
       });
       
       await logHistory(component.id, 'Delivered - To Yard', 'Spare', 'Yard', '');
+      alert(`✅ Spare Parts delivered to Yard: ${component.quantity} pcs`);
       loadComponents();
     } catch (err) {
       console.error('handleToYard (Spare) error:', err);
@@ -11690,11 +11750,12 @@ function OrdersPage({ user }) {
 
   const loadData = async () => {
     setLoading(true);
+    // V32.5: Added level fields for displayRequestNumber
     const { data: toOrder } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
       .eq('status', 'Order');
     const { data: ordered } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
       .eq('status', 'Ordered');
     
     // V29.0: Enrich with requester names for old requests
@@ -11780,11 +11841,56 @@ function OrdersPage({ user }) {
   // V28: Receive order and send To Site
   const handleReceivedToSite = async (component) => {
     try {
-      await supabase.rpc('increment_site_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      console.log('handleReceivedToSite called:', component.ident_code, 'qty:', component.quantity);
+      
+      // V32.5: Increment inventory with error checking
+      const { error: rpcError } = await supabase.rpc('increment_site_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+      
+      if (rpcError) {
+        console.error('RPC increment_site_qty error:', rpcError);
+        // Fallback: try direct update if RPC fails
+        console.log('Trying direct inventory update...');
+        const { data: existingInv } = await supabase
+          .from('inventory')
+          .select('site_qty')
+          .eq('ident_code', component.ident_code)
+          .single();
+        
+        if (existingInv) {
+          await supabase
+            .from('inventory')
+            .update({ site_qty: (existingInv.site_qty || 0) + component.quantity })
+            .eq('ident_code', component.ident_code);
+          console.log('Direct update successful');
+        } else {
+          // Insert new inventory item
+          await supabase
+            .from('inventory')
+            .insert({ 
+              ident_code: component.ident_code, 
+              description: component.description || 'Unknown',
+              site_qty: component.quantity,
+              yard_qty: 0,
+              lost_qty: 0,
+              broken_qty: 0
+            });
+          console.log('New inventory item created');
+        }
+      } else {
+        console.log('RPC increment_site_qty successful');
+      }
+      
       await supabase.from('request_components')
         .update({ status: 'WH_Site', order_forecast: null })
         .eq('id', component.id);
+      
       // V32.5: Include request_number in movement
+      const reqNum = component.requests ? displayRequestNumber(component.requests) : null;
+      console.log('Saving movement with request_number:', reqNum);
+      
       await supabase.from('movements').insert({
         ident_code: component.ident_code, 
         movement_type: 'IN', 
@@ -11793,9 +11899,12 @@ function OrdersPage({ user }) {
         to_location: 'SITE', 
         performed_by: user.full_name, 
         note: 'Order Received',
-        request_number: component.requests ? displayRequestNumber(component.requests) : null
+        request_number: reqNum
       });
+      
       await logHistory(component.id, 'Order Received - To Site', 'Ordered', 'WH_Site', '');
+      
+      alert(`✅ Received ${component.quantity} pcs of ${component.ident_code}\nInventory Site updated!`);
       loadData();
     } catch (err) {
       console.error('handleReceivedToSite error:', err);
@@ -11806,14 +11915,56 @@ function OrdersPage({ user }) {
   // V28: Receive order and send To Yard
   const handleReceivedToYard = async (component) => {
     try {
-      // V32.5: Increment inventory
-      await supabase.rpc('increment_yard_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      console.log('handleReceivedToYard called:', component.ident_code, 'qty:', component.quantity);
+      
+      // V32.5: Increment inventory with error checking
+      const { error: rpcError } = await supabase.rpc('increment_yard_qty', { 
+        p_ident_code: component.ident_code, 
+        p_qty: component.quantity 
+      });
+      
+      if (rpcError) {
+        console.error('RPC increment_yard_qty error:', rpcError);
+        // Fallback: try direct update if RPC fails
+        console.log('Trying direct inventory update...');
+        const { data: existingInv } = await supabase
+          .from('inventory')
+          .select('yard_qty')
+          .eq('ident_code', component.ident_code)
+          .single();
+        
+        if (existingInv) {
+          await supabase
+            .from('inventory')
+            .update({ yard_qty: (existingInv.yard_qty || 0) + component.quantity })
+            .eq('ident_code', component.ident_code);
+          console.log('Direct update successful');
+        } else {
+          // Insert new inventory item
+          await supabase
+            .from('inventory')
+            .insert({ 
+              ident_code: component.ident_code, 
+              description: component.description || 'Unknown',
+              yard_qty: component.quantity,
+              site_qty: 0,
+              lost_qty: 0,
+              broken_qty: 0
+            });
+          console.log('New inventory item created');
+        }
+      } else {
+        console.log('RPC increment_yard_qty successful');
+      }
       
       await supabase.from('request_components')
         .update({ status: 'Yard', order_forecast: null })
         .eq('id', component.id);
       
       // V32.5: Include request_number in movement
+      const reqNum = component.requests ? displayRequestNumber(component.requests) : null;
+      console.log('Saving movement with request_number:', reqNum);
+      
       await supabase.from('movements').insert({
         ident_code: component.ident_code, 
         movement_type: 'IN', 
@@ -11822,10 +11973,12 @@ function OrdersPage({ user }) {
         to_location: 'YARD', 
         performed_by: user.full_name, 
         note: 'Order Received',
-        request_number: component.requests ? displayRequestNumber(component.requests) : null
+        request_number: reqNum
       });
       
       await logHistory(component.id, 'Order Received - To Yard', 'Ordered', 'Yard', '');
+      
+      alert(`✅ Received ${component.quantity} pcs of ${component.ident_code}\nInventory Yard updated!`);
       loadData();
     } catch (err) {
       console.error('handleReceivedToYard error:', err);
@@ -14662,7 +14815,7 @@ export default function App() {
 
   const pageTitles = {
     dashboard: 'Dashboard',
-    requests: 'Nuova Request',
+    requests: 'New Request',
     mir: 'MIR - Material Issue Report',
     materialIn: 'Material IN',
     siteIn: 'Site IN',
@@ -14674,9 +14827,9 @@ export default function App() {
     toBeCollected: 'To Collect',
     spareParts: 'Spare Parts',
     orders: 'Orders',
-    log: 'Log Movimenti',
+    log: 'Movements Log',
     management: 'Management',
-    database: 'Database Inventario'
+    database: 'Inventory Database'
   };
 
   const renderPage = () => {
