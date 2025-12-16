@@ -113,7 +113,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.0';
+const APP_VERSION = 'V32.1';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -993,9 +993,18 @@ function StatBox({ title, value, color, subtitle }) {
 
 // ============================================================
 // V29.0 LABEL PRINT MODAL - Print labels for materials
+// V32.1: Enhanced with Both request info (Site IN shows qty requested, Site sent, Yard sending)
 // ============================================================
 function LabelPrintModal({ isOpen, onClose, component }) {
   if (!isOpen || !component) return null;
+
+  // V32.1: Get Both request info if available
+  const isBothRequest = component._isBoth || false;
+  const originalQty = component._originalQty || component.quantity;
+  const siteSent = component._siteSent || 0;
+  const yardSending = component.quantity;
+  const totalSentSoFar = siteSent + yardSending;
+  const remaining = originalQty - totalSentSoFar;
 
   const printLabel = () => {
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -1008,7 +1017,7 @@ function LabelPrintModal({ isOpen, onClose, component }) {
           @page { size: 100mm 70mm; margin: 0; }
           body { 
             font-family: Arial, sans-serif; 
-            padding: 10px;
+            padding: 8px;
             margin: 0;
             width: 100mm;
             height: 70mm;
@@ -1016,7 +1025,7 @@ function LabelPrintModal({ isOpen, onClose, component }) {
           }
           .label-container {
             border: 2px solid #000;
-            padding: 8px;
+            padding: 6px;
             height: calc(100% - 4px);
             box-sizing: border-box;
           }
@@ -1025,78 +1034,88 @@ function LabelPrintModal({ isOpen, onClose, component }) {
             justify-content: space-between;
             align-items: center;
             border-bottom: 2px solid #000;
-            padding-bottom: 6px;
-            margin-bottom: 6px;
+            padding-bottom: 4px;
+            margin-bottom: 4px;
           }
-          .logo { font-weight: bold; font-size: 14px; color: #E31E24; }
+          .logo { font-weight: bold; font-size: 12px; color: #E31E24; }
           .status { 
-            padding: 3px 8px; 
+            padding: 2px 6px; 
             background: ${component.status === 'Trans' ? '#2563EB' : component.status === 'ToCollect' ? '#16a34a' : '#D97706'}; 
             color: white; 
             border-radius: 4px; 
-            font-size: 11px;
+            font-size: 10px;
             font-weight: bold;
           }
           .request-num { 
-            font-size: 20px; 
+            font-size: 14px; 
             font-weight: bold; 
             text-align: center; 
-            margin: 8px 0;
+            margin: 4px 0;
             font-family: monospace;
           }
           .info-grid { 
             display: grid; 
             grid-template-columns: 1fr 1fr; 
-            gap: 4px; 
-            font-size: 10px;
-            margin-bottom: 6px;
+            gap: 3px; 
+            font-size: 9px;
+            margin-bottom: 4px;
           }
           .info-item { 
-            padding: 3px 5px; 
+            padding: 2px 4px; 
             background: #f3f4f6; 
-            border-radius: 3px;
+            border-radius: 2px;
           }
           .info-label { font-weight: bold; color: #666; }
           .code { 
             font-family: monospace; 
-            font-size: 11px; 
+            font-size: 10px; 
             font-weight: bold;
             background: #1F2937;
             color: white;
-            padding: 4px 6px;
-            border-radius: 4px;
+            padding: 3px 5px;
+            border-radius: 3px;
             text-align: center;
-            margin: 4px 0;
+            margin: 3px 0;
           }
           .description {
-            font-size: 9px;
+            font-size: 8px;
             color: #374151;
             text-align: center;
-            margin: 4px 0;
-            max-height: 24px;
+            margin: 2px 0;
+            max-height: 18px;
             overflow: hidden;
           }
           .qty { 
-            font-size: 24px; 
+            font-size: 20px; 
             font-weight: bold; 
             text-align: center;
             color: #E31E24;
+            margin: 4px 0;
           }
+          .both-info {
+            background: #EFF6FF;
+            border: 1px solid #2563EB;
+            padding: 4px;
+            font-size: 8px;
+            border-radius: 3px;
+            margin: 4px 0;
+          }
+          .both-info div { margin: 1px 0; }
           .partial { 
             background: #FEF3C7; 
             border: 1px solid #F59E0B;
-            padding: 2px 6px;
-            font-size: 10px;
+            padding: 2px 4px;
+            font-size: 9px;
             text-align: center;
             border-radius: 3px;
             color: #92400E;
-            margin-top: 4px;
+            margin-top: 3px;
           }
           .footer {
-            font-size: 8px;
+            font-size: 7px;
             color: #9ca3af;
             text-align: center;
-            margin-top: 6px;
+            margin-top: 3px;
           }
         </style>
       </head>
@@ -1104,30 +1123,40 @@ function LabelPrintModal({ isOpen, onClose, component }) {
         <div class="label-container">
           <div class="header">
             <span class="logo">MAX STREICHER</span>
-            <span class="status">${component.status === 'Trans' ? 'SITE IN' : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}</span>
+            <span class="status">${component.status === 'Trans' ? (isBothRequest ? '🚚 YARD → SITE IN' : 'SITE IN') : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}</span>
           </div>
           
-          <div class="request-num">${String(component.requests?.request_number || component.request_number || '').padStart(5, '0')}-${component.requests?.sub_number ?? component.sub_number ?? 0}</div>
+          <div class="request-num">${component.requests?.request_number_full || (String(component.requests?.request_number || component.request_number || '').padStart(5, '0') + '-' + (component.requests?.sub_number ?? component.sub_number ?? 0))}</div>
           
           <div class="info-grid">
             <div class="info-item"><span class="info-label">Cat:</span> ${component.requests?.request_type || component.request_type || '-'}</div>
             <div class="info-item"><span class="info-label">Sub:</span> ${component.sub_category || component.requests?.sub_category || '-'}</div>
             <div class="info-item"><span class="info-label">ISO:</span> ${component.requests?.iso_number || component.iso_number || '-'}</div>
             <div class="info-item"><span class="info-label">Spool:</span> ${component.requests?.full_spool_number || component.full_spool_number || '-'}</div>
-            ${component.requests?.hf_number ? `<div class="info-item"><span class="info-label">HF:</span> ${component.requests.hf_number}</div>` : ''}
-            ${component.requests?.test_pack_number ? `<div class="info-item"><span class="info-label">TP:</span> ${component.requests.test_pack_number}</div>` : ''}
+            ${component.requests?.hf_number ? `<div class="info-item" style="background:#F0FDFA;border:1px solid #14B8A6;"><span class="info-label">HF:</span> ${component.requests.hf_number}</div>` : ''}
+            ${component.requests?.test_pack_number ? `<div class="info-item" style="background:#F3E8FF;border:1px solid #A855F7;"><span class="info-label">TP:</span> ${component.requests.test_pack_number}</div>` : ''}
           </div>
           
-          <div style="font-size: 9px; text-align: center; margin-bottom: 4px; color: #374151;">
+          <div style="font-size: 8px; text-align: center; margin-bottom: 2px; color: #374151;">
             <span style="font-weight: bold;">Requester:</span> ${component.requests?.created_by_name || '-'}
           </div>
           
           <div class="code">${component.ident_code || '-'}</div>
-          <div class="description">${component.description ? (component.description.length > 60 ? component.description.substring(0, 60) + '...' : component.description) : '-'}</div>
+          <div class="description">${component.description ? (component.description.length > 50 ? component.description.substring(0, 50) + '...' : component.description) : '-'}</div>
           
-          <div class="qty">QTY: ${component.quantity || 0}</div>
+          <div class="qty">🚚 ${component.quantity} pz</div>
           
-          ${component.is_partial || component.requests?.is_partial ? '<div class="partial">⚠️ PARTIAL DELIVERY</div>' : ''}
+          ${isBothRequest ? `
+          <div class="both-info">
+            <div><strong>Totale Richiesto:</strong> ${originalQty} pz</div>
+            <div><strong>WH Site inviato:</strong> ${siteSent > 0 ? '✅ ' + siteSent + ' pz' : '⏳ in attesa'}</div>
+            <div><strong>WH Yard (questo):</strong> 🚚 ${yardSending} pz</div>
+            <div><strong>Totale inviato:</strong> ${totalSentSoFar} di ${originalQty}</div>
+          </div>
+          ${remaining > 0 ? `<div class="partial">⚠️ PARZIALE - Mancano ancora ${remaining} pz</div>` : ''}
+          ` : ''}
+          
+          ${!isBothRequest && (component.is_partial || component.requests?.is_partial) ? '<div class="partial">⚠️ PARTIAL DELIVERY</div>' : ''}
           
           <div class="footer">Printed: ${new Date().toLocaleString()}</div>
         </div>
@@ -1162,12 +1191,12 @@ function LabelPrintModal({ isOpen, onClose, component }) {
               fontSize: '12px',
               fontWeight: 'bold'
             }}>
-              {component.status === 'Trans' ? 'SITE IN' : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}
+              {component.status === 'Trans' ? (isBothRequest ? '🚚 YARD → SITE IN' : 'SITE IN') : component.status === 'ToCollect' ? 'TO COLLECT' : component.status === 'Ordered' ? 'ORDERED' : component.status}
             </span>
           </div>
           
-          <div style={{ fontSize: '24px', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '12px' }}>
-            {String(component.requests?.request_number || '').padStart(5, '0')}-{component.requests?.sub_number ?? 0}
+          <div style={{ fontSize: '20px', fontWeight: 'bold', fontFamily: 'monospace', marginBottom: '12px' }}>
+            {component.requests?.request_number_full || (String(component.requests?.request_number || '').padStart(5, '0') + '-' + (component.requests?.sub_number ?? 0))}
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px', marginBottom: '12px' }}>
@@ -1205,15 +1234,54 @@ function LabelPrintModal({ isOpen, onClose, component }) {
             {component.ident_code}
           </div>
           
-          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#6b7280', marginBottom: '8px' }}>
             {component.description ? (component.description.length > 50 ? component.description.substring(0, 50) + '...' : component.description) : '-'}
           </div>
           
           <div style={{ fontSize: '28px', fontWeight: 'bold', color: COLORS.primary }}>
-            QTY: {component.quantity}
+            🚚 {component.quantity} pz
           </div>
           
-          {(component.is_partial || component.requests?.is_partial) && (
+          {/* V32.1: Both request info panel */}
+          {isBothRequest && (
+            <div style={{ 
+              marginTop: '12px',
+              padding: '12px', 
+              backgroundColor: '#EFF6FF',
+              border: '1px solid #2563EB',
+              borderRadius: '8px',
+              fontSize: '13px',
+              textAlign: 'left'
+            }}>
+              <div style={{ fontWeight: 'bold', color: '#1E40AF', marginBottom: '8px', textAlign: 'center' }}>
+                📦 Info Both Request
+              </div>
+              <div style={{ display: 'grid', gap: '4px' }}>
+                <div><strong>Totale Richiesto:</strong> <span style={{ color: '#7C3AED', fontWeight: 'bold' }}>{originalQty} pz</span></div>
+                <div><strong>WH Site inviato:</strong> <span style={{ color: siteSent > 0 ? '#16a34a' : '#9CA3AF', fontWeight: 'bold' }}>{siteSent > 0 ? `✅ ${siteSent} pz` : '⏳ in attesa'}</span></div>
+                <div><strong>WH Yard (questo):</strong> <span style={{ color: '#EA580C', fontWeight: 'bold' }}>🚚 {yardSending} pz</span></div>
+                <div style={{ borderTop: '1px solid #93C5FD', paddingTop: '4px', marginTop: '4px' }}>
+                  <strong>Totale inviato:</strong> <span style={{ fontWeight: 'bold' }}>{totalSentSoFar} di {originalQty}</span>
+                </div>
+              </div>
+              {remaining > 0 && (
+                <div style={{ 
+                  marginTop: '8px',
+                  padding: '4px 8px', 
+                  backgroundColor: '#FEF3C7',
+                  border: '1px solid #F59E0B',
+                  borderRadius: '4px',
+                  color: '#92400E',
+                  fontSize: '12px',
+                  textAlign: 'center'
+                }}>
+                  ⚠️ PARZIALE - Mancano ancora {remaining} pz
+                </div>
+              )}
+            </div>
+          )}
+          
+          {!isBothRequest && (component.is_partial || component.requests?.is_partial) && (
             <div style={{ 
               marginTop: '8px',
               padding: '4px 12px', 
@@ -6332,6 +6400,7 @@ function WHYardPage({ user }) {
 
 // ============================================================
 // SITE IN PAGE - V28.5: Actions dropdown with Receive/Delete/Return
+// V32.1: Added Both visibility - shows total requested, Site sent, Yard sending
 // ============================================================
 function SiteInPage({ user }) {
   const [components, setComponents] = useState([]);
@@ -6339,14 +6408,25 @@ function SiteInPage({ user }) {
   // V29.0: Label print modal
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [selectedForLabel, setSelectedForLabel] = useState(null);
+  // V32.1: Parent request data for Both visibility
+  const [parentDataMap, setParentDataMap] = useState({});
 
   useEffect(() => { loadComponents(); }, []);
 
   const loadComponents = async () => {
     setLoading(true);
+    // V32.1: Load more fields from request including parent_request_id for Both tracking
     const { data } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name, requester_user_id)`)
+      .select(`*, requests (
+        id, request_number, sub_number, request_number_full, 
+        level_component, level_wh_split, level_yard_split,
+        parent_request_id, parent_request_number,
+        site_sent_qty, yard_sent_qty, both_status,
+        sub_category, request_type, iso_number, full_spool_number, 
+        hf_number, test_pack_number, description, 
+        created_by_name, requester_user_id
+      )`)
       .eq('status', 'Trans');
     
     // V29.0: Enrich with requester names for old requests
@@ -6360,6 +6440,47 @@ function SiteInPage({ user }) {
         const { data: usersData } = await supabase.from('users').select('id, full_name').in('id', userIdsToLookup);
         if (usersData) userNameMap = Object.fromEntries(usersData.map(u => [u.id, u.full_name]));
       }
+      
+      // V32.1: Load parent request data for Both requests
+      const parentIds = [...new Set(
+        data.filter(r => r.requests?.parent_request_id)
+            .map(r => r.requests.parent_request_id)
+      )];
+      
+      let parentMap = {};
+      if (parentIds.length > 0) {
+        // Load parent requests to get original qty and both status
+        const { data: parentData } = await supabase
+          .from('requests')
+          .select('id, site_sent_qty, yard_sent_qty, both_status')
+          .in('id', parentIds);
+        
+        if (parentData) {
+          parentData.forEach(p => {
+            parentMap[p.id] = {
+              site_sent_qty: p.site_sent_qty || 0,
+              yard_sent_qty: p.yard_sent_qty || 0,
+              both_status: p.both_status
+            };
+          });
+        }
+        
+        // Also load components from parent to get original requested qty
+        const { data: parentComps } = await supabase
+          .from('request_components')
+          .select('request_id, quantity')
+          .in('request_id', parentIds);
+        
+        if (parentComps) {
+          parentComps.forEach(pc => {
+            if (parentMap[pc.request_id]) {
+              parentMap[pc.request_id].original_qty = pc.quantity;
+            }
+          });
+        }
+      }
+      setParentDataMap(parentMap);
+      
       const enriched = data.map(r => ({
         ...r,
         requests: r.requests ? { ...r.requests, created_by_name: r.requests.created_by_name || userNameMap[r.requests.requester_user_id] || null } : null
@@ -6536,18 +6657,29 @@ function SiteInPage({ user }) {
                 <th style={styles.th}>Spool</th>
                 <th style={styles.th}>HF</th>
                 <th style={styles.th}>TP</th>
-                  <th style={styles.th}>Request</th>
+                <th style={styles.th}>Request</th>
                 <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
-                <th style={styles.th}>Tag</th>
-                <th style={styles.th}>Diam</th>
-                <th style={styles.th}>Qty</th>
+                <th style={{ ...styles.th, backgroundColor: '#7C3AED', color: 'white', textAlign: 'center' }}>Qty Ric.</th>
+                <th style={{ ...styles.th, backgroundColor: '#2563EB', color: 'white', textAlign: 'center' }}>Site Sent</th>
+                <th style={{ ...styles.th, backgroundColor: '#EA580C', color: 'white', textAlign: 'center' }}>Qty Arrivo</th>
                 <th style={styles.th}>Actions</th>
                 <th style={styles.th}>🏷️</th>
               </tr>
             </thead>
             <tbody>
-              {components.map(comp => (
+              {components.map(comp => {
+                // V32.1: Get parent data for Both requests
+                const parentId = comp.requests?.parent_request_id;
+                const parentInfo = parentId ? parentDataMap[parentId] : null;
+                const isBothRequest = parentInfo?.both_status !== null && parentInfo?.both_status !== undefined;
+                
+                // Calculate values
+                const originalQty = parentInfo?.original_qty || comp.quantity;
+                const siteSent = parentInfo?.site_sent_qty || 0;
+                const yardSending = comp.quantity; // This component's qty
+                
+                return (
                 <tr key={comp.id}>
                   <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
                   <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
@@ -6556,15 +6688,24 @@ function SiteInPage({ user }) {
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
                   <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                    {String(comp.requests?.request_number).padStart(5, '0')}-{comp.requests?.sub_number}
+                    {comp.requests?.request_number_full || `${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}`}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
-                  <td style={{ ...styles.td, maxWidth: '200px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
-                    {comp.description ? (comp.description.length > 50 ? comp.description.substring(0, 50) + '...' : comp.description) : '-'}
+                  <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
+                    {comp.description ? (comp.description.length > 35 ? comp.description.substring(0, 35) + '...' : comp.description) : '-'}
                   </td>
-                  <td style={styles.td}>{comp.tag || '-'}</td>
-                  <td style={styles.td}>{comp.dia1 || '-'}</td>
-                  <td style={styles.td}>{comp.quantity}</td>
+                  {/* V32.1: Qty Richiesta (original total requested) */}
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: '#7C3AED' }}>
+                    {isBothRequest ? originalQty : comp.quantity}
+                  </td>
+                  {/* V32.1: Site Sent (what Site already sent) */}
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: siteSent > 0 ? '#16a34a' : '#9CA3AF' }}>
+                    {isBothRequest ? (siteSent > 0 ? `✅ ${siteSent}` : '⏳') : '-'}
+                  </td>
+                  {/* V32.1: Qty Arrivo (what Yard is sending - this component) */}
+                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '700', fontSize: '15px', color: '#EA580C' }}>
+                    🚚 {yardSending}
+                  </td>
                   <td style={styles.td}>
                     {/* V28.9: Use ActionDropdown instead of custom dropdown */}
                     <ActionDropdown
@@ -6580,7 +6721,18 @@ function SiteInPage({ user }) {
                   </td>
                   <td style={{ ...styles.td, textAlign: 'center' }}>
                     <button
-                      onClick={() => { setSelectedForLabel(comp); setShowLabelModal(true); }}
+                      onClick={() => {
+                        // V32.1: Pass parent data for Both label printing
+                        const enrichedComp = {
+                          ...comp,
+                          _parentInfo: parentInfo,
+                          _originalQty: originalQty,
+                          _siteSent: siteSent,
+                          _isBoth: isBothRequest
+                        };
+                        setSelectedForLabel(enrichedComp);
+                        setShowLabelModal(true);
+                      }}
                       style={{ 
                         padding: '4px 8px', 
                         border: 'none', 
@@ -6596,7 +6748,8 @@ function SiteInPage({ user }) {
                     </button>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
               {components.length === 0 && (
                 <tr>
                   <td colSpan="14" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
