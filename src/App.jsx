@@ -4,6 +4,9 @@
 // V32.5 Changes:
 //   - TestPack Number Format: MAX-TP-XXXX (fixed prefix + 4 digits)
 //   - TestPack Form: Input shows "MAX-TP-" prefix fixed, user enters only 4 digits
+//   - Movements Log: request_number now saved with each movement
+//   - Orders Received: Fixed inventory increment with better error logging
+//   - Spare Parts: Same inventory increment fix applied
 //   - HF Page: Exclude TestPack requests (only Piping/Erection)
 //   - TestPack Erection: HF column visible in table
 //   - TestPack Log: Delete button available
@@ -11378,36 +11381,58 @@ function SparePartsPage({ user }) {
 
   const handleToSite = async (component) => {
     try {
+      // V32.5: Increment inventory
       await supabase.rpc('increment_site_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      
       await supabase.from('request_components')
         .update({ status: 'WH_Site', forecast_date: null })
         .eq('id', component.id);
+      
+      // V32.5: Include request_number in movement
       await supabase.from('movements').insert({
-        ident_code: component.ident_code, movement_type: 'IN', quantity: component.quantity,
-        from_location: component.order_type === 'Internal' ? 'INTERNAL' : 'CLIENT', to_location: 'SITE', 
-        performed_by: user.full_name, note: `Spare Parts - ${component.order_type || 'Client'} Delivery`
+        ident_code: component.ident_code, 
+        movement_type: 'IN', 
+        quantity: component.quantity,
+        from_location: component.order_type === 'Internal' ? 'INTERNAL' : 'CLIENT', 
+        to_location: 'SITE', 
+        performed_by: user.full_name, 
+        note: `Spare Parts - ${component.order_type || 'Client'} Delivery`,
+        request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
+      
       await logHistory(component.id, 'Delivered - To Site', 'Spare', 'WH_Site', '');
       loadComponents();
     } catch (err) {
+      console.error('handleToSite (Spare) error:', err);
       alert('Error: ' + err.message);
     }
   };
 
   const handleToYard = async (component) => {
     try {
+      // V32.5: Increment inventory
       await supabase.rpc('increment_yard_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      
       await supabase.from('request_components')
         .update({ status: 'Yard', forecast_date: null })
         .eq('id', component.id);
+      
+      // V32.5: Include request_number in movement
       await supabase.from('movements').insert({
-        ident_code: component.ident_code, movement_type: 'IN', quantity: component.quantity,
-        from_location: component.order_type === 'Internal' ? 'INTERNAL' : 'CLIENT', to_location: 'YARD', 
-        performed_by: user.full_name, note: `Spare Parts - ${component.order_type || 'Client'} Delivery`
+        ident_code: component.ident_code, 
+        movement_type: 'IN', 
+        quantity: component.quantity,
+        from_location: component.order_type === 'Internal' ? 'INTERNAL' : 'CLIENT', 
+        to_location: 'YARD', 
+        performed_by: user.full_name, 
+        note: `Spare Parts - ${component.order_type || 'Client'} Delivery`,
+        request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
+      
       await logHistory(component.id, 'Delivered - To Yard', 'Spare', 'Yard', '');
       loadComponents();
     } catch (err) {
+      console.error('handleToYard (Spare) error:', err);
       alert('Error: ' + err.message);
     }
   };
@@ -11743,7 +11768,8 @@ function OrdersPage({ user }) {
       quantity: qtyToOrder, 
       from_location: 'ORDER', 
       to_location: 'SUPPLIER', 
-      performed_by: user.full_name 
+      performed_by: user.full_name,
+      request_number: selectedComponent.requests ? displayRequestNumber(selectedComponent.requests) : null
     });
     
     setShowOrderModal(false);
@@ -11757,13 +11783,21 @@ function OrdersPage({ user }) {
       await supabase.from('request_components')
         .update({ status: 'WH_Site', order_forecast: null })
         .eq('id', component.id);
+      // V32.5: Include request_number in movement
       await supabase.from('movements').insert({
-        ident_code: component.ident_code, movement_type: 'IN', quantity: component.quantity,
-        from_location: 'SUPPLIER', to_location: 'SITE', performed_by: user.full_name, note: 'Order Received'
+        ident_code: component.ident_code, 
+        movement_type: 'IN', 
+        quantity: component.quantity,
+        from_location: 'SUPPLIER', 
+        to_location: 'SITE', 
+        performed_by: user.full_name, 
+        note: 'Order Received',
+        request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
       await logHistory(component.id, 'Order Received - To Site', 'Ordered', 'WH_Site', '');
       loadData();
     } catch (err) {
+      console.error('handleReceivedToSite error:', err);
       alert('Error: ' + err.message);
     }
   };
@@ -11771,17 +11805,29 @@ function OrdersPage({ user }) {
   // V28: Receive order and send To Yard
   const handleReceivedToYard = async (component) => {
     try {
+      // V32.5: Increment inventory
       await supabase.rpc('increment_yard_qty', { p_ident_code: component.ident_code, p_qty: component.quantity });
+      
       await supabase.from('request_components')
         .update({ status: 'Yard', order_forecast: null })
         .eq('id', component.id);
+      
+      // V32.5: Include request_number in movement
       await supabase.from('movements').insert({
-        ident_code: component.ident_code, movement_type: 'IN', quantity: component.quantity,
-        from_location: 'SUPPLIER', to_location: 'YARD', performed_by: user.full_name, note: 'Order Received'
+        ident_code: component.ident_code, 
+        movement_type: 'IN', 
+        quantity: component.quantity,
+        from_location: 'SUPPLIER', 
+        to_location: 'YARD', 
+        performed_by: user.full_name, 
+        note: 'Order Received',
+        request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
+      
       await logHistory(component.id, 'Order Received - To Yard', 'Ordered', 'Yard', '');
       loadData();
     } catch (err) {
+      console.error('handleReceivedToYard error:', err);
       alert('Error: ' + err.message);
     }
   };
