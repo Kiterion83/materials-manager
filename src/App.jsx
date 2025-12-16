@@ -1,6 +1,15 @@
 // ============================================================
-// MATERIALS MANAGER V32.3 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.4 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.4 Changes:
+//   - Add New Item: ISO + initial quantities (Site, Yard, Lost, Broken)
+//   - Request Tracker: Mother number shown, child number on hover tooltip
+//   - Request Tracker: Last Update column with date/time, ordered by most recent
+//   - Orders Badge: Shows To Order + Ordered count
+//   - Place Order: Added Quantity field, only Yard destination
+//   - Ordered: Removed "Received → Site" option (only Yard)
+//   - Partial Split: Allow qty == total when Not Found = None
+//   - WH Yard Partial: Better validation, allow full qty with None
 // V32.3 Changes:
 //   - Sub-category visible in Requests material list (colored badge)
 //   - Ready/Partial logic: Ready only when qty==site_qty
@@ -127,7 +136,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.3';
+const APP_VERSION = 'V32.4';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -251,6 +260,24 @@ function displayRequestNumber(request, showFull = true) {
     return request.request_number_full;
   }
   // Always generate 4-level format
+  const base = String(request?.request_number || 0).padStart(5, '0');
+  const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
+  const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
+  const yard = String(request?.level_yard_split ?? 0).padStart(2, '0');
+  return `${base}-${comp}-${wh}-${yard}`;
+}
+
+// V32.3: Show mother request number only (XXXXX-00-00-00)
+function displayMotherNumber(request) {
+  const base = String(request?.request_number || 0).padStart(5, '0');
+  return `${base}-00-00-00`;
+}
+
+// V32.3: Get full child number for tooltip
+function getChildNumber(request) {
+  if (request?.request_number_full) {
+    return request.request_number_full;
+  }
   const base = String(request?.request_number || 0).padStart(5, '0');
   const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
   const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
@@ -4269,13 +4296,25 @@ function WHSitePage({ user }) {
   };
 
   const submitPartial = async () => {
-    if (!partialQty || parseInt(partialQty) >= selectedComponent.quantity) {
-      alert('Partial quantity must be less than total');
+    const foundQty = parseInt(partialQty) || 0;
+    const notFoundQty = selectedComponent.quantity - foundQty;
+    
+    // V32.3: Allow found == total ONLY if Not Found destination is "None" (close without sub-request)
+    if (foundQty <= 0) {
+      alert('Found quantity must be at least 1');
       return;
     }
-    
-    const foundQty = parseInt(partialQty);
-    const notFoundQty = selectedComponent.quantity - foundQty;
+    if (foundQty > selectedComponent.quantity) {
+      alert('Found quantity cannot exceed total requested');
+      return;
+    }
+    if (foundQty === selectedComponent.quantity && partialNotFoundDest !== 'None') {
+      alert('If sending all quantity, select "None (Close)" for Not Found destination');
+      return;
+    }
+    if (foundQty < selectedComponent.quantity && partialNotFoundDest === 'None' && notFoundQty > 0) {
+      // This is OK - user wants to close without creating sub-request for not found
+    }
     
     try {
       // V28.7: Update original component with found quantity and destination
@@ -5534,13 +5573,26 @@ function WHYardPage({ user }) {
 
   const submitPartial = async () => {
     const available = inventoryMap[selectedComponent?.ident_code]?.yard || 0;
-    if (!partialQty || parseInt(partialQty) > available) {
+    const foundQty = parseInt(partialQty) || 0;
+    const notFoundQty = selectedComponent.quantity - foundQty;
+    
+    // V32.3: Validation - allow found == total only if Not Found is "None"
+    if (foundQty <= 0) {
+      alert('Found quantity must be at least 1');
+      return;
+    }
+    if (foundQty > available) {
       alert(`Max available: ${available}`);
       return;
     }
-    
-    const foundQty = parseInt(partialQty);
-    const notFoundQty = selectedComponent.quantity - foundQty;
+    if (foundQty > selectedComponent.quantity) {
+      alert('Found quantity cannot exceed total requested');
+      return;
+    }
+    if (foundQty === selectedComponent.quantity && partialNotFoundDest !== 'None') {
+      alert('If sending all quantity, select "None (Close)" for Not Found destination');
+      return;
+    }
     
     try {
       // V28.7: Update original component with found quantity and destination
@@ -6354,12 +6406,17 @@ function WHYardPage({ user }) {
             onChange={(e) => setPartialQty(e.target.value)}
             style={{ ...styles.input, borderColor: isOverLimit ? COLORS.primary : undefined }}
             min="1"
-            max={Math.min(selectedComponent?.quantity - 1, availableQty)}
+            max={availableQty}
             placeholder="Enter found quantity"
           />
           {isOverLimit && (
             <p style={{ color: COLORS.primary, fontSize: '12px', marginTop: '4px' }}>
               ⚠️ Cannot exceed available quantity ({availableQty})
+            </p>
+          )}
+          {parseInt(partialQty) === selectedComponent?.quantity && (
+            <p style={{ color: COLORS.info, fontSize: '12px', marginTop: '4px' }}>
+              ℹ️ Sending all requested quantity - select "None (Close)" for Not Found
             </p>
           )}
         </div>
@@ -11363,6 +11420,7 @@ function OrdersPage({ user }) {
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0]);
   const [expectedDate, setExpectedDate] = useState('');
+  const [orderQty, setOrderQty] = useState(''); // V32.3: Quantity to order
   // V29.0: Label print modal
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [selectedForLabel, setSelectedForLabel] = useState(null);
@@ -11410,14 +11468,49 @@ function OrdersPage({ user }) {
     setSelectedComponent(component);
     setOrderDate(new Date().toISOString().split('T')[0]);
     setExpectedDate('');
+    setOrderQty(component.quantity.toString()); // V32.3: Default to requested qty
     setShowOrderModal(true);
   };
 
+  // V32.3: Submit order with quantity
   const submitOrder = async () => {
-    await supabase.from('request_components').update({ status: 'Ordered', order_date: orderDate, order_forecast: expectedDate || null }).eq('id', selectedComponent.id);
-    await supabase.from('order_log').insert({ ident_code: selectedComponent.ident_code, quantity: selectedComponent.quantity, order_type: selectedComponent.order_type || 'Internal', order_date: orderDate, expected_date: expectedDate || null, ordered_by: user.full_name });
-    await logHistory(selectedComponent.id, 'Order Placed', 'Order', 'Ordered', `Type: ${selectedComponent.order_type || 'Internal'}, Expected: ${expectedDate || 'TBD'}`);
-    await supabase.from('movements').insert({ ident_code: selectedComponent.ident_code, movement_type: 'ORDER', quantity: selectedComponent.quantity, from_location: 'ORDER', to_location: 'SUPPLIER', performed_by: user.full_name });
+    const qtyToOrder = parseInt(orderQty) || selectedComponent.quantity;
+    if (qtyToOrder <= 0) {
+      alert('Quantity must be at least 1');
+      return;
+    }
+    
+    // Update component with ordered quantity
+    await supabase.from('request_components')
+      .update({ 
+        status: 'Ordered', 
+        quantity: qtyToOrder, // V32.3: Use specified quantity
+        order_date: orderDate, 
+        order_forecast: expectedDate || null 
+      })
+      .eq('id', selectedComponent.id);
+    
+    await supabase.from('order_log').insert({ 
+      ident_code: selectedComponent.ident_code, 
+      quantity: qtyToOrder, 
+      order_type: selectedComponent.order_type || 'Internal', 
+      order_date: orderDate, 
+      expected_date: expectedDate || null, 
+      ordered_by: user.full_name 
+    });
+    
+    await logHistory(selectedComponent.id, 'Order Placed', 'Order', 'Ordered', 
+      `Qty: ${qtyToOrder}, Type: ${selectedComponent.order_type || 'Internal'}, Expected: ${expectedDate || 'TBD'}`);
+    
+    await supabase.from('movements').insert({ 
+      ident_code: selectedComponent.ident_code, 
+      movement_type: 'ORDER', 
+      quantity: qtyToOrder, 
+      from_location: 'ORDER', 
+      to_location: 'SUPPLIER', 
+      performed_by: user.full_name 
+    });
+    
     setShowOrderModal(false);
     loadData();
   };
@@ -11625,7 +11718,6 @@ function OrdersPage({ user }) {
                 <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                   <ActionDropdown
                     actions={[
-                      { id: 'toSite', icon: '📦', label: 'Received → Site' },
                       { id: 'toYard', icon: '🏭', label: 'Received → Yard' },
                       { id: 'back', icon: '↩️', label: 'Back to To Order' },
                       { id: 'delete', icon: '🗑️', label: 'Delete' }
@@ -11783,14 +11875,35 @@ function OrdersPage({ user }) {
       )}
 
       <Modal isOpen={showOrderModal} onClose={() => setShowOrderModal(false)} title="Place Order">
-        <p style={{ marginBottom: '8px' }}><strong>{selectedComponent?.ident_code}</strong> - Qty: {selectedComponent?.quantity}</p>
+        <p style={{ marginBottom: '8px' }}><strong>{selectedComponent?.ident_code}</strong></p>
         <p style={{ marginBottom: '16px', fontSize: '13px' }}>
           Type: <span style={{ ...styles.statusBadge, backgroundColor: selectedComponent?.order_type === 'Client' ? COLORS.cyan : COLORS.info }}>
             {selectedComponent?.order_type || 'Internal'}
           </span>
         </p>
+        
+        {/* V32.3: Quantity to Order */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Quantity to Order *</label>
+          <input 
+            type="number" 
+            min="1"
+            value={orderQty} 
+            onChange={(e) => setOrderQty(e.target.value)} 
+            style={styles.input} 
+          />
+          <p style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+            Requested: {selectedComponent?.quantity}
+          </p>
+        </div>
+        
         <div style={{ marginBottom: '16px' }}><label style={styles.label}>Order Date *</label><input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} style={styles.input} /></div>
         <div style={{ marginBottom: '16px' }}><label style={styles.label}>Expected Delivery Date</label><input type="date" value={expectedDate} onChange={(e) => setExpectedDate(e.target.value)} style={styles.input} /></div>
+        
+        <div style={{ backgroundColor: '#DBEAFE', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
+          <strong>📦 Note:</strong> When received, material goes to <strong>WH Yard</strong>
+        </div>
+        
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowOrderModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button onClick={submitOrder} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Confirm Order</button>
@@ -12646,10 +12759,11 @@ function LogPage({ user }) {
       if (movData) setMovements(movData);
 
       // Load all request components for Request Tracker
+      // V32.3: Order by updated_at (last status change) descending
       const { data: reqData } = await supabase
         .from('request_components')
         .select('*, requests(*)')
-        .order('created_at', { ascending: false })
+        .order('updated_at', { ascending: false, nullsFirst: false })
         .limit(500);
       
       // V29.0: Load user names for old requests that don't have created_by_name
@@ -13162,15 +13276,16 @@ function LogPage({ user }) {
                   <th style={styles.th}>Requester</th>
                   <th style={styles.th}>Prev Status</th>
                   <th style={styles.th}>Current Status</th>
+                  <th style={styles.th}>Last Update</th>
                   <th style={styles.th}>ℹ️</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRequests.map((req, idx) => (
                   <tr key={idx}>
-                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}
-                        title={`Full: ${displayRequestNumber(req.requests)}`}>
-                      {displayRequestNumber(req.requests)}
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', cursor: 'help' }}
+                        title={`Child: ${getChildNumber(req.requests)}`}>
+                      {displayMotherNumber(req.requests)}
                     </td>
                     <td style={styles.td}>{req.requests?.request_type || '-'}</td>
                     <td style={styles.td}>{req.requests?.test_pack_number || '-'}</td>
@@ -13186,6 +13301,12 @@ function LogPage({ user }) {
                     </td>
                     <td style={styles.td}>
                       <StatusBadge status={req.status} />
+                    </td>
+                    <td style={{ ...styles.td, fontSize: '11px', whiteSpace: 'nowrap' }}>
+                      {req.updated_at ? new Date(req.updated_at).toLocaleString('it-IT', { 
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit'
+                      }) : '-'}
                     </td>
                     <td style={styles.td}>
                       <ActionButton color={COLORS.gray} onClick={() => openHistory(req.id)} title="View History">ℹ️</ActionButton>
@@ -13632,14 +13753,15 @@ function DatabasePage({ user }) {
       return;
     }
 
-    // Add to inventory
+    // V32.3: Add to inventory with all fields including quantities
     const { error } = await supabase.from('inventory').insert({
+      iso_number: newItem.iso_number || null,
       ident_code: newItem.ident_code,
-      description: newItem.description,
-      yard_qty: 0,
-      site_qty: 0,
-      lost_qty: 0,
-      broken_qty: 0,
+      description: newItem.description || null,
+      yard_qty: newItem.yard_qty || 0,
+      site_qty: newItem.site_qty || 0,
+      lost_qty: newItem.lost_qty || 0,
+      broken_qty: newItem.broken_qty || 0,
       collected_ten_wh: 0,
       record_out: 0
     });
@@ -13653,8 +13775,22 @@ function DatabasePage({ user }) {
       return;
     }
 
+    // V32.3: Log movement if any quantity was set
+    const totalQty = (newItem.yard_qty || 0) + (newItem.site_qty || 0);
+    if (totalQty > 0) {
+      await supabase.from('movements').insert({
+        ident_code: newItem.ident_code,
+        movement_type: 'BAL',
+        quantity: totalQty,
+        from_location: 'NEW',
+        to_location: 'BALANCE',
+        performed_by: user.full_name,
+        note: `New item added: Y=${newItem.yard_qty || 0}, S=${newItem.site_qty || 0}`
+      });
+    }
+
     setShowAddModal(false);
-    setNewItem({ iso_number: '', ident_code: '', description: '' });
+    setNewItem({ iso_number: '', ident_code: '', description: '', site_qty: 0, yard_qty: 0, lost_qty: 0, broken_qty: 0 });
     loadInventory();
   };
 
@@ -13890,8 +14026,18 @@ function DatabasePage({ user }) {
         </div>
       </Modal>
 
-      {/* Add Item Modal */}
+      {/* Add Item Modal - V32.3 Enhanced */}
       <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} title="+ Add New Item">
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>ISO Number (optional)</label>
+          <input
+            type="text"
+            value={newItem.iso_number || ''}
+            onChange={(e) => setNewItem({ ...newItem, iso_number: e.target.value.toUpperCase() })}
+            style={styles.input}
+            placeholder="e.g., P121A01-AL21011-8-01"
+          />
+        </div>
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Ident Code *</label>
           <input
@@ -13912,9 +14058,54 @@ function DatabasePage({ user }) {
             placeholder="Item description..."
           />
         </div>
-        <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '16px' }}>
-          Note: Quantities can be set after adding the item using the Balance button.
-        </p>
+        
+        {/* V32.3: Quantity fields */}
+        <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
+          <label style={{ ...styles.label, marginBottom: '12px' }}>Initial Quantities</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: COLORS.info, fontWeight: '500' }}>Site Qty</label>
+              <input
+                type="number"
+                min="0"
+                value={newItem.site_qty || 0}
+                onChange={(e) => setNewItem({ ...newItem, site_qty: parseInt(e.target.value) || 0 })}
+                style={{ ...styles.input, textAlign: 'center' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: COLORS.secondary, fontWeight: '500' }}>Yard Qty</label>
+              <input
+                type="number"
+                min="0"
+                value={newItem.yard_qty || 0}
+                onChange={(e) => setNewItem({ ...newItem, yard_qty: parseInt(e.target.value) || 0 })}
+                style={{ ...styles.input, textAlign: 'center' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: COLORS.orange, fontWeight: '500' }}>Lost Qty</label>
+              <input
+                type="number"
+                min="0"
+                value={newItem.lost_qty || 0}
+                onChange={(e) => setNewItem({ ...newItem, lost_qty: parseInt(e.target.value) || 0 })}
+                style={{ ...styles.input, textAlign: 'center' }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px', color: COLORS.purple, fontWeight: '500' }}>Broken Qty</label>
+              <input
+                type="number"
+                min="0"
+                value={newItem.broken_qty || 0}
+                onChange={(e) => setNewItem({ ...newItem, broken_qty: parseInt(e.target.value) || 0 })}
+                style={{ ...styles.input, textAlign: 'center' }}
+              />
+            </div>
+          </div>
+        </div>
+        
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={() => setShowAddModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button onClick={addNewItem} style={{ ...styles.button, ...styles.buttonPrimary }}>Add Item</button>
@@ -14130,7 +14321,8 @@ export default function App() {
     counts.whYard = (yardData?.length || 0) + (engChecksYard?.length || 0);
     counts.engineering = engData?.length || 0;
     counts.siteIn = transData?.length || 0;
-    counts.orders = orderData?.length || 0;
+    // V32.3: Orders badge = To Order + Ordered
+    counts.orders = (orderData?.length || 0) + (orderedData?.length || 0);
     counts.materialIn = 0; // Material In doesn't need a badge
     counts.spareParts = spareData?.length || 0;
     counts.management = mngData?.length || 0;
