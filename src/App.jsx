@@ -1,6 +1,14 @@
 // ============================================================
-// MATERIALS MANAGER V32.0 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.1 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.1 Changes:
+//   - Both with Visibility: Site/Yard see each other's sent qty
+//   - New columns: "Site Sent" / "Yard Sent" + "Da Trovare"
+//   - Magazzinieri decide: To TP / Partial (no Eng consolidation)
+//   - Yard → Site IN: Material transits through Site IN to TP
+//   - Auto-cancel: When one WH completes, other's request disappears
+//   - Labels: 3 new labels (Site→TP, Yard→SiteIN, TP ToCollect)
+//   - Partial Modal: Enhanced with Found/Not Found destinations
 // V32.0 Changes:
 //   - Request Numbering: 4-level system XXXXX-LL-SS-PP
 //     - LL = level_component (00-99)
@@ -1231,6 +1239,191 @@ function LabelPrintModal({ isOpen, onClose, component }) {
       </div>
     </Modal>
   );
+}
+
+// ============================================================
+// V32.1: BOTH LABELS - Labels for Send to Both workflow
+// ============================================================
+
+// Label A: WH Site → TestPack (for segregation)
+function printLabelSiteToTP(component, user, yardSent, totalQty) {
+  const printWindow = window.open('', '_blank', 'width=400,height=500');
+  const isPending = yardSent < totalQty - component.quantity;
+  const labelContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Site to TP Label</title>
+      <style>
+        @page { size: 100mm 70mm; margin: 0; }
+        body { font-family: Arial, sans-serif; padding: 8px; margin: 0; width: 100mm; height: 70mm; box-sizing: border-box; }
+        .label { border: 2px solid #000; padding: 8px; height: calc(100% - 4px); box-sizing: border-box; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+        .logo { font-weight: bold; font-size: 12px; }
+        .status { padding: 2px 8px; background: #8B5CF6; color: white; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .tp-num { font-size: 14px; font-weight: bold; text-align: center; margin: 4px 0; color: #7C3AED; }
+        .request-num { font-size: 11px; text-align: center; font-family: monospace; margin: 4px 0; }
+        .code { font-family: monospace; font-size: 12px; font-weight: bold; background: #1F2937; color: white; padding: 4px; border-radius: 4px; text-align: center; margin: 4px 0; }
+        .qty { font-size: 22px; font-weight: bold; text-align: center; color: #E31E24; margin: 6px 0; }
+        .pending { background: #FEF3C7; border: 1px solid #F59E0B; padding: 4px; font-size: 9px; text-align: center; border-radius: 4px; color: #92400E; margin: 4px 0; }
+        .complete { background: #D1FAE5; border: 1px solid #16a34a; padding: 4px; font-size: 9px; text-align: center; border-radius: 4px; color: #065F46; margin: 4px 0; }
+        .tracking { font-size: 8px; border-top: 1px solid #ccc; padding-top: 4px; margin-top: 4px; }
+        .tracking div { margin: 2px 0; }
+        .footer { font-size: 7px; color: #9ca3af; text-align: center; margin-top: 4px; }
+      </style>
+    </head>
+    <body>
+      <div class="label">
+        <div class="header">
+          <span class="logo">MAX STREICHER</span>
+          <span class="status">📦 TO TESTPACK</span>
+        </div>
+        <div class="tp-num">TP: ${component.requests?.test_pack_number || '-'}</div>
+        <div class="code">${component.ident_code || '-'}</div>
+        <div style="font-size: 8px; text-align: center; color: #374151; margin: 2px 0;">${component.description ? (component.description.length > 40 ? component.description.substring(0, 40) + '...' : component.description) : '-'}</div>
+        <div class="qty">${component.quantity} pz</div>
+        ${isPending ? `
+          <div class="pending">⏳ PARZIALE - In attesa da WH Yard</div>
+        ` : `
+          <div class="complete">✅ COMPLETO</div>
+        `}
+        <div class="tracking">
+          <div><strong>Madre:</strong> ${component.requests?.parent_request_number || component.requests?.request_number || '-'}</div>
+          <div><strong>Figlio:</strong> ${component.requests?.request_number_full || '-'}</div>
+          <div><strong>Richiedente:</strong> ${component.requests?.created_by_name || '-'}</div>
+        </div>
+        <div class="footer">Stampato: ${new Date().toLocaleString()} | Op: ${user?.full_name || '-'}</div>
+      </div>
+    </body>
+    </html>
+  `;
+  printWindow.document.write(labelContent);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 250);
+}
+
+// Label B: WH Yard → Site IN (material in transit for TestPack)
+function printLabelYardToSiteIN(component, user, siteSent, totalQty, notFoundQty = 0) {
+  const printWindow = window.open('', '_blank', 'width=400,height=500');
+  const totalSentSoFar = siteSent + component.quantity;
+  const remaining = totalQty - totalSentSoFar - notFoundQty;
+  const labelContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Yard to Site IN Label</title>
+      <style>
+        @page { size: 100mm 70mm; margin: 0; }
+        body { font-family: Arial, sans-serif; padding: 8px; margin: 0; width: 100mm; height: 70mm; box-sizing: border-box; }
+        .label { border: 2px solid #000; padding: 8px; height: calc(100% - 4px); box-sizing: border-box; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+        .logo { font-weight: bold; font-size: 12px; }
+        .status { padding: 2px 8px; background: #2563EB; color: white; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .dest { font-size: 11px; text-align: center; margin: 4px 0; color: #1E40AF; }
+        .tp-num { font-size: 12px; font-weight: bold; text-align: center; margin: 4px 0; color: #7C3AED; }
+        .code { font-family: monospace; font-size: 12px; font-weight: bold; background: #1F2937; color: white; padding: 4px; border-radius: 4px; text-align: center; margin: 4px 0; }
+        .qty { font-size: 22px; font-weight: bold; text-align: center; color: #E31E24; margin: 6px 0; }
+        .summary { background: #F3F4F6; border: 1px solid #D1D5DB; padding: 4px; font-size: 8px; border-radius: 4px; margin: 4px 0; }
+        .summary div { margin: 1px 0; }
+        .warning { background: #FEF3C7; border: 1px solid #F59E0B; padding: 3px; font-size: 8px; text-align: center; border-radius: 4px; color: #92400E; margin: 4px 0; }
+        .tracking { font-size: 8px; border-top: 1px solid #ccc; padding-top: 4px; margin-top: 4px; }
+        .tracking div { margin: 2px 0; }
+        .footer { font-size: 7px; color: #9ca3af; text-align: center; margin-top: 4px; }
+      </style>
+    </head>
+    <body>
+      <div class="label">
+        <div class="header">
+          <span class="logo">MAX STREICHER</span>
+          <span class="status">🚚 YARD → SITE IN</span>
+        </div>
+        <div class="dest">Destinazione: SITE IN → TestPack</div>
+        <div class="tp-num">TP: ${component.requests?.test_pack_number || '-'}</div>
+        <div class="code">${component.ident_code || '-'}</div>
+        <div style="font-size: 8px; text-align: center; color: #374151; margin: 2px 0;">${component.description ? (component.description.length > 40 ? component.description.substring(0, 40) + '...' : component.description) : '-'}</div>
+        <div class="qty">${component.quantity} pz</div>
+        <div class="summary">
+          <div><strong>Richiesti:</strong> ${totalQty}</div>
+          <div><strong>WH Site inviato:</strong> ${siteSent}</div>
+          <div><strong>WH Yard (questo):</strong> ${component.quantity}</div>
+          <div><strong>Totale inviato:</strong> ${totalSentSoFar} di ${totalQty}</div>
+          ${notFoundQty > 0 ? `<div style="color: #DC2626;"><strong>❌ Not Found:</strong> ${notFoundQty} → Engineering</div>` : ''}
+        </div>
+        ${remaining > 0 ? `<div class="warning">⚠️ PARZIALE - Mancano ancora ${remaining} pz</div>` : ''}
+        <div class="tracking">
+          <div><strong>Madre:</strong> ${component.requests?.parent_request_number || component.requests?.request_number || '-'}</div>
+          <div><strong>Figlio:</strong> ${component.requests?.request_number_full || '-'}</div>
+          <div><strong>Richiedente:</strong> ${component.requests?.created_by_name || '-'}</div>
+        </div>
+        <div class="footer">Stampato: ${new Date().toLocaleString()} | Op: ${user?.full_name || '-'}</div>
+      </div>
+    </body>
+    </html>
+  `;
+  printWindow.document.write(labelContent);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 250);
+}
+
+// Label C: TestPack To Collect (final label when component goes to ToCollect)
+function printLabelTPToCollect(component, user, siteSentQty = 0, yardSentQty = 0) {
+  const printWindow = window.open('', '_blank', 'width=400,height=500');
+  const labelContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>TP To Collect Label</title>
+      <style>
+        @page { size: 100mm 70mm; margin: 0; }
+        body { font-family: Arial, sans-serif; padding: 8px; margin: 0; width: 100mm; height: 70mm; box-sizing: border-box; }
+        .label { border: 2px solid #000; padding: 8px; height: calc(100% - 4px); box-sizing: border-box; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 4px; margin-bottom: 6px; }
+        .logo { font-weight: bold; font-size: 12px; }
+        .status { padding: 2px 8px; background: #16a34a; color: white; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .tp-num { font-size: 16px; font-weight: bold; text-align: center; margin: 6px 0; color: #7C3AED; }
+        .code { font-family: monospace; font-size: 12px; font-weight: bold; background: #1F2937; color: white; padding: 4px; border-radius: 4px; text-align: center; margin: 4px 0; }
+        .qty { font-size: 24px; font-weight: bold; text-align: center; color: #16a34a; margin: 8px 0; }
+        .complete { background: #D1FAE5; border: 1px solid #16a34a; padding: 4px; font-size: 9px; text-align: center; border-radius: 4px; color: #065F46; margin: 4px 0; }
+        .source { background: #F3F4F6; border: 1px solid #D1D5DB; padding: 4px; font-size: 8px; border-radius: 4px; margin: 4px 0; }
+        .source div { margin: 1px 0; }
+        .tracking { font-size: 8px; border-top: 1px solid #ccc; padding-top: 4px; margin-top: 4px; }
+        .tracking div { margin: 2px 0; }
+        .footer { font-size: 7px; color: #9ca3af; text-align: center; margin-top: 4px; }
+      </style>
+    </head>
+    <body>
+      <div class="label">
+        <div class="header">
+          <span class="logo">MAX STREICHER</span>
+          <span class="status">✅ TO COLLECT</span>
+        </div>
+        <div class="tp-num">TP: ${component.requests?.test_pack_number || '-'}</div>
+        <div class="code">${component.ident_code || '-'}</div>
+        <div style="font-size: 8px; text-align: center; color: #374151; margin: 2px 0;">${component.description ? (component.description.length > 40 ? component.description.substring(0, 40) + '...' : component.description) : '-'}</div>
+        <div class="qty">${component.quantity} pz ✅</div>
+        <div class="complete">✅ COMPLETO - Pronto per ritiro</div>
+        ${(siteSentQty > 0 || yardSentQty > 0) ? `
+          <div class="source">
+            <div><strong>Provenienza:</strong></div>
+            ${siteSentQty > 0 ? `<div>WH Site: ${siteSentQty} pz</div>` : ''}
+            ${yardSentQty > 0 ? `<div>WH Yard: ${yardSentQty} pz</div>` : ''}
+          </div>
+        ` : ''}
+        <div class="tracking">
+          <div><strong>Madre:</strong> ${component.requests?.parent_request_number || component.requests?.request_number || '-'}</div>
+          <div><strong>Richiedente:</strong> ${component.requests?.created_by_name || '-'}</div>
+        </div>
+        <div class="footer">Stampato: ${new Date().toLocaleString()} | Op: ${user?.full_name || '-'}</div>
+      </div>
+    </body>
+    </html>
+  `;
+  printWindow.document.write(labelContent);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 250);
 }
 
 // ============================================================
@@ -3751,12 +3944,12 @@ function WHSitePage({ user }) {
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
 
     // Load Engineering Checks sent to Site (separate section)
-    // V28.10: Include "Both" in filter
+    // V32.1: Include site_sent_qty, yard_sent_qty, both_status, parent_request_id
     const { data: checksData, error: checksError } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (id, request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, parent_request_id, parent_request_number, site_sent_qty, yard_sent_qty, both_status, requester_user_id, created_by_name)`)
       .eq('has_eng_check', true)
-      .in('eng_check_sent_to', ['WH_Site', 'Both']);
+      .eq('eng_check_sent_to', 'WH_Site'); // V32.1: Only show items sent specifically to Site (not Both parent)
 
     console.log('WH Site - Loading Engineering Checks:', { checksData, checksError });
     
@@ -4023,43 +4216,63 @@ function WHSitePage({ user }) {
   const handleCheckAction = async (check, action) => {
     try {
       if (action === 'check_found') {
-        // V32.0: If sent to "Both", Site has found - update to wait for Yard
-        if (check.eng_check_sent_to === 'Both') {
-          await supabase.from('request_components')
-            .update({ 
-              eng_check_sent_to: 'Yard',
-              eng_check_message: (check.eng_check_message || '') + ' [Site: Found ✓]'
-            })
-            .eq('id', check.id);
-          await logHistory(check.id, 'Check - Site Found', 'WH_Site', 'Eng', 'Found in Site, waiting for Yard response');
-          loadComponents();
-          return;
-        }
-        // Single destination: Found → move to ToCollect
+        // V32.1: Found → move to ToCollect with tracking
+        const isBothRequest = check.requests?.both_status !== null;
+        const parentRequestId = check.requests?.parent_request_id;
+        const yardSent = check.requests?.yard_sent_qty || 0;
+        const qtyToSend = check.quantity;
+        
         await supabase.from('request_components')
           .update({ 
             status: 'ToCollect', 
             has_eng_check: false,
             eng_check_message: null,
-            eng_check_sent_to: null
+            eng_check_sent_to: null,
+            found_qty: qtyToSend
           })
           .eq('id', check.id);
+        
+        // V32.1: If Both request, update site_sent_qty on parent
+        if (isBothRequest && parentRequestId) {
+          const currentSiteSent = check.requests?.site_sent_qty || 0;
+          const newSiteSent = currentSiteSent + qtyToSend;
+          const totalSent = newSiteSent + yardSent;
+          
+          await supabase.from('requests')
+            .update({ 
+              site_sent_qty: newSiteSent,
+              both_status: totalSent >= check.quantity ? 'complete' : 'waiting_yard'
+            })
+            .eq('id', parentRequestId);
+          
+          // V32.1: If total sent >= qty, auto-cancel the Yard request
+          if (totalSent >= check.quantity) {
+            const { data: siblingReq } = await supabase
+              .from('requests')
+              .select('id')
+              .eq('parent_request_id', parentRequestId)
+              .eq('level_wh_split', 2) // Yard = 2
+              .single();
+            
+            if (siblingReq) {
+              await supabase.from('request_components')
+                .update({ 
+                  status: 'Cancelled', 
+                  has_eng_check: false,
+                  eng_check_sent_to: null 
+                })
+                .eq('request_id', siblingReq.id);
+            }
+          }
+          
+          // V32.1: Print Label A (Site → segregate material)
+          printLabelSiteToTP(check, user, yardSent, check.quantity);
+        }
+        
         await logHistory(check.id, 'Check - Found', 'WH_Site', 'ToCollect', 'Item found after Engineering check');
         loadComponents();
       } else if (action === 'check_notfound') {
-        // V28.11: If sent to "Both", change to "Yard" to wait for Yard response
-        if (check.eng_check_sent_to === 'Both') {
-          await supabase.from('request_components')
-            .update({ 
-              eng_check_sent_to: 'Yard',
-              eng_check_message: (check.eng_check_message || '') + ' [Site: Not Found]'
-            })
-            .eq('id', check.id);
-          await logHistory(check.id, 'Check - Site Not Found', 'WH_Site', 'Eng', 'Not found in Site, waiting for Yard response');
-          loadComponents();
-          return;
-        }
-        // Not Found → return to Engineering
+        // V32.1: Not Found → return to Engineering
         await supabase.from('request_components')
           .update({ 
             status: 'Eng', 
@@ -4083,16 +4296,61 @@ function WHSitePage({ user }) {
         await logHistory(check.id, 'Check - To HF', 'WH_Site', 'HF', 'Sent to HF from Engineering check');
         loadComponents();
       } else if (action === 'check_to_tp') {
-        // V28.6: Send to TestPack
+        // V32.1: Send to TestPack with label printing
+        const isBothRequest = check.requests?.both_status !== null;
+        const parentRequestId = check.requests?.parent_request_id;
+        const yardSent = check.requests?.yard_sent_qty || 0;
+        const qtyToSend = check.quantity;
+        
+        // Update component status
         await supabase.from('request_components')
           .update({ 
             status: 'TP', 
             has_eng_check: false,
             eng_check_message: null,
-            eng_check_sent_to: null
+            eng_check_sent_to: null,
+            sent_to_tp_qty: qtyToSend
           })
           .eq('id', check.id);
-        await logHistory(check.id, 'Check - To TestPack', 'WH_Site', 'TP', 'Sent to TestPack from Engineering check');
+        
+        // V32.1: If Both request, update site_sent_qty on parent and check for auto-cancel
+        if (isBothRequest && parentRequestId) {
+          const currentSiteSent = check.requests?.site_sent_qty || 0;
+          const newSiteSent = currentSiteSent + qtyToSend;
+          const totalSent = newSiteSent + yardSent;
+          
+          await supabase.from('requests')
+            .update({ 
+              site_sent_qty: newSiteSent,
+              both_status: totalSent >= check.quantity ? 'complete' : 'waiting_yard'
+            })
+            .eq('id', parentRequestId);
+          
+          // V32.1: If total sent >= qty, auto-cancel the Yard request
+          if (totalSent >= check.quantity) {
+            const { data: siblingReq } = await supabase
+              .from('requests')
+              .select('id')
+              .eq('parent_request_id', parentRequestId)
+              .eq('level_wh_split', 2) // Yard = 2
+              .single();
+            
+            if (siblingReq) {
+              await supabase.from('request_components')
+                .update({ 
+                  status: 'Cancelled', 
+                  has_eng_check: false,
+                  eng_check_sent_to: null 
+                })
+                .eq('request_id', siblingReq.id);
+            }
+          }
+        }
+        
+        // V32.1: Print Label A (Site → TP)
+        printLabelSiteToTP(check, user, yardSent, check.quantity);
+        
+        await logHistory(check.id, 'Check - To TestPack', 'WH_Site', 'TP', `Sent ${qtyToSend} to TestPack from Engineering check`);
         loadComponents();
       } else if (action === 'check_to_yard') {
         // V28.8: Send to Yard for checking there
@@ -4278,6 +4536,8 @@ function WHSitePage({ user }) {
                   <th style={styles.th}>Code</th>
                   <th style={styles.th}>Description</th>
                   <th style={styles.th}>Qty</th>
+                  <th style={{ ...styles.th, backgroundColor: '#7C3AED', color: 'white', textAlign: 'center' }}>Yard Sent</th>
+                  <th style={{ ...styles.th, backgroundColor: '#DC2626', color: 'white', textAlign: 'center' }}>Da Trovare</th>
                   <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
                   <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                   <th style={styles.th}>Message</th>
@@ -4289,6 +4549,10 @@ function WHSitePage({ user }) {
                   const inv = inventoryMap[check.ident_code] || { site: 0, yard: 0 };
                   const hasSiteQty = inv.site > 0;
                   const hasYardQty = inv.yard > 0;
+                  // V32.1: Calculate "Da Trovare" = qty - yard_sent_qty (what Yard already sent)
+                  const yardSent = check.requests?.yard_sent_qty || 0;
+                  const daTrovare = Math.max(0, check.quantity - yardSent);
+                  const isBothRequest = check.requests?.both_status !== null;
                   return (
                   <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
                     <td style={styles.td}>{abbrevCategory(check.requests?.request_type)}</td>
@@ -4298,13 +4562,21 @@ function WHSitePage({ user }) {
                     <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
                     <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                      {String(check.requests?.request_number).padStart(5, '0')}-{check.requests?.sub_number}
+                      {check.requests?.request_number_full || `${String(check.requests?.request_number).padStart(5, '0')}-${check.requests?.sub_number}`}
                     </td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
                     <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
                       {check.description ? (check.description.length > 30 ? check.description.substring(0, 30) + '...' : check.description) : '-'}
                     </td>
                     <td style={styles.td}>{check.quantity}</td>
+                    {/* V32.1: Yard Sent column */}
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: yardSent > 0 ? '#16a34a' : '#9CA3AF' }}>
+                      {isBothRequest ? (yardSent > 0 ? yardSent : '⏳') : '-'}
+                    </td>
+                    {/* V32.1: Da Trovare column */}
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '700', color: daTrovare > 0 ? '#DC2626' : '#16a34a', backgroundColor: daTrovare === 0 ? '#D1FAE5' : 'transparent' }}>
+                      {isBothRequest ? daTrovare : check.quantity}
+                    </td>
                     <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
                       {inv.site}
                     </td>
@@ -4912,12 +5184,12 @@ function WHYardPage({ user }) {
       .eq('status', 'Yard');
 
     // Load Engineering Checks sent to Yard
-    // V28.10: Include "Both" in filter
+    // V32.1: Include site_sent_qty, yard_sent_qty, both_status, parent_request_id
     const { data: checksData } = await supabase
       .from('request_components')
-      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (id, request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, parent_request_id, parent_request_number, site_sent_qty, yard_sent_qty, both_status, requester_user_id, created_by_name)`)
       .eq('has_eng_check', true)
-      .in('eng_check_sent_to', ['Yard', 'Both']);
+      .eq('eng_check_sent_to', 'Yard'); // V32.1: Only show items sent specifically to Yard
 
     // V28.5 FIX: Get unique ident_codes from loaded components, then load ONLY those from inventory
     const allComponents = [...(yardData || []), ...(checksData || [])];
@@ -5184,43 +5456,68 @@ function WHYardPage({ user }) {
           alert(`Only ${available} available in YARD!`);
           return;
         }
-        // V32.0: If sent to "Both", Yard has found - update to wait for Site
-        if (check.eng_check_sent_to === 'Both') {
-          await supabase.from('request_components')
-            .update({ 
-              eng_check_sent_to: 'WH_Site',
-              eng_check_message: (check.eng_check_message || '') + ' [Yard: Found ✓]'
-            })
-            .eq('id', check.id);
-          await logHistory(check.id, 'Check - Yard Found', 'Yard', 'Eng', 'Found in Yard, waiting for Site response');
-          loadComponents();
-          return;
-        }
-        // V28.10: Found → move to Trans (Site IN) - inventory changes ONLY when Site confirms
-        // Do NOT decrement yard here
+        
+        // V32.1: Get parent info for Both requests
+        const isBothRequest = check.requests?.both_status !== null;
+        const parentRequestId = check.requests?.parent_request_id;
+        const siteSent = check.requests?.site_sent_qty || 0;
+        const qtyToSend = check.quantity;
+        
+        // V32.1: Found → move to Trans (Site IN) with tracking
         await supabase.from('request_components')
           .update({ 
             status: 'Trans', 
             has_eng_check: false,
             eng_check_message: null,
-            eng_check_sent_to: null
+            eng_check_sent_to: null,
+            found_qty: qtyToSend,
+            sent_to_tp_qty: qtyToSend
           })
           .eq('id', check.id);
+        
+        // V32.1: If Both request, update yard_sent_qty on parent
+        if (isBothRequest && parentRequestId) {
+          const currentYardSent = check.requests?.yard_sent_qty || 0;
+          const newYardSent = currentYardSent + qtyToSend;
+          const totalSent = siteSent + newYardSent;
+          
+          await supabase.from('requests')
+            .update({ 
+              yard_sent_qty: newYardSent,
+              both_status: totalSent >= check.quantity ? 'complete' : 'waiting_site'
+            })
+            .eq('id', parentRequestId);
+          
+          // V32.1: If total sent >= qty, auto-cancel the Site request
+          if (totalSent >= check.quantity) {
+            const { data: siblingReq } = await supabase
+              .from('requests')
+              .select('id')
+              .eq('parent_request_id', parentRequestId)
+              .eq('level_wh_split', 1)
+              .single();
+            
+            if (siblingReq) {
+              await supabase.from('request_components')
+                .update({ 
+                  status: 'Cancelled', 
+                  has_eng_check: false,
+                  eng_check_sent_to: null 
+                })
+                .eq('request_id', siblingReq.id);
+            }
+          }
+          
+          // V32.1: Print Label B (Yard → Site IN)
+          printLabelYardToSiteIN(check, user, siteSent, check.quantity, 0);
+        }
+        
         await logHistory(check.id, 'Check - Found', 'Yard', 'Trans', 'Item found in Yard, sent to Site IN (inventory updated on receipt)');
         loadComponents();
       } else if (action === 'check_notfound') {
-        // V28.11: If sent to "Both", change to "WH_Site" to wait for Site response
-        if (check.eng_check_sent_to === 'Both') {
-          await supabase.from('request_components')
-            .update({ 
-              eng_check_sent_to: 'WH_Site',
-              eng_check_message: (check.eng_check_message || '') + ' [Yard: Not Found]'
-            })
-            .eq('id', check.id);
-          await logHistory(check.id, 'Check - Yard Not Found', 'Yard', 'Eng', 'Not found in Yard, waiting for Site response');
-          loadComponents();
-          return;
-        }
+        // V32.1: Not Found → return to Engineering (creates sub-request if needed)
+        const isBothRequest = check.requests?.both_status !== null;
+        
         // Not Found → return to Engineering
         await supabase.from('request_components')
           .update({ 
@@ -5230,6 +5527,7 @@ function WHYardPage({ user }) {
             eng_check_sent_to: null
           })
           .eq('id', check.id);
+        
         await logHistory(check.id, 'Check - Not Found', 'Yard', 'Eng', 'Item not found in Yard, returned to Engineering');
         loadComponents();
       } else if (action === 'check_to_hf') {
@@ -5245,28 +5543,120 @@ function WHYardPage({ user }) {
         await logHistory(check.id, 'Check - To HF', 'Yard', 'HF', 'Sent to HF from Engineering check');
         loadComponents();
       } else if (action === 'check_to_tp') {
-        // V28.6: Send to TestPack
-        await supabase.from('request_components')
-          .update({ 
-            status: 'TP', 
-            has_eng_check: false,
-            eng_check_message: null,
-            eng_check_sent_to: null
-          })
-          .eq('id', check.id);
-        await logHistory(check.id, 'Check - To TestPack', 'Yard', 'TP', 'Sent to TestPack from Engineering check');
-        loadComponents();
-      } else if (action === 'check_to_site') {
-        // V30.0: Send to Site IN (Trans) - inventory will be transferred when Site accepts
+        // V32.1: For TestPack items from Yard, send to Site IN (Trans) with label
+        // Material must transit through Site IN before going to TestPack
+        const isBothRequest = check.requests?.both_status !== null;
+        const parentRequestId = check.requests?.parent_request_id;
+        const siteSent = check.requests?.site_sent_qty || 0;
+        const qtyToSend = check.quantity;
+        
+        // Update component status to Trans (Site IN)
         await supabase.from('request_components')
           .update({ 
             status: 'Trans', 
             current_location: 'TRANSIT',
             has_eng_check: false,
             eng_check_message: null,
-            eng_check_sent_to: null
+            eng_check_sent_to: null,
+            sent_to_tp_qty: qtyToSend
           })
           .eq('id', check.id);
+        
+        // V32.1: If Both request, update yard_sent_qty on parent and check for auto-cancel
+        if (isBothRequest && parentRequestId) {
+          const currentYardSent = check.requests?.yard_sent_qty || 0;
+          const newYardSent = currentYardSent + qtyToSend;
+          const totalSent = siteSent + newYardSent;
+          
+          await supabase.from('requests')
+            .update({ 
+              yard_sent_qty: newYardSent,
+              both_status: totalSent >= check.quantity ? 'complete' : 'waiting_site'
+            })
+            .eq('id', parentRequestId);
+          
+          // V32.1: If total sent >= qty, auto-cancel the Site request
+          if (totalSent >= check.quantity) {
+            // Find and cancel the Site sibling request
+            const { data: siblingReq } = await supabase
+              .from('requests')
+              .select('id')
+              .eq('parent_request_id', parentRequestId)
+              .eq('level_wh_split', 1) // Site = 1
+              .single();
+            
+            if (siblingReq) {
+              await supabase.from('request_components')
+                .update({ 
+                  status: 'Cancelled', 
+                  has_eng_check: false,
+                  eng_check_sent_to: null 
+                })
+                .eq('request_id', siblingReq.id);
+            }
+          }
+          
+          // V32.1: Print Label B (Yard → Site IN)
+          printLabelYardToSiteIN(check, user, siteSent, check.quantity, 0);
+        }
+        
+        await logHistory(check.id, 'Check - To Site IN (for TP)', 'Yard', 'Trans', `Sent ${qtyToSend} to Site IN for TestPack`);
+        loadComponents();
+      } else if (action === 'check_to_site') {
+        // V32.1: Send to Site IN (Trans) with tracking and label
+        const isBothRequest = check.requests?.both_status !== null;
+        const parentRequestId = check.requests?.parent_request_id;
+        const siteSent = check.requests?.site_sent_qty || 0;
+        const qtyToSend = check.quantity;
+        
+        await supabase.from('request_components')
+          .update({ 
+            status: 'Trans', 
+            current_location: 'TRANSIT',
+            has_eng_check: false,
+            eng_check_message: null,
+            eng_check_sent_to: null,
+            sent_to_tp_qty: qtyToSend
+          })
+          .eq('id', check.id);
+        
+        // V32.1: If Both request, update yard_sent_qty on parent
+        if (isBothRequest && parentRequestId) {
+          const currentYardSent = check.requests?.yard_sent_qty || 0;
+          const newYardSent = currentYardSent + qtyToSend;
+          const totalSent = siteSent + newYardSent;
+          
+          await supabase.from('requests')
+            .update({ 
+              yard_sent_qty: newYardSent,
+              both_status: totalSent >= check.quantity ? 'complete' : 'waiting_site'
+            })
+            .eq('id', parentRequestId);
+          
+          // V32.1: If total sent >= qty, auto-cancel the Site request
+          if (totalSent >= check.quantity) {
+            const { data: siblingReq } = await supabase
+              .from('requests')
+              .select('id')
+              .eq('parent_request_id', parentRequestId)
+              .eq('level_wh_split', 1)
+              .single();
+            
+            if (siblingReq) {
+              await supabase.from('request_components')
+                .update({ 
+                  status: 'Cancelled', 
+                  has_eng_check: false,
+                  eng_check_sent_to: null 
+                })
+                .eq('request_id', siblingReq.id);
+            }
+          }
+          
+          // V32.1: Print Label B (Yard → Site IN)
+          printLabelYardToSiteIN(check, user, siteSent, check.quantity, 0);
+        }
+        
         await logHistory(check.id, 'Check - To Site IN', 'Yard', 'Trans', 'Sent to Site IN from Engineering check (inventory transferred on receipt)');
         loadComponents();
       } else if (action === 'check_partial') {
@@ -5453,6 +5843,8 @@ function WHYardPage({ user }) {
                   <th style={styles.th}>Code</th>
                   <th style={styles.th}>Description</th>
                   <th style={styles.th}>Qty</th>
+                  <th style={{ ...styles.th, backgroundColor: '#2563EB', color: 'white', textAlign: 'center' }}>Site Sent</th>
+                  <th style={{ ...styles.th, backgroundColor: '#DC2626', color: 'white', textAlign: 'center' }}>Da Trovare</th>
                   <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>WH Site</th>
                   <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white', textAlign: 'center' }}>WH Yard</th>
                   <th style={styles.th}>Message</th>
@@ -5465,6 +5857,14 @@ function WHYardPage({ user }) {
                   const hasSiteQty = inv.site > 0;
                   const hasYardQty = inv.yard > 0;
                   const canFulfill = inv.yard >= check.quantity;
+                  // V32.1: Calculate "Da Trovare" = qty - site_sent_qty (what Site already sent)
+                  const siteSent = check.requests?.site_sent_qty || 0;
+                  const daTrovare = Math.max(0, check.quantity - siteSent);
+                  const isBothRequest = check.requests?.both_status !== null;
+                  // V32.1: Auto-cancel if Site has already fulfilled the request
+                  if (isBothRequest && siteSent >= check.quantity) {
+                    return null; // Hide this row - Site already completed
+                  }
                   return (
                     <tr key={check.id} style={{ backgroundColor: '#FFFBEB' }}>
                       <td style={styles.td}>{abbrevCategory(check.requests?.request_type)}</td>
@@ -5474,13 +5874,21 @@ function WHYardPage({ user }) {
                       <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
                       <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                        {String(check.requests?.request_number).padStart(5, '0')}-{check.requests?.sub_number}
+                        {check.requests?.request_number_full || `${String(check.requests?.request_number).padStart(5, '0')}-${check.requests?.sub_number}`}
                       </td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{check.ident_code}</td>
                       <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={check.description || ''}>
                         {check.description ? (check.description.length > 30 ? check.description.substring(0, 30) + '...' : check.description) : '-'}
                       </td>
                       <td style={styles.td}>{check.quantity}</td>
+                      {/* V32.1: Site Sent column */}
+                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: siteSent > 0 ? '#16a34a' : '#9CA3AF' }}>
+                        {isBothRequest ? (siteSent > 0 ? siteSent : '⏳') : '-'}
+                      </td>
+                      {/* V32.1: Da Trovare column */}
+                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '700', color: daTrovare > 0 ? '#DC2626' : '#16a34a', backgroundColor: daTrovare === 0 ? '#D1FAE5' : 'transparent' }}>
+                        {isBothRequest ? daTrovare : check.quantity}
+                      </td>
                       <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: inv.site > 0 ? COLORS.success : COLORS.primary }}>
                         {inv.site}
                       </td>
@@ -6490,11 +6898,14 @@ function EngineeringPage({ user }) {
           })
           .eq('id', selectedComponent.id);
         
-        // Update original request with 4-level format
+        // Update original request with 4-level format and both_status
         await supabase.from('requests')
           .update({ 
             sent_to: 'Both',
-            level_wh_split: 0 // Mark as parent (no split)
+            level_wh_split: 0, // Mark as parent (no split)
+            both_status: 'waiting_both', // V32.1: Track that we're waiting for both
+            site_sent_qty: 0,
+            yard_sent_qty: 0
           })
           .eq('id', currentReq?.id);
         
@@ -6609,7 +7020,7 @@ function EngineeringPage({ user }) {
         {section === 'waiting' && (
           <td style={styles.td}>
             <span style={{ ...styles.statusBadge, backgroundColor: COLORS.purple }}>
-              → {comp.eng_check_sent_to}
+              → {comp.eng_check_sent_to === 'Yard' ? 'WH Yard' : comp.eng_check_sent_to}
             </span>
           </td>
         )}
@@ -6675,11 +7086,11 @@ function EngineeringPage({ user }) {
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${comp.requests?.hf_number || '-'}</td>
                       <td>${comp.requests?.test_pack_number || '-'}</td>
-                      <td>${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}</td>
+                      <td>${comp.requests?.request_number_full || `${String(comp.requests?.request_number).padStart(5, '0')}-${comp.requests?.sub_number}`}</td>
                       <td>${comp.ident_code}</td>
                       <td>${comp.description || '-'}</td>
                       <td>${comp.quantity}</td>
-                      <td>${comp.eng_check_sent_to || '-'}</td>
+                      <td>${comp.eng_check_sent_to === 'Yard' ? 'WH Yard' : (comp.eng_check_sent_to || '-')}</td>
                     </tr>`).join('')}
                   </table>
                   </body></html>
