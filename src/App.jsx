@@ -6651,43 +6651,139 @@ function SiteInPage({ user }) {
 
   // V28.5: Receive → WH_Site (not ToCollect)
   // V28.10: Inventory changes ONLY here (yard_qty decreases, site_qty increases)
+  // V32.3: Enhanced with detailed logging and error handling
   const handleReceive = async (component) => {
     try {
-      console.log('📦 Site IN - Receiving component:', component.ident_code, 'qty:', component.quantity);
+      console.log('═══════════════════════════════════════════');
+      console.log('📦 Site IN - RECEIVING COMPONENT');
+      console.log('═══════════════════════════════════════════');
+      console.log('   ident_code:', component.ident_code);
+      console.log('   quantity:', component.quantity);
+      console.log('   component_id:', component.id);
       
-      // V32.3: Update component status
-      await supabase.from('request_components')
+      // V32.3: Update component status FIRST
+      const { error: statusError } = await supabase.from('request_components')
         .update({ status: 'WH_Site', current_location: 'SITE', previous_status: 'Trans' })
         .eq('id', component.id);
       
-      // V32.3: Decrement yard inventory
-      const { error: decError } = await supabase.rpc('decrement_yard_qty', { 
-        p_ident_code: component.ident_code, 
-        p_qty: component.quantity 
+      if (statusError) {
+        console.error('❌ Error updating component status:', statusError);
+        alert('Error updating status: ' + statusError.message);
+        return;
+      }
+      console.log('✅ Component status updated to WH_Site');
+      
+      // V32.3: Try transfer_yard_to_site RPC first (most reliable)
+      console.log('📊 Attempting inventory transfer via RPC...');
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('transfer_yard_to_site', {
+        p_ident_code: component.ident_code,
+        p_qty: component.quantity
       });
-      if (decError) {
-        console.error('❌ Error decrementing yard:', decError);
+      
+      if (!rpcError && rpcResult?.success) {
+        console.log('✅ RPC transfer successful:', rpcResult);
+        console.log(`   Yard: ${rpcResult.old_yard} → ${rpcResult.new_yard}`);
+        console.log(`   Site: ${rpcResult.old_site} → ${rpcResult.new_site}`);
       } else {
-        console.log('✅ Decremented yard_qty for', component.ident_code, 'by', component.quantity);
+        // RPC failed or function doesn't exist - try direct update
+        console.log('⚠️ RPC failed, trying direct update...', rpcError?.message || rpcResult?.error);
+        
+        // Get current inventory
+        const { data: currentInv, error: invError } = await supabase
+          .from('inventory')
+          .select('id, ident_code, site_qty, yard_qty')
+          .eq('ident_code', component.ident_code)
+          .maybeSingle();
+        
+        if (invError) {
+          console.error('❌ Error fetching inventory:', invError);
+        }
+        
+        console.log('📊 Current inventory record:', currentInv);
+        
+        if (currentInv) {
+          const oldYardQty = currentInv.yard_qty || 0;
+          const oldSiteQty = currentInv.site_qty || 0;
+          const newYardQty = Math.max(0, oldYardQty - component.quantity);
+          const newSiteQty = oldSiteQty + component.quantity;
+          
+          console.log('📊 INVENTORY TRANSFER (direct):');
+          console.log(`   Yard: ${oldYardQty} → ${newYardQty} (−${component.quantity})`);
+          console.log(`   Site: ${oldSiteQty} → ${newSiteQty} (+${component.quantity})`);
+          
+          // Direct UPDATE
+          const { error: updateError } = await supabase
+            .from('inventory')
+            .update({ 
+              yard_qty: newYardQty, 
+              site_qty: newSiteQty 
+            })
+            .eq('id', currentInv.id);
+          
+          if (updateError) {
+            console.error('❌ Direct update failed:', updateError);
+            // Last resort: try upsert
+            console.log('🔄 Trying upsert as last resort...');
+            const { error: upsertError } = await supabase
+              .from('inventory')
+              .upsert({
+                ident_code: component.ident_code,
+                yard_qty: newYardQty,
+                site_qty: newSiteQty,
+                lost_qty: 0,
+                broken_qty: 0
+              }, { onConflict: 'ident_code' });
+            
+            if (upsertError) {
+              console.error('❌ Upsert also failed:', upsertError);
+              alert('Could not update inventory. Please check database permissions and run the SQL migration.');
+            } else {
+              console.log('✅ Upsert successful!');
+            }
+          } else {
+            console.log('✅ Direct update successful!');
+          }
+        } else {
+          // No inventory record - create new with site_qty only
+          console.log('⚠️ No inventory record found. Creating new...');
+          const { error: insertError } = await supabase.from('inventory').insert({
+            ident_code: component.ident_code,
+            site_qty: component.quantity,
+            yard_qty: 0,
+            lost_qty: 0,
+            broken_qty: 0
+          });
+          
+          if (insertError) {
+            console.error('❌ Insert failed:', insertError);
+            // Try upsert
+            const { error: upsertError } = await supabase
+              .from('inventory')
+              .upsert({
+                ident_code: component.ident_code,
+                site_qty: component.quantity,
+                yard_qty: 0,
+                lost_qty: 0,
+                broken_qty: 0
+              }, { onConflict: 'ident_code' });
+            
+            if (upsertError) {
+              console.error('❌ Upsert also failed:', upsertError);
+            } else {
+              console.log('✅ Created via upsert');
+            }
+          } else {
+            console.log('✅ Created new inventory record');
+          }
+        }
       }
       
-      // V32.3: Increment site inventory
-      const { error: incError } = await supabase.rpc('increment_site_qty', { 
-        p_ident_code: component.ident_code, 
-        p_qty: component.quantity 
-      });
-      if (incError) {
-        console.error('❌ Error incrementing site:', incError);
-      } else {
-        console.log('✅ Incremented site_qty for', component.ident_code, 'by', component.quantity);
-      }
+      console.log('═══════════════════════════════════════════');
 
       // V32.3: If this is part of a Both request, mark the Yard sibling as Done
       if (component.requests?.both_status !== null || component.split_type === 'yard') {
-        // Find and close the Yard sibling request
         const parentReqId = component.requests?.parent_request_id;
         if (parentReqId) {
-          // Update yard sibling's status to Done
           const { data: siblings } = await supabase
             .from('request_components')
             .select('id, request_id')
@@ -6704,7 +6800,6 @@ function SiteInPage({ user }) {
           }
         }
         
-        // Also update yard_sent_qty on parent request
         if (component.requests?.id) {
           await supabase.from('requests')
             .update({ yard_sent_qty: component.quantity })
@@ -6719,7 +6814,7 @@ function SiteInPage({ user }) {
         to_status: 'WH_Site',
         performed_by_user_id: user.id,
         performed_by_name: user.full_name,
-        note: 'Material arrived at Site warehouse - inventory updated'
+        note: `Material arrived at Site warehouse - transferred ${component.quantity} pcs from Yard to Site`
       });
 
       await supabase.from('movements').insert({
@@ -6732,6 +6827,7 @@ function SiteInPage({ user }) {
         note: 'Confirmed receipt at Site'
       });
 
+      alert(`✅ Received ${component.quantity} pcs of ${component.ident_code}\nInventory updated: Yard → Site`);
       loadComponents();
     } catch (error) {
       console.error('❌ handleReceive error:', error);
