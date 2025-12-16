@@ -1,6 +1,13 @@
 // ============================================================
-// MATERIALS MANAGER V32.4 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.5 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.5 Changes:
+//   - TestPack Number Format: MAX-TP-XXXX (fixed prefix + 4 digits)
+//   - TestPack Form: Input shows "MAX-TP-" prefix fixed, user enters only 4 digits
+//   - HF Page: Exclude TestPack requests (only Piping/Erection)
+//   - TestPack Erection: HF column visible in table
+//   - TestPack Log: Delete button available
+//   - TestPack Log: Click on stats boxes to filter list
 // V32.4 Changes:
 //   - Add New Item: ISO + initial quantities (Site, Yard, Lost, Broken)
 //   - Request Tracker: Mother number shown, child number on hover tooltip
@@ -136,7 +143,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.4';
+const APP_VERSION = 'V32.5';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -3146,7 +3153,7 @@ function RequestsPage({ user }) {
         if (!description) throw new Error('Description required');
       }
       if (requestType === 'TestPack') {
-        if (!testPackNumber) throw new Error('Test Pack Number required');
+        if (!testPackNumber || testPackNumber.length !== 4) throw new Error('Test Pack Number must be 4 digits');
         // V28.11: Handle 'Both' case
         if (missingType === 'Material' && materials.length === 0) {
           throw new Error('Add at least one material');
@@ -3207,7 +3214,7 @@ function RequestsPage({ user }) {
           full_spool_number: requestType !== 'TestPack' ? (spoolNumber || null) : null,
           hf_number: (requestType === 'Piping' && subCategory === 'Erection') ? (hfNumber || null) : 
                      (requestType === 'TestPack' && (missingType === 'Material' || missingType === 'Both') && hfNumber) ? hfNumber : null,
-          test_pack_number: requestType === 'TestPack' ? testPackNumber : null,
+          test_pack_number: requestType === 'TestPack' ? `MAX-TP-${testPackNumber.padStart(4, '0')}` : null,
           missing_type: requestType === 'TestPack' ? missingType : null,
           description: requestType === 'TestPack' 
             ? (missingType === 'Spool' ? `Spools: ${selectedSpools.join(', ')}` : 
@@ -3502,14 +3509,45 @@ function RequestsPage({ user }) {
                 border: '1px solid #3B82F6'
               }}>
                 <label style={{ ...styles.label, color: '#1E40AF' }}>📋 Test Pack Number *</label>
-                <input
-                  type="text"
-                  value={testPackNumber}
-                  onChange={(e) => setTestPackNumber(e.target.value)}
-                  style={{ ...styles.input, backgroundColor: 'white', fontSize: '16px' }}
-                  placeholder="Es: TP-2024-001"
-                  disabled={!canModify}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                  <span style={{ 
+                    padding: '10px 12px', 
+                    backgroundColor: '#1E40AF', 
+                    color: 'white', 
+                    fontWeight: '700', 
+                    fontSize: '16px',
+                    borderRadius: '6px 0 0 6px',
+                    fontFamily: 'monospace'
+                  }}>
+                    MAX-TP-
+                  </span>
+                  <input
+                    type="text"
+                    value={testPackNumber}
+                    onChange={(e) => {
+                      // Only allow digits, max 4 characters
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setTestPackNumber(val);
+                    }}
+                    style={{ 
+                      ...styles.input, 
+                      backgroundColor: 'white', 
+                      fontSize: '16px', 
+                      fontFamily: 'monospace',
+                      fontWeight: '700',
+                      borderRadius: '0 6px 6px 0',
+                      width: '100px',
+                      textAlign: 'center',
+                      letterSpacing: '2px'
+                    }}
+                    placeholder="0001"
+                    maxLength={4}
+                    disabled={!canModify}
+                  />
+                </div>
+                <p style={{ fontSize: '12px', color: '#1E40AF', marginTop: '8px' }}>
+                  Enter 4 digits. Result: MAX-TP-{testPackNumber.padStart(4, '0') || 'XXXX'}
+                </p>
               </div>
 
               {/* V28.3: Note field for TestPack */}
@@ -7797,10 +7835,12 @@ function HFPage({ user }) {
       // V29.0: Load components for HF monitoring
       // - HF: Components ready in HF queue
       // - Eng: Components still in Engineering (for monitoring)
+      // V32.4: Exclude TestPack requests - HF page is only for Piping/Erection
       const { data } = await supabase
         .from('request_components')
-        .select(`*, requests (request_number, sub_number, hf_number, requester_user_id)`)
+        .select(`*, requests (request_number, sub_number, request_type, hf_number, requester_user_id)`)
         .not('requests.hf_number', 'is', null)
+        .neq('requests.request_type', 'TestPack')
         .in('status', ['HF', 'Eng']);
       
       if (data) {
@@ -7853,10 +7893,12 @@ function HFPage({ user }) {
         setHfGroups(grouped);
 
         // V30.0: Calculate enhanced HF Log stats
+        // V32.5: Exclude TestPack requests from HF Log (they have their own TestPack page)
         const { data: allHFRequests } = await supabase
           .from('requests')
-          .select('id, hf_number, created_by_name')
-          .not('hf_number', 'is', null);
+          .select('id, hf_number, created_by_name, request_type')
+          .not('hf_number', 'is', null)
+          .neq('request_type', 'TestPack');
         
         if (allHFRequests) {
           let stats = { delivered: 0, inProgress: 0 };
@@ -8357,6 +8399,8 @@ function TestPackPage({ user }) {
   });
   const [logSearchTerm, setLogSearchTerm] = useState('');
   const [tpLogList, setTpLogList] = useState([]);
+  // V32.4: Selected box filter for TestPack Log
+  const [selectedLogBox, setSelectedLogBox] = useState(null);
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -8369,9 +8413,10 @@ function TestPackPage({ user }) {
       // - TP: Materials ready in TestPack queue
       // - TP_Spool_Sent: Spools sent to site (ready for delivery)
       // Exclude: Trans, ToCollect, Done, Cancelled (already delivered/completed)
+      // V32.4: Added hf_number to show in Erection category
       const { data } = await supabase
         .from('request_components')
-        .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, requester_user_id, secondary_collector)`)
+        .select(`*, requests (request_number, sub_number, sub_category, request_type, test_pack_number, hf_number, requester_user_id, secondary_collector)`)
         .not('requests.test_pack_number', 'is', null)
         .in('status', ['Eng', 'TP', 'TP_Spool_Sent']); // Include Eng for monitoring
       
@@ -8422,10 +8467,13 @@ function TestPackPage({ user }) {
         if (!grouped[tpNum].requests[reqNum].subCategories[subCat]) {
           grouped[tpNum].requests[reqNum].subCategories[subCat] = {
             name: subCat,
+            hf_number: comp.requests?.hf_number || null, // V32.4: Store HF for Erection
             components: []
           };
         }
         
+        // V32.4: Also store hf_number at component level
+        comp.hf_number = comp.requests?.hf_number || null;
         grouped[tpNum].requests[reqNum].subCategories[subCat].components.push(comp);
       });
       
@@ -8852,6 +8900,51 @@ function TestPackPage({ user }) {
     }
   };
 
+  // V32.4: Delete entire TestPack from Log
+  const handleDeleteTestPack = async (tpNumber) => {
+    if (!confirm(`Delete entire TestPack "${tpNumber}"? This will cancel all associated requests and components.`)) return;
+    
+    try {
+      // Get all requests with this test_pack_number
+      const { data: requests } = await supabase
+        .from('requests')
+        .select('id')
+        .eq('test_pack_number', tpNumber);
+      
+      if (requests && requests.length > 0) {
+        const requestIds = requests.map(r => r.id);
+        
+        // Cancel all components
+        await supabase
+          .from('request_components')
+          .update({ status: 'Cancelled' })
+          .in('request_id', requestIds);
+        
+        // Cancel all requests
+        await supabase
+          .from('requests')
+          .update({ status: 'Cancelled' })
+          .in('id', requestIds);
+        
+        // Log movement
+        await supabase.from('movements').insert({
+          ident_code: 'TESTPACK',
+          movement_type: 'CANCELLED',
+          quantity: requests.length,
+          from_location: 'TP_LOG',
+          to_location: 'CANCELLED',
+          performed_by: user.full_name,
+          note: `Deleted TestPack ${tpNumber}`
+        });
+      }
+      
+      alert(`TestPack ${tpNumber} deleted successfully`);
+      loadComponents();
+    } catch (error) {
+      alert('Error deleting TestPack: ' + error.message);
+    }
+  };
+
   const openHistory = (compId) => {
     setHistoryComponentId(compId);
     setShowHistory(true);
@@ -8990,21 +9083,57 @@ function TestPackPage({ user }) {
             />
           </div>
           <div style={{ padding: '16px' }}>
-            {/* V30.0: 6 Counters in 2 rows */}
+            {/* V30.0: 6 Counters in 2 rows - V32.4: Clickable boxes */}
             <div style={{ marginBottom: '16px' }}>
               <p style={{ fontWeight: '600', color: '#374151', marginBottom: '12px' }}>✅ Fully Completed TestPacks</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div style={{ padding: '16px', backgroundColor: '#D1FAE5', borderRadius: '8px', textAlign: 'center', border: '2px solid #10B981' }}>
+                <div 
+                  onClick={() => setSelectedLogBox(selectedLogBox === 'fullCompleted' ? null : 'fullCompleted')}
+                  style={{ 
+                    padding: '16px', 
+                    backgroundColor: '#D1FAE5', 
+                    borderRadius: '8px', 
+                    textAlign: 'center', 
+                    border: selectedLogBox === 'fullCompleted' ? '3px solid #047857' : '2px solid #10B981',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    transform: selectedLogBox === 'fullCompleted' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.success }}>{logStats.fullCompleted}</div>
                   <div style={{ color: '#065F46', fontWeight: '500', fontSize: '12px' }}>✅ Completed</div>
                 </div>
-                <div style={{ padding: '16px', backgroundColor: '#DBEAFE', borderRadius: '8px', textAlign: 'center', border: '2px solid #3B82F6' }}>
+                <div 
+                  onClick={() => setSelectedLogBox(selectedLogBox === 'fullToCollect' ? null : 'fullToCollect')}
+                  style={{ 
+                    padding: '16px', 
+                    backgroundColor: '#DBEAFE', 
+                    borderRadius: '8px', 
+                    textAlign: 'center', 
+                    border: selectedLogBox === 'fullToCollect' ? '3px solid #1D4ED8' : '2px solid #3B82F6',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    transform: selectedLogBox === 'fullToCollect' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.info }}>{logStats.fullToCollect}</div>
                   <div style={{ color: '#1E40AF', fontWeight: '500', fontSize: '12px' }}>⏳ To Collect</div>
                 </div>
-                <div style={{ padding: '16px', backgroundColor: '#F3F4F6', borderRadius: '8px', textAlign: 'center', border: '2px solid #6B7280' }}>
-                  <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.gray }}>{logStats.fullCollected}</div>
-                  <div style={{ color: '#374151', fontWeight: '500', fontSize: '12px' }}>📦 Collected</div>
+                <div 
+                  onClick={() => setSelectedLogBox(selectedLogBox === 'fullCollected' ? null : 'fullCollected')}
+                  style={{ 
+                    padding: '16px', 
+                    backgroundColor: '#FEF3C7', 
+                    borderRadius: '8px', 
+                    textAlign: 'center', 
+                    border: selectedLogBox === 'fullCollected' ? '3px solid #92400E' : '2px solid #F59E0B',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    transform: selectedLogBox === 'fullCollected' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
+                  <div style={{ fontSize: '28px', fontWeight: '700', color: '#B45309' }}>{logStats.fullCollected}</div>
+                  <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>📦 Collected</div>
                 </div>
               </div>
             </div>
@@ -9012,25 +9141,87 @@ function TestPackPage({ user }) {
             <div style={{ marginBottom: '24px' }}>
               <p style={{ fontWeight: '600', color: '#374151', marginBottom: '12px' }}>⚠️ Partially Completed TestPacks</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
-                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px', textAlign: 'center', border: '2px solid #F59E0B' }}>
+                <div 
+                  onClick={() => setSelectedLogBox(selectedLogBox === 'partialCompleted' ? null : 'partialCompleted')}
+                  style={{ 
+                    padding: '16px', 
+                    backgroundColor: '#FEF3C7', 
+                    borderRadius: '8px', 
+                    textAlign: 'center', 
+                    border: selectedLogBox === 'partialCompleted' ? '3px solid #B45309' : '2px solid #F59E0B',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    transform: selectedLogBox === 'partialCompleted' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '28px', fontWeight: '700', color: COLORS.warning }}>{logStats.partialCompleted}</div>
-                  <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>⚠️ Partial Done</div>
+                  <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>⚠️ Part Done</div>
                 </div>
-                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px', textAlign: 'center', border: '2px solid #D97706' }}>
+                <div 
+                  onClick={() => setSelectedLogBox(selectedLogBox === 'partialToCollect' ? null : 'partialToCollect')}
+                  style={{ 
+                    padding: '16px', 
+                    backgroundColor: '#FEF3C7', 
+                    borderRadius: '8px', 
+                    textAlign: 'center', 
+                    border: selectedLogBox === 'partialToCollect' ? '3px solid #B45309' : '2px solid #D97706',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    transform: selectedLogBox === 'partialToCollect' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '28px', fontWeight: '700', color: '#B45309' }}>{logStats.partialToCollect}</div>
                   <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>⏳ To Collect</div>
                 </div>
-                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', borderRadius: '8px', textAlign: 'center', border: '2px solid #92400E' }}>
+                <div 
+                  onClick={() => setSelectedLogBox(selectedLogBox === 'partialCollected' ? null : 'partialCollected')}
+                  style={{ 
+                    padding: '16px', 
+                    backgroundColor: '#FEF3C7', 
+                    borderRadius: '8px', 
+                    textAlign: 'center', 
+                    border: selectedLogBox === 'partialCollected' ? '3px solid #B45309' : '2px solid #92400E',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    transform: selectedLogBox === 'partialCollected' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '28px', fontWeight: '700', color: '#78350F' }}>{logStats.partialCollected}</div>
                   <div style={{ color: '#92400E', fontWeight: '500', fontSize: '12px' }}>📦 Collected</div>
                 </div>
               </div>
             </div>
             
-            {/* V30.0: Detailed TestPack List */}
+            {/* V30.0: Detailed TestPack List - V32.4: Filtered by selected box */}
+            {selectedLogBox && (
+              <div style={{ 
+                marginBottom: '16px', 
+                padding: '12px', 
+                backgroundColor: '#F0F9FF', 
+                borderRadius: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <span style={{ fontWeight: '500', color: '#0369A1' }}>
+                  🔍 Showing: {selectedLogBox === 'fullCompleted' ? 'Fully Completed' :
+                             selectedLogBox === 'fullToCollect' ? 'Full - To Collect' :
+                             selectedLogBox === 'fullCollected' ? 'Full - Collected' :
+                             selectedLogBox === 'partialCompleted' ? 'Partial Done' :
+                             selectedLogBox === 'partialToCollect' ? 'Partial - To Collect' : 'Partial - Collected'}
+                </span>
+                <button
+                  onClick={() => setSelectedLogBox(null)}
+                  style={{ ...styles.button, backgroundColor: '#6B7280', color: 'white', fontSize: '12px', padding: '4px 12px' }}
+                >
+                  ✕ Clear Filter
+                </button>
+              </div>
+            )}
             <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
               <h4 style={{ fontWeight: '600', marginBottom: '12px' }}>📜 TestPack Details ({tpLogList.filter(tp => 
-                !logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())
+                (!logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())) &&
+                (!selectedLogBox || tp.status === selectedLogBox)
               ).length})</h4>
               <div style={{ overflowX: 'auto' }}>
                 <table style={styles.table}>
@@ -9043,11 +9234,15 @@ function TestPackPage({ user }) {
                       <th style={styles.th}>Collected</th>
                       <th style={styles.th}>Sub-Cats</th>
                       <th style={styles.th}>Requester</th>
+                      <th style={styles.th}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {tpLogList
-                      .filter(tp => !logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase()))
+                      .filter(tp => 
+                        (!logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())) &&
+                        (!selectedLogBox || tp.status === selectedLogBox)
+                      )
                       .map(tp => (
                         <tr key={tp.test_pack_number}>
                           <td style={{ ...styles.td, fontWeight: '600', fontFamily: 'monospace' }}>{tp.test_pack_number}</td>
@@ -9058,32 +9253,50 @@ function TestPackPage({ user }) {
                               fontSize: '11px',
                               fontWeight: '600',
                               backgroundColor: tp.status.includes('full') 
-                                ? (tp.status === 'fullCollected' ? '#F3F4F6' : '#D1FAE5')
+                                ? (tp.status === 'fullCollected' ? '#FEF3C7' : '#D1FAE5')
                                 : '#FEF3C7',
                               color: tp.status.includes('full')
-                                ? (tp.status === 'fullCollected' ? '#374151' : '#065F46')
+                                ? (tp.status === 'fullCollected' ? '#92400E' : '#065F46')
                                 : '#92400E'
                             }}>
                               {tp.status === 'fullCompleted' ? '✅ Full' : 
                                tp.status === 'fullToCollect' ? '⏳ Full TC' :
                                tp.status === 'fullCollected' ? '📦 Full Done' :
-                               tp.status === 'partialCompleted' ? '⚠️ Partial' :
+                               tp.status === 'partialCompleted' ? '⚠️ Part Done' :
                                tp.status === 'partialToCollect' ? '⏳ Part TC' : '📦 Part Done'}
                             </span>
                           </td>
                           <td style={styles.td}>{tp.delivered}/{tp.total_components}</td>
                           <td style={styles.td}>{tp.to_collect}</td>
-                          <td style={styles.td}>{tp.done}</td>
+                          <td style={{ ...styles.td, color: tp.done > 0 ? '#B45309' : 'inherit', fontWeight: tp.done > 0 ? '600' : 'normal' }}>{tp.done}</td>
                           <td style={styles.td}>{tp.sub_categories}</td>
                           <td style={{ ...styles.td, fontSize: '12px' }}>{tp.created_by_name}</td>
+                          <td style={styles.td}>
+                            <button
+                              onClick={() => handleDeleteTestPack(tp.test_pack_number)}
+                              disabled={!canModify}
+                              style={{ 
+                                ...styles.button, 
+                                backgroundColor: COLORS.primary, 
+                                color: 'white', 
+                                fontSize: '11px', 
+                                padding: '4px 8px',
+                                opacity: canModify ? 1 : 0.5
+                              }}
+                              title="Delete TestPack"
+                            >
+                              🗑️ Delete
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     {tpLogList.filter(tp => 
-                      !logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())
+                      (!logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())) &&
+                      (!selectedLogBox || tp.status === selectedLogBox)
                     ).length === 0 && (
                       <tr>
-                        <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
-                          No TestPacks with deliveries found
+                        <td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                          {selectedLogBox ? 'No TestPacks match the selected filter' : 'No TestPacks with deliveries found'}
                         </td>
                       </tr>
                     )}
@@ -9209,6 +9422,20 @@ function TestPackPage({ user }) {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                               <span style={{ fontWeight: '600' }}>
                                 {isSpoolCategory ? '◎' : (subReady ? '🟢' : '🟡')} {subCat.name}
+                                {/* V32.4: Show HF number for Erection category */}
+                                {subCat.name === 'Erection' && subCat.hf_number && (
+                                  <span style={{ 
+                                    marginLeft: '8px', 
+                                    padding: '2px 8px', 
+                                    backgroundColor: '#EC4899', 
+                                    color: 'white', 
+                                    borderRadius: '4px', 
+                                    fontSize: '11px',
+                                    fontFamily: 'monospace'
+                                  }}>
+                                    {subCat.hf_number}
+                                  </span>
+                                )}
                               </span>
                               <span style={{ 
                                 fontSize: '12px', 
@@ -9245,6 +9472,8 @@ function TestPackPage({ user }) {
                                 <th style={styles.th}>Code</th>
                                 <th style={styles.th}>Description</th>
                                 <th style={styles.th}>Qty</th>
+                                {/* V32.4: Show HF column only for Erection category */}
+                                {subCat.name === 'Erection' && <th style={styles.th}>HF</th>}
                                 <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white' }}>WH Site</th>
                                 <th style={{ ...styles.th, backgroundColor: COLORS.secondary, color: 'white' }}>WH Yard</th>
                                 <th style={styles.th}>Status</th>
@@ -9273,6 +9502,12 @@ function TestPackPage({ user }) {
                                     {comp.description || '-'}
                                   </td>
                                   <td style={styles.td}>{comp.quantity}</td>
+                                  {/* V32.4: Show HF cell only for Erection category */}
+                                  {subCat.name === 'Erection' && (
+                                    <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px', color: COLORS.primary }}>
+                                      {comp.requests?.hf_number || '-'}
+                                    </td>
+                                  )}
                                   <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: isSpool ? '#9ca3af' : (compInEng ? '#9ca3af' : (inv.site >= comp.quantity ? COLORS.success : '#6b7280')) }}>
                                     {isSpool ? '-' : (compInEng ? '-' : inv.site)}
                                   </td>
