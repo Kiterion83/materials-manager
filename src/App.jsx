@@ -1,11 +1,19 @@
 // ============================================================
-// MATERIALS MANAGER V32.2 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.3 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.3 Changes:
+//   - Sub-category visible in Requests material list (colored badge)
+//   - Ready/Partial logic: Ready only when qty==site_qty
+//   - To TestPack available even partial (to freeze material)
+//   - Request Tracker: Previous Status column + distinct colors
+//   - Request Tracker: Shows 4-level request number
+//   - Site IN Receive: Enhanced logging + closes Yard sibling for Both
+//   - STATUS_COLORS: Distinct colors for each status
 // V32.2 Changes:
 //   - Fixed: 4-level request number format (XXXXX-LL-SS-PP) everywhere
 //   - Fixed: sub_category propagated from component in Both requests
 //   - Fixed: Ident code input converts to UPPERCASE automatically
-//   - Fixed: Engineering Checks query with fallback for missing DB fields
+//   - Fixed: Badge counts exclude 'Both' parent items (match table display)
 //   - Enhanced: displayRequestNumber always generates 4-level format
 // V32.1 Changes:
 //   - Both with Visibility: Site/Yard see each other's sent qty
@@ -119,7 +127,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.2';
+const APP_VERSION = 'V32.3';
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -681,14 +689,18 @@ const STATUS_COLORS = {
   Yard: COLORS.secondary,
   Trans: COLORS.warning,
   Eng: COLORS.purple,
+  Eng_Both: '#9333EA', // Viola più scuro per Both
   Spare: COLORS.pink,
   Mng: COLORS.yellow,
   Order: COLORS.orange,
   Ordered: COLORS.cyan,
   ToCollect: COLORS.success,
   HF: COLORS.teal,
-  TP: COLORS.purple,
-  Done: COLORS.gray
+  TP: '#059669', // Verde smeraldo per TP
+  TP_Spool_Sent: '#10B981', // Verde chiaro per Spool Sent
+  Done: COLORS.success, // Verde per Done
+  Cancelled: COLORS.primary, // Rosso per Cancelled
+  Deleted: '#6B7280' // Grigio per Deleted
 };
 
 const MIR_CATEGORIES = ['Erection', 'Bulk', 'Instrument', 'Support'];
@@ -3868,6 +3880,7 @@ function RequestsPage({ user }) {
                 <table style={{ ...styles.table, marginTop: '16px' }}>
                   <thead>
                     <tr>
+                      <th style={styles.th}>Sub</th>
                       <th style={styles.th}>Code</th>
                       <th style={styles.th}>Description</th>
                       <th style={styles.th}>Diam</th>
@@ -3879,6 +3892,32 @@ function RequestsPage({ user }) {
                   <tbody>
                     {materials.map((mat, idx) => (
                       <tr key={idx}>
+                        <td style={styles.td}>
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backgroundColor: mat.sub_category === 'Bulk' ? '#DBEAFE' : 
+                                            mat.sub_category === 'Erection' ? '#FEE2E2' :
+                                            mat.sub_category === 'Support' ? '#FEF3C7' :
+                                            mat.sub_category === 'Spool' ? '#E0E7FF' : '#F3F4F6',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '600'
+                          }}>
+                            <span style={{
+                              width: '8px',
+                              height: '8px',
+                              borderRadius: '50%',
+                              backgroundColor: mat.sub_category === 'Bulk' ? COLORS.info : 
+                                              mat.sub_category === 'Erection' ? COLORS.primary :
+                                              mat.sub_category === 'Support' ? COLORS.warning :
+                                              mat.sub_category === 'Spool' ? COLORS.purple : COLORS.gray
+                            }}></span>
+                            {abbrevSubCategory(mat.sub_category)}
+                          </span>
+                        </td>
                         <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mat.ident_code}</td>
                         <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mat.description || '-'}</td>
                         <td style={styles.td}>{mat.dia1 || '-'}</td>
@@ -4861,9 +4900,10 @@ function WHSitePage({ user }) {
                   <td style={styles.td}>
                     <ActionDropdown
                       actions={(() => {
-                        // V28.6: Build actions dynamically based on inventory quantities
-                        // V29.0: For HF/TP items, disable Ready - must go to HF/TP page
-                        // V29.0: To HF/TP only if qty >= requested
+                        // V32.3: Updated action logic
+                        // Ready → only when qty_site >= qty_requested
+                        // Partial → when qty_site < qty_requested (with tooltip)
+                        // To TestPack → available even partial to "freeze" material
                         const actions = [];
                         const hasSiteQty = inv.site > 0;
                         const hasYardQty = inv.yard > 0;
@@ -4871,28 +4911,36 @@ function WHSitePage({ user }) {
                         const isHF = !!comp.requests?.hf_number;
                         const isTP = !!comp.requests?.test_pack_number;
                         
-                        // V29.0: Ready and Partial only for non-HF and non-TP items
-                        if (hasSiteQty && !isHF && !isTP) {
+                        // V32.3: Ready only when qty_site >= qty_requested
+                        if (hasEnoughSite && !isHF && !isTP) {
                           actions.push({ id: 'ready', icon: '✓', label: 'Ready' });
-                          actions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
                         }
-                        // V29.0: For HF/TP: Partial always available, To HF/TP only if qty is enough
+                        // V32.3: Partial when site has some qty but not enough
+                        if (hasSiteQty && !hasEnoughSite && !isHF && !isTP) {
+                          actions.push({ id: 'pt', icon: '✂️', label: 'Partial', tooltip: 'Not all quantities available at Site' });
+                        }
+                        // V32.3: For HF/TP items
                         if (hasSiteQty && (isHF || isTP)) {
-                          actions.push({ id: 'pt', icon: '✂️', label: 'Partial' });
+                          // Ready only if enough
+                          if (hasEnoughSite) {
+                            actions.push({ id: 'ready', icon: '✓', label: 'Ready (All)' });
+                          }
+                          // Partial always available if has some qty
+                          actions.push({ id: 'pt', icon: '✂️', label: 'Partial', tooltip: hasEnoughSite ? '' : 'Not all quantities available at Site' });
                         }
-                        // To Yard requires yard_qty > 0 (no point sending to yard if nothing there)
+                        // To Yard requires yard_qty > 0
                         if (hasYardQty) {
                           actions.push({ id: 'yard', icon: '🏢', label: 'To Yard' });
                         }
                         // Engineering always available
                         actions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
-                        // V29.0: HF only if qty_site >= qty_requested AND has hf_number
-                        if (hasEnoughSite && isHF) {
-                          actions.push({ id: 'hf', icon: '🔩', label: 'To HF' });
+                        // V32.3: HF available if has hf_number and has some qty
+                        if (hasSiteQty && isHF) {
+                          actions.push({ id: 'hf', icon: '🔩', label: hasEnoughSite ? 'To HF (Complete)' : 'To HF (Partial)' });
                         }
-                        // V29.0: TestPack only if qty_site >= qty_requested AND has test_pack_number
-                        if (hasEnoughSite && isTP) {
-                          actions.push({ id: 'tp', icon: '📋', label: 'To TestPack' });
+                        // V32.3: TestPack available if has test_pack_number and has some qty (to freeze material)
+                        if (hasSiteQty && isTP) {
+                          actions.push({ id: 'tp', icon: '📋', label: hasEnoughSite ? 'To TestPack (Complete)' : 'To TestPack (Partial)' });
                         }
                         // Delete always available
                         actions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
@@ -6595,21 +6643,64 @@ function SiteInPage({ user }) {
   // V28.10: Inventory changes ONLY here (yard_qty decreases, site_qty increases)
   const handleReceive = async (component) => {
     try {
+      console.log('📦 Site IN - Receiving component:', component.ident_code, 'qty:', component.quantity);
+      
+      // V32.3: Update component status
       await supabase.from('request_components')
         .update({ status: 'WH_Site', current_location: 'SITE', previous_status: 'Trans' })
         .eq('id', component.id);
       
-      // V28.10: Decrement yard (was not done when sent to Trans)
-      await supabase.rpc('decrement_yard_qty', { 
+      // V32.3: Decrement yard inventory
+      const { error: decError } = await supabase.rpc('decrement_yard_qty', { 
         p_ident_code: component.ident_code, 
         p_qty: component.quantity 
       });
+      if (decError) {
+        console.error('❌ Error decrementing yard:', decError);
+      } else {
+        console.log('✅ Decremented yard_qty for', component.ident_code, 'by', component.quantity);
+      }
       
-      // Increment site
-      await supabase.rpc('increment_site_qty', { 
+      // V32.3: Increment site inventory
+      const { error: incError } = await supabase.rpc('increment_site_qty', { 
         p_ident_code: component.ident_code, 
         p_qty: component.quantity 
       });
+      if (incError) {
+        console.error('❌ Error incrementing site:', incError);
+      } else {
+        console.log('✅ Incremented site_qty for', component.ident_code, 'by', component.quantity);
+      }
+
+      // V32.3: If this is part of a Both request, mark the Yard sibling as Done
+      if (component.requests?.both_status !== null || component.split_type === 'yard') {
+        // Find and close the Yard sibling request
+        const parentReqId = component.requests?.parent_request_id;
+        if (parentReqId) {
+          // Update yard sibling's status to Done
+          const { data: siblings } = await supabase
+            .from('request_components')
+            .select('id, request_id')
+            .eq('request_id', parentReqId)
+            .neq('id', component.id);
+          
+          if (siblings && siblings.length > 0) {
+            for (const sib of siblings) {
+              await supabase.from('request_components')
+                .update({ status: 'Done', previous_status: 'Yard' })
+                .eq('id', sib.id);
+              console.log('✅ Marked Yard sibling as Done:', sib.id);
+            }
+          }
+        }
+        
+        // Also update yard_sent_qty on parent request
+        if (component.requests?.id) {
+          await supabase.from('requests')
+            .update({ yard_sent_qty: component.quantity })
+            .eq('id', component.requests.id);
+        }
+      }
 
       await supabase.from('component_history').insert({
         component_id: component.id,
@@ -6633,6 +6724,7 @@ function SiteInPage({ user }) {
 
       loadComponents();
     } catch (error) {
+      console.error('❌ handleReceive error:', error);
       alert('Error: ' + error.message);
     }
   };
@@ -12962,6 +13054,7 @@ function LogPage({ user }) {
                   <th style={styles.th}>Description</th>
                   <th style={styles.th}>Qty</th>
                   <th style={styles.th}>Requester</th>
+                  <th style={styles.th}>Prev Status</th>
                   <th style={styles.th}>Current Status</th>
                   <th style={styles.th}>ℹ️</th>
                 </tr>
@@ -12969,8 +13062,9 @@ function LogPage({ user }) {
               <tbody>
                 {filteredRequests.map((req, idx) => (
                   <tr key={idx}>
-                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
-                      {String(req.requests?.request_number).padStart(5, '0')}-{req.requests?.sub_number}
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}
+                        title={`Full: ${displayRequestNumber(req.requests)}`}>
+                      {displayRequestNumber(req.requests)}
                     </td>
                     <td style={styles.td}>{req.requests?.request_type || '-'}</td>
                     <td style={styles.td}>{req.requests?.test_pack_number || '-'}</td>
@@ -12981,6 +13075,9 @@ function LogPage({ user }) {
                     </td>
                     <td style={styles.td}>{req.quantity}</td>
                     <td style={styles.td}>{req.requests?.created_by_name || '-'}</td>
+                    <td style={styles.td}>
+                      {req.previous_status ? <StatusBadge status={req.previous_status} /> : <span style={{ color: '#9ca3af' }}>-</span>}
+                    </td>
                     <td style={styles.td}>
                       <StatusBadge status={req.status} />
                     </td>
