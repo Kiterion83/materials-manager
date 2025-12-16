@@ -5,6 +5,7 @@
 //   - Fixed: 4-level request number format (XXXXX-LL-SS-PP) everywhere
 //   - Fixed: sub_category propagated from component in Both requests
 //   - Fixed: Ident code input converts to UPPERCASE automatically
+//   - Fixed: Engineering Checks query with fallback for missing DB fields
 //   - Enhanced: displayRequestNumber always generates 4-level format
 // V32.1 Changes:
 //   - Both with Visibility: Site/Yard see each other's sent qty
@@ -2307,18 +2308,18 @@ function Dashboard({ user, setActivePage }) {
     }
     
     // V28.5 FIX: Also count Engineering Checks sent to WH_Site and Yard
-    // V28.10: Include "Both" in both Site and Yard counts
+    // V32.2: Don't count 'Both' in individual counts - those are parent items
     const { data: engChecksSite } = await supabase
       .from('request_components')
       .select('id')
       .eq('has_eng_check', true)
-      .in('eng_check_sent_to', ['WH_Site', 'Both']);
+      .eq('eng_check_sent_to', 'WH_Site'); // V32.2: Only 'WH_Site', not 'Both'
     
     const { data: engChecksYard } = await supabase
       .from('request_components')
       .select('id')
       .eq('has_eng_check', true)
-      .in('eng_check_sent_to', ['Yard', 'Both']);
+      .eq('eng_check_sent_to', 'Yard'); // V32.2: Only 'Yard', not 'Both'
     
     // V29.0: Count unique test_pack_numbers with pending items (same as sidebar badge)
     const { data: tpData } = await supabase
@@ -4016,14 +4017,32 @@ function WHSitePage({ user }) {
     console.log('WH Site - Loading components with status=WH_Site:', { siteData, siteError });
 
     // Load Engineering Checks sent to Site (separate section)
-    // V32.1: Include site_sent_qty, yard_sent_qty, both_status, parent_request_id
-    const { data: checksData, error: checksError } = await supabase
+    // V32.2: Use simpler query first, then try with extended fields
+    let checksData = [];
+    let checksError = null;
+    
+    // Try with full fields first
+    const { data: fullChecks, error: fullError } = await supabase
       .from('request_components')
       .select(`*, requests (id, request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, parent_request_id, parent_request_number, site_sent_qty, yard_sent_qty, both_status, requester_user_id, created_by_name)`)
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'WH_Site'); // V32.1: Only show items sent specifically to Site (not Both parent)
+      .eq('eng_check_sent_to', 'WH_Site');
+    
+    if (fullError || !fullChecks) {
+      // Fallback: simpler query without potentially missing fields
+      console.log('WH Site - Full query failed, trying simple query:', fullError);
+      const { data: simpleChecks, error: simpleError } = await supabase
+        .from('request_components')
+        .select(`*, requests (id, request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, requester_user_id, created_by_name)`)
+        .eq('has_eng_check', true)
+        .eq('eng_check_sent_to', 'WH_Site');
+      checksData = simpleChecks || [];
+      checksError = simpleError;
+    } else {
+      checksData = fullChecks;
+    }
 
-    console.log('WH Site - Loading Engineering Checks:', { checksData, checksError });
+    console.log('WH Site - Engineering Checks loaded:', { checksData, checksError, count: checksData?.length });
     
     // V28.5 FIX: Get unique ident_codes from loaded components, then load ONLY those from inventory
     const allComponents = [...(siteData || []), ...(checksData || [])];
@@ -4054,7 +4073,7 @@ function WHSitePage({ user }) {
     setInventoryMap(invMap);
 
     if (siteData) setComponents(siteData);
-    if (checksData) setEngChecks(checksData);
+    setEngChecks(checksData);
     setLoading(false);
   };
 
@@ -5278,12 +5297,30 @@ function WHYardPage({ user }) {
       .eq('status', 'Yard');
 
     // Load Engineering Checks sent to Yard
-    // V32.1: Include site_sent_qty, yard_sent_qty, both_status, parent_request_id
-    const { data: checksData } = await supabase
+    // V32.2: Use simpler query first, then try with extended fields
+    let checksData = [];
+    
+    // Try with full fields first
+    const { data: fullChecks, error: fullError } = await supabase
       .from('request_components')
       .select(`*, requests (id, request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, parent_request_id, parent_request_number, site_sent_qty, yard_sent_qty, both_status, requester_user_id, created_by_name)`)
       .eq('has_eng_check', true)
-      .eq('eng_check_sent_to', 'Yard'); // V32.1: Only show items sent specifically to Yard
+      .eq('eng_check_sent_to', 'Yard');
+    
+    if (fullError || !fullChecks) {
+      // Fallback: simpler query without potentially missing fields
+      console.log('WH Yard - Full query failed, trying simple query:', fullError);
+      const { data: simpleChecks } = await supabase
+        .from('request_components')
+        .select(`*, requests (id, request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, requester_user_id, created_by_name)`)
+        .eq('has_eng_check', true)
+        .eq('eng_check_sent_to', 'Yard');
+      checksData = simpleChecks || [];
+    } else {
+      checksData = fullChecks;
+    }
+    
+    console.log('WH Yard - Engineering Checks loaded:', { checksData, count: checksData?.length });
 
     // V28.5 FIX: Get unique ident_codes from loaded components, then load ONLY those from inventory
     const allComponents = [...(yardData || []), ...(checksData || [])];
@@ -5310,7 +5347,7 @@ function WHYardPage({ user }) {
     
     setInventoryMap(invMap);
 
-    if (checksData) setEngChecks(checksData);
+    setEngChecks(checksData);
     if (yardData) setComponents(yardData);
     setLoading(false);
   };
@@ -13882,9 +13919,9 @@ export default function App() {
     const { data: collectData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'ToCollect');
     
     // Engineering Checks counts - these should be added to WH Site and WH Yard badges
-    // V28.11: Include "Both" in both counts
-    const { data: engChecksSite } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).in('eng_check_sent_to', ['WH_Site', 'Both']);
-    const { data: engChecksYard } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).in('eng_check_sent_to', ['Yard', 'Both']);
+    // V32.2: Don't count 'Both' - parent items should not be counted
+    const { data: engChecksSite } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).eq('eng_check_sent_to', 'WH_Site');
+    const { data: engChecksYard } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('has_eng_check', true).eq('eng_check_sent_to', 'Yard');
 
     counts.whSite = (siteData?.length || 0) + (engChecksSite?.length || 0);
     counts.whYard = (yardData?.length || 0) + (engChecksYard?.length || 0);
