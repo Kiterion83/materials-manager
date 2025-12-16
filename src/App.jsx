@@ -7,6 +7,7 @@
 //   - Movements Log: request_number now saved with each movement
 //   - Orders Received: Fixed inventory increment with better error logging
 //   - Spare Parts: Same inventory increment fix applied
+//   - Browser Tab: MAX STREICHER favicon + title
 //   - HF Page: Exclude TestPack requests (only Piping/Erection)
 //   - TestPack Erection: HF column visible in table
 //   - TestPack Log: Delete button available
@@ -14499,6 +14500,38 @@ export default function App() {
   // V28.10: Notification system
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  // V32.5: Set favicon and page title
+  useEffect(() => {
+    // Set page title
+    document.title = 'Materials Manager - MAX STREICHER';
+    
+    // Create SVG favicon with MAX STREICHER logo
+    const svgFavicon = `
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+        <rect width="32" height="32" rx="4" fill="#E31E24"/>
+        <circle cx="16" cy="16" r="11" fill="none" stroke="white" stroke-width="2"/>
+        <circle cx="16" cy="16" r="6" fill="none" stroke="white" stroke-width="2"/>
+        <text x="16" y="19" text-anchor="middle" fill="white" font-size="7" font-weight="bold" font-family="Arial">MS</text>
+      </svg>
+    `;
+    
+    // Convert SVG to data URL
+    const svgBlob = new Blob([svgFavicon], { type: 'image/svg+xml' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    
+    // Set favicon
+    let link = document.querySelector("link[rel*='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.href = svgUrl;
+    
+    // Cleanup
+    return () => URL.revokeObjectURL(svgUrl);
+  }, []);
 
   useEffect(() => {
     if (user) {
