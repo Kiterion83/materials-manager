@@ -8,6 +8,7 @@
 //   - Orders Received: Fixed inventory increment with better error logging
 //   - Spare Parts: Same inventory increment fix applied
 //   - Browser Tab: MAX STREICHER favicon + title
+//   - Database: Added TAG column (from project_materials.tag_number)
 //   - HF Page: Exclude TestPack requests (only Piping/Erection)
 //   - TestPack Erection: HF column visible in table
 //   - TestPack Log: Delete button available
@@ -13981,7 +13982,7 @@ function DatabasePage({ user }) {
     // V28.5: P121 project filter
     let query = supabase
       .from('project_materials')
-      .select('iso_number, ident_code, description, pos_qty, dia1')
+      .select('iso_number, ident_code, description, pos_qty, dia1, tag_number')
       .like('iso_number', 'P121%')  // V28.5: P121 project filter
       .order('iso_number')
       .order('ident_code');
@@ -14036,6 +14037,7 @@ function DatabasePage({ user }) {
           groupedData[key] = {
             iso_number: item.iso_number,
             ident_code: item.ident_code,
+            tag_number: item.tag_number,  // V32.5: Add TAG
             description: item.description,
             dia1: item.dia1,
             pos_qty: item.pos_qty || 0,
@@ -14230,10 +14232,11 @@ function DatabasePage({ user }) {
   };
 
   const exportCSV = () => {
-    const headers = ['ISO', 'Ident Code', 'Description', 'Pos Qty', 'Collected TEN', 'YARD', 'SITE', 'LOST', 'BROKEN', 'Record Out'];
+    const headers = ['ISO', 'Ident Code', 'TAG', 'Description', 'Pos Qty', 'Collected TEN', 'YARD', 'SITE', 'LOST', 'BROKEN', 'Record Out'];
     const rows = inventoryData.map(i => [
       i.iso_number,
       i.ident_code,
+      i.tag_number || '',  // V32.5: Add TAG
       i.description,
       i.pos_qty || 0,
       i.collected_ten_wh || 0,
@@ -14392,6 +14395,7 @@ function DatabasePage({ user }) {
               <tr>
                 <th style={{ ...styles.th, minWidth: '100px' }}>ISO</th>
                 <th style={{ ...styles.th, minWidth: '140px' }}>Ident Code</th>
+                <th style={{ ...styles.th, minWidth: '100px' }}>TAG</th>
                 <th style={{ ...styles.th, minWidth: '180px' }}>Description</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.info, color: 'white', textAlign: 'center' }}>Pos Qty</th>
                 <th style={{ ...styles.th, backgroundColor: COLORS.teal, color: 'white', textAlign: 'center' }}>TEN WH</th>
@@ -14410,6 +14414,7 @@ function DatabasePage({ user }) {
                     {item.iso_number || '-'}
                   </td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', fontSize: '12px' }}>{item.ident_code}</td>
+                  <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px', color: COLORS.purple }}>{item.tag_number || '-'}</td>
                   <td style={{ ...styles.td, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '12px' }} title={item.description}>
                     {item.description || '-'}
                   </td>
