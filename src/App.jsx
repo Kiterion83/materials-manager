@@ -345,6 +345,16 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress) 
       docXml = docXml.replace(/(<w:t>)XXXX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)\/0(<\/w:t>)/, '$1$2$3');
     }
     
+    // V32.3: STEP 2b: If description exists, replace DESC_PLACEHOLDER in row 2
+    if (description && description.trim() && mirNumber) {
+      const descriptionText = description.substring(0, 50); // Limit length for cell width
+      // Simple text replacement for the placeholder
+      docXml = docXml.replace(/DESC_PLACEHOLDER/g, descriptionText);
+    } else {
+      // Remove placeholder if no description
+      docXml = docXml.replace(/DESC_PLACEHOLDER/g, '');
+    }
+    
     // STEP 3: RK number - RK0020_ followed by XXXX
     const rkPattern = /RK0020_<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
     docXml = docXml.replace(rkPattern, `RK0020_</w:t></w:r>$1${rkNumber}$2`);
