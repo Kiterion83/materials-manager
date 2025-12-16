@@ -8,6 +8,9 @@
 //   - Return Tracking: Track returnable items, alert after X days
 //   - Print Document: Printable request with signatures
 //   - Sidebar: Added ⭕ Internal Mat. under TestPack
+//   - History Notes: Added descriptive notes to all history entries
+//   - Split Button Fix: Allow Found = Total when Not Found = None
+//   - WH Site & Yard: Improved partial split validation
 // V32.5 Changes:
 //   - TestPack Number Format: MAX-TP-XXXX (fixed prefix + 4 digits)
 //   - TestPack Form: Input shows "MAX-TP-" prefix fixed, user enters only 4 digits
@@ -244,6 +247,9 @@ function canModifyPage(user, page) {
     case 'hf':
     case 'testpack':
       return role === 'wh_site' || role === 'wh_yard';
+    // V32.6: Internal Materials - Engineering only
+    case 'internal_materials':
+      return false; // Only admin/engineering/management (handled above)
     case 'orders':
       return role === 'buyer';
     default:
@@ -2275,7 +2281,7 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
     { id: 'engineering', icon: '⚙️', label: 'Engineering', perm: 'perm_engineering' },
     { id: 'hfPage', icon: '🔩', label: 'HF', perm: 'perm_wh_site' },
     { id: 'testPackPage', icon: '📋', label: 'TestPack', perm: 'perm_wh_site' },
-    { id: 'internalMaterials', icon: '⭕', label: 'Internal Mat.', perm: 'perm_engineering' },  // V32.6
+    { id: 'internalMaterials', icon: '⭕', label: 'Internal Mat.', perm: 'perm_internal_materials' },  // V32.6
     { id: 'toBeCollected', icon: '✅', label: 'To Collect', perm: 'perm_wh_site' },
     { id: 'spareParts', icon: '🔧', label: 'Spare Parts', perm: 'perm_spare_parts' },
     { id: 'orders', icon: '🛒', label: 'Orders', perm: 'perm_orders' },
@@ -5194,12 +5200,12 @@ function WHSitePage({ user }) {
           <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={submitPartial} 
-            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit}
+            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) > selectedComponent?.quantity || isOverLimit}
             style={{ 
               ...styles.button, 
               backgroundColor: COLORS.warning, 
               color: 'white',
-              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit) ? 0.5 : 1
+              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) > selectedComponent?.quantity || isOverLimit) ? 0.5 : 1
             }}
           >
             SPLIT
@@ -5548,7 +5554,7 @@ function WHYardPage({ user }) {
           await supabase.from('request_components')
             .update({ status: 'Eng' })
             .eq('id', component.id);
-          await logHistory(component.id, 'Sent to Engineering', 'Yard', 'Eng', '');
+          await logHistory(component.id, 'Sent to Engineering', 'Yard', 'Eng', 'Sent from WH Yard for verification');
           break;
         case 'hf':
           // V28.4: Direct to HF page
@@ -5568,14 +5574,14 @@ function WHYardPage({ user }) {
           await supabase.from('request_components')
             .update({ status: 'WH_Site', current_location: 'SITE' })
             .eq('id', component.id);
-          await logHistory(component.id, 'Returned to Site', 'Yard', 'WH_Site', '');
+          await logHistory(component.id, 'Returned to Site', 'Yard', 'WH_Site', 'Returned from Yard to WH Site');
           break;
         case 'delete':
           if (confirm('Delete this component?')) {
             await supabase.from('request_components')
               .update({ status: 'Cancelled' })
               .eq('id', component.id);
-            await logHistory(component.id, 'Cancelled', 'Yard', 'Cancelled', '');
+            await logHistory(component.id, 'Cancelled', 'Yard', 'Cancelled', 'Request cancelled from WH Yard');
           }
           break;
       }
@@ -6544,12 +6550,12 @@ function WHYardPage({ user }) {
           <button onClick={() => setShowPartialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={submitPartial} 
-            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit}
+            disabled={!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) > selectedComponent?.quantity || isOverLimit}
             style={{ 
               ...styles.button, 
               backgroundColor: COLORS.warning, 
               color: 'white',
-              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) >= selectedComponent?.quantity || isOverLimit) ? 0.5 : 1
+              opacity: (!partialQty || parseInt(partialQty) <= 0 || parseInt(partialQty) > selectedComponent?.quantity || isOverLimit) ? 0.5 : 1
             }}
           >
             SPLIT
@@ -7267,7 +7273,7 @@ function EngineeringPage({ user }) {
           await supabase.from('request_components')
             .update({ status: 'WH_Site' })
             .eq('id', component.id);
-          await logHistory(component.id, 'Resolved - Sent to Site', 'Eng', 'WH_Site', '');
+          await logHistory(component.id, 'Resolved - Sent to Site', 'Eng', 'WH_Site', 'Issue resolved, sent to WH Site');
           break;
         case 'check':
           setSelectedComponent(component);
@@ -7277,7 +7283,7 @@ function EngineeringPage({ user }) {
           await supabase.from('request_components')
             .update({ status: 'Spare' })
             .eq('id', component.id);
-          await logHistory(component.id, 'Sent to Spare Parts', 'Eng', 'Spare', '');
+          await logHistory(component.id, 'Sent to Spare Parts', 'Eng', 'Spare', 'Sent to Spare Parts from Engineering');
           break;
         case 'mng':
           // V28: Open modal for management note
@@ -7289,14 +7295,14 @@ function EngineeringPage({ user }) {
           await supabase.from('request_components')
             .update({ status: 'WH_Site' })
             .eq('id', component.id);
-          await logHistory(component.id, 'Returned to Site', 'Eng', 'WH_Site', '');
+          await logHistory(component.id, 'Returned to Site', 'Eng', 'WH_Site', 'Returned from Engineering to WH Site');
           break;
         case 'delete':
           if (confirm('Delete this component?')) {
             await supabase.from('request_components')
               .update({ status: 'Cancelled' })
               .eq('id', component.id);
-            await logHistory(component.id, 'Cancelled', 'Eng', 'Cancelled', '');
+            await logHistory(component.id, 'Cancelled', 'Eng', 'Cancelled', 'Request cancelled from Engineering');
           }
           break;
         // V28.11: Spool "Sent to Site" action - no inventory, just status change
@@ -8080,7 +8086,7 @@ function HFPage({ user }) {
         await supabase.from('request_components')
           .update({ status: 'Cancelled' })
           .eq('id', comp.id);
-        await logHistory(comp.id, 'Deleted from HF', comp.status, 'Cancelled', '');
+        await logHistory(comp.id, 'Deleted from HF', comp.status, 'Cancelled', 'Deleted from HF list');
         loadComponents();
       } catch (error) {
         alert('Error: ' + error.message);
@@ -8090,7 +8096,7 @@ function HFPage({ user }) {
         await supabase.from('request_components')
           .update({ status: 'WH_Site' })
           .eq('id', comp.id);
-        await logHistory(comp.id, 'Returned from HF to WH Site', comp.status, 'WH_Site', '');
+        await logHistory(comp.id, 'Returned from HF to WH Site', comp.status, 'WH_Site', 'Returned from HF to WH Site');
         loadComponents();
       } catch (error) {
         alert('Error: ' + error.message);
@@ -8919,7 +8925,7 @@ function TestPackPage({ user }) {
         await supabase.from('request_components')
           .update({ status: 'Cancelled' })
           .eq('id', comp.id);
-        await logHistory(comp.id, 'Deleted from TestPack', comp.status, 'Cancelled', '');
+        await logHistory(comp.id, 'Deleted from TestPack', comp.status, 'Cancelled', 'Deleted from TestPack list');
         loadComponents();
       } catch (error) {
         alert('Error: ' + error.message);
@@ -9596,6 +9602,1263 @@ function TestPackPage({ user }) {
       )}
 
       <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
+    </div>
+  );
+}
+
+
+// ============================================================
+// INTERNAL MATERIALS PAGE - V32.6 Hydro Test Materials
+// ============================================================
+function InternalMaterialsPage({ user }) {
+  const [activeTab, setActiveTab] = useState('database');
+  const [materials, setMaterials] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Materials DB state
+  const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
+  const [showEditMaterialModal, setShowEditMaterialModal] = useState(false);
+  const [selectedMaterial, setSelectedMaterial] = useState(null);
+  const [newMaterial, setNewMaterial] = useState({ ident_code: '', description: '', diameter: '', qty_total: 0, material_type: 'Returnable' });
+  
+  // New Request state
+  const [nextRequestNumber, setNextRequestNumber] = useState('INT001');
+  const [requestItems, setRequestItems] = useState([]);
+  const [usageLocation, setUsageLocation] = useState('');
+  const [alertDays, setAlertDays] = useState(7);
+  const [requestNote, setRequestNote] = useState('');
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [itemSearch, setItemSearch] = useState('');
+  const [selectedItemToAdd, setSelectedItemToAdd] = useState(null);
+  const [itemQty, setItemQty] = useState(1);
+  
+  // Print state
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printRequest, setPrintRequest] = useState(null);
+  
+  // Active request details
+  const [expandedRequest, setExpandedRequest] = useState(null);
+  const [requestDetails, setRequestDetails] = useState([]);
+
+  useEffect(() => { loadData(); }, [activeTab]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // Load materials
+      const { data: matData } = await supabase
+        .from('internal_materials')
+        .select('*')
+        .order('ident_code');
+      if (matData) setMaterials(matData);
+
+      // Load active requests (Open or Partial)
+      const { data: reqData } = await supabase
+        .from('internal_requests')
+        .select('*')
+        .in('status', ['Open', 'Partial'])
+        .order('created_at', { ascending: false });
+      if (reqData) setRequests(reqData);
+
+      // Load history (Closed)
+      const { data: histData } = await supabase
+        .from('internal_requests')
+        .select('*')
+        .eq('status', 'Closed')
+        .order('closed_at', { ascending: false })
+        .limit(100);
+      if (histData) setHistory(histData);
+
+      // Get next request number
+      const { data: nextNum } = await supabase.rpc('get_next_internal_request_number');
+      if (nextNum) setNextRequestNumber(nextNum);
+
+    } catch (error) {
+      console.error('InternalMaterialsPage loadData error:', error);
+    }
+    setLoading(false);
+  };
+
+  // Load request items when expanding
+  const loadRequestItems = async (requestId) => {
+    const { data } = await supabase
+      .from('internal_request_items')
+      .select('*')
+      .eq('request_id', requestId)
+      .order('created_at');
+    if (data) setRequestDetails(data);
+  };
+
+  const toggleRequest = async (reqId) => {
+    if (expandedRequest === reqId) {
+      setExpandedRequest(null);
+    } else {
+      setExpandedRequest(reqId);
+      await loadRequestItems(reqId);
+    }
+  };
+
+  // ==================== MATERIALS DB FUNCTIONS ====================
+  const saveMaterial = async () => {
+    if (!newMaterial.ident_code || !newMaterial.description) {
+      alert('Ident Code and Description are required');
+      return;
+    }
+    
+    const toSave = {
+      ...newMaterial,
+      qty_available: newMaterial.qty_total,
+      created_by_id: user.id,
+      created_by_name: user.full_name
+    };
+    
+    const { error } = await supabase.from('internal_materials').insert(toSave);
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      setShowAddMaterialModal(false);
+      setNewMaterial({ ident_code: '', description: '', diameter: '', qty_total: 0, material_type: 'Returnable' });
+      loadData();
+    }
+  };
+
+  const updateMaterial = async () => {
+    if (!selectedMaterial) return;
+    
+    const { error } = await supabase
+      .from('internal_materials')
+      .update({
+        description: selectedMaterial.description,
+        diameter: selectedMaterial.diameter,
+        qty_total: selectedMaterial.qty_total,
+        qty_available: selectedMaterial.qty_available,
+        material_type: selectedMaterial.material_type
+      })
+      .eq('id', selectedMaterial.id);
+    
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      setShowEditMaterialModal(false);
+      loadData();
+    }
+  };
+
+  const deleteMaterial = async (material) => {
+    if (!confirm(`Delete ${material.ident_code}?`)) return;
+    
+    const { error } = await supabase
+      .from('internal_materials')
+      .delete()
+      .eq('id', material.id);
+    
+    if (error) {
+      alert('Error: ' + error.message);
+    } else {
+      loadData();
+    }
+  };
+
+  // ==================== NEW REQUEST FUNCTIONS ====================
+  const addItemToRequest = () => {
+    if (!selectedItemToAdd || itemQty <= 0) return;
+    
+    // Check if already in list
+    if (requestItems.find(i => i.ident_code === selectedItemToAdd.ident_code)) {
+      alert('Material already in request');
+      return;
+    }
+    
+    // Check availability
+    if (itemQty > selectedItemToAdd.qty_available) {
+      alert(`Only ${selectedItemToAdd.qty_available} available`);
+      return;
+    }
+    
+    setRequestItems([...requestItems, {
+      ...selectedItemToAdd,
+      qty_requested: itemQty
+    }]);
+    
+    setShowAddItemModal(false);
+    setSelectedItemToAdd(null);
+    setItemQty(1);
+    setItemSearch('');
+  };
+
+  const removeItemFromRequest = (identCode) => {
+    setRequestItems(requestItems.filter(i => i.ident_code !== identCode));
+  };
+
+  const generateRequest = async () => {
+    if (!usageLocation) {
+      alert('Usage Location is required');
+      return;
+    }
+    if (requestItems.length === 0) {
+      alert('Add at least one material');
+      return;
+    }
+    
+    try {
+      // 1. Create the request
+      const { data: reqData, error: reqError } = await supabase
+        .from('internal_requests')
+        .insert({
+          request_number: nextRequestNumber,
+          requester_id: user.id,
+          requester_name: user.full_name,
+          requester_badge: user.badge_number || '',
+          usage_location: usageLocation,
+          note: requestNote,
+          alert_days: alertDays,
+          status: 'Open'
+        })
+        .select()
+        .single();
+      
+      if (reqError) throw reqError;
+      
+      // 2. Create request items
+      const itemsToInsert = requestItems.map(item => ({
+        request_id: reqData.id,
+        material_id: item.id,
+        ident_code: item.ident_code,
+        description: item.description,
+        material_type: item.material_type,
+        qty_requested: item.qty_requested,
+        qty_returned: 0,
+        status: item.material_type === 'Loose' ? 'Used' : 'Out'
+      }));
+      
+      const { error: itemsError } = await supabase
+        .from('internal_request_items')
+        .insert(itemsToInsert);
+      
+      if (itemsError) throw itemsError;
+      
+      // 3. Decrement material availability
+      for (const item of requestItems) {
+        await supabase.rpc('decrement_internal_material', {
+          p_ident_code: item.ident_code,
+          p_qty: item.qty_requested
+        });
+      }
+      
+      // 4. Create notification for alert
+      const alertDate = new Date();
+      alertDate.setDate(alertDate.getDate() + alertDays);
+      
+      await supabase.from('notifications').insert({
+        user_id: user.id,
+        type: 'internal_material_alert',
+        title: `Internal Materials Alert - ${nextRequestNumber}`,
+        message: `Returnable materials from ${nextRequestNumber} should be returned. Location: ${usageLocation}`,
+        scheduled_for: alertDate.toISOString()
+      }).catch(() => {}); // Ignore if notifications table doesn't exist
+      
+      // 5. Show print modal
+      setPrintRequest({
+        ...reqData,
+        items: requestItems,
+        created_at: new Date().toISOString()
+      });
+      setShowPrintModal(true);
+      
+      // 6. Reset form
+      setRequestItems([]);
+      setUsageLocation('');
+      setRequestNote('');
+      setAlertDays(7);
+      loadData();
+      
+    } catch (error) {
+      alert('Error creating request: ' + error.message);
+    }
+  };
+
+  // ==================== ACTIVE REQUEST FUNCTIONS ====================
+  const returnItem = async (item, location) => {
+    if (!location) return;
+    
+    try {
+      // Update item
+      await supabase
+        .from('internal_request_items')
+        .update({
+          qty_returned: item.qty_requested,
+          return_location: location,
+          status: 'Returned',
+          returned_at: new Date().toISOString()
+        })
+        .eq('id', item.id);
+      
+      // Increment material availability
+      await supabase.rpc('increment_internal_material', {
+        p_ident_code: item.ident_code,
+        p_qty: item.qty_requested
+      });
+      
+      // Check if all returnables are back
+      await checkAndUpdateRequestStatus(item.request_id);
+      
+      // Reload
+      await loadRequestItems(item.request_id);
+      loadData();
+      
+    } catch (error) {
+      alert('Error: ' + error.message);
+    }
+  };
+
+  const checkAndUpdateRequestStatus = async (requestId) => {
+    // Get all items for this request
+    const { data: items } = await supabase
+      .from('internal_request_items')
+      .select('*')
+      .eq('request_id', requestId);
+    
+    if (!items) return;
+    
+    const returnables = items.filter(i => i.material_type === 'Returnable');
+    const allReturned = returnables.every(i => i.status === 'Returned');
+    const someReturned = returnables.some(i => i.status === 'Returned');
+    
+    let newStatus = 'Open';
+    if (allReturned && returnables.length > 0) {
+      newStatus = 'Partial'; // Ready to close
+    } else if (someReturned) {
+      newStatus = 'Partial';
+    }
+    
+    await supabase
+      .from('internal_requests')
+      .update({ status: newStatus })
+      .eq('id', requestId);
+  };
+
+  const closeRequest = async (request) => {
+    // Verify all returnables are back
+    const { data: items } = await supabase
+      .from('internal_request_items')
+      .select('*')
+      .eq('request_id', request.id)
+      .eq('material_type', 'Returnable')
+      .eq('status', 'Out');
+    
+    if (items && items.length > 0) {
+      alert('Cannot close: Some returnable items are still out');
+      return;
+    }
+    
+    await supabase
+      .from('internal_requests')
+      .update({ 
+        status: 'Closed',
+        closed_at: new Date().toISOString()
+      })
+      .eq('id', request.id);
+    
+    loadData();
+  };
+
+  // ==================== PRINT FUNCTION ====================
+  const printDocument = () => {
+    const printContent = document.getElementById('print-content');
+    if (!printContent) return;
+    
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${printRequest?.request_number} - Internal Material Request</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+            th { background: #E31E24; color: white; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .info-box { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 8px; }
+            .warning { background: #FFF3E0; border: 2px solid #FF9800; padding: 15px; margin: 20px 0; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 50px; }
+            .signature-box { text-align: center; }
+            .signature-line { border-bottom: 1px solid #000; width: 200px; margin: 40px auto 10px; }
+            .footer { margin-top: 40px; text-align: center; color: #999; font-size: 11px; border-top: 1px solid #ccc; padding-top: 20px; }
+            .loose { background: #FFEBEE; }
+            .returnable { background: #E8F5E9; }
+            @media print { body { padding: 20px; } }
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+  };
+
+  const downloadDocument = () => {
+    const printContent = document.getElementById('print-content');
+    if (!printContent) return;
+    
+    const html = `
+      <html>
+        <head>
+          <title>${printRequest?.request_number} - Internal Material Request</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
+            th { background: #E31E24; color: white; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .info-box { background: #f5f5f5; padding: 15px; margin: 20px 0; }
+            .warning { background: #FFF3E0; border: 2px solid #FF9800; padding: 15px; margin: 20px 0; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 50px; }
+            .signature-box { text-align: center; }
+            .signature-line { border-bottom: 1px solid #000; width: 200px; margin: 40px auto 10px; }
+            .footer { margin-top: 40px; text-align: center; color: #999; font-size: 11px; }
+            .loose { background: #FFEBEE; }
+            .returnable { background: #E8F5E9; }
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+        </body>
+      </html>
+    `;
+    
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${printRequest?.request_number}_Request.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ==================== FILTER ====================
+  const filteredMaterials = materials.filter(m => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return m.ident_code?.toLowerCase().includes(term) ||
+           m.description?.toLowerCase().includes(term);
+  });
+
+  const availableMaterials = materials.filter(m => {
+    if (!itemSearch || itemSearch.length < 2) return false;
+    const term = itemSearch.toLowerCase();
+    return (m.ident_code?.toLowerCase().includes(term) ||
+            m.description?.toLowerCase().includes(term)) &&
+           m.qty_available > 0;
+  });
+
+  // Check for overdue requests
+  const isOverdue = (request) => {
+    const created = new Date(request.created_at);
+    const now = new Date();
+    const daysDiff = Math.floor((now - created) / (1000 * 60 * 60 * 24));
+    return daysDiff > request.alert_days;
+  };
+
+  const canModify = canModifyPage(user, 'internal_materials');
+
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
+
+  return (
+    <div style={{ padding: '24px' }}>
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '24px' }}>
+        {[
+          { id: 'database', label: '📦 Materials DB', count: materials.length },
+          { id: 'newRequest', label: '📝 New Request' },
+          { id: 'active', label: '📋 Active Requests', count: requests.length },
+          { id: 'history', label: '📜 History', count: history.length }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              borderRadius: '8px 8px 0 0',
+              cursor: 'pointer',
+              fontWeight: '600',
+              backgroundColor: activeTab === tab.id ? 'white' : '#E5E7EB',
+              color: activeTab === tab.id ? COLORS.secondary : '#6B7280',
+              borderBottom: activeTab === tab.id ? `3px solid ${COLORS.primary}` : 'none'
+            }}
+          >
+            {tab.label}
+            {tab.count !== undefined && (
+              <span style={{
+                marginLeft: '8px',
+                padding: '2px 8px',
+                borderRadius: '10px',
+                fontSize: '11px',
+                backgroundColor: activeTab === tab.id ? COLORS.primary : '#9CA3AF',
+                color: 'white'
+              }}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB 1: Materials Database */}
+      {activeTab === 'database' && (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontWeight: '600' }}>📦 Internal Materials Inventory</h3>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Search materials..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ ...styles.input, width: '250px' }}
+              />
+              {canModify && (
+                <button
+                  onClick={() => setShowAddMaterialModal(true)}
+                  style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                >
+                  + Add Material
+                </button>
+              )}
+            </div>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Ident Code</th>
+                  <th style={styles.th}>Description</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Ø Diam</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Type</th>
+                  <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.info, color: 'white' }}>Total</th>
+                  <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.success, color: 'white' }}>Available</th>
+                  <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.orange, color: 'white' }}>Out</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMaterials.map((mat, idx) => (
+                  <tr key={idx}>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', color: COLORS.info }}>{mat.ident_code}</td>
+                    <td style={styles.td}>{mat.description}</td>
+                    <td style={{ ...styles.td, textAlign: 'center' }}>{mat.diameter || '-'}</td>
+                    <td style={{ ...styles.td, textAlign: 'center' }}>
+                      <span style={{
+                        ...styles.statusBadge,
+                        backgroundColor: mat.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
+                        color: mat.material_type === 'Loose' ? '#991B1B' : '#065F46'
+                      }}>
+                        {mat.material_type === 'Loose' ? '🔴 Loose' : '🟢 Returnable'}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{mat.qty_total}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.success }}>{mat.qty_available}</td>
+                    <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: mat.qty_total - mat.qty_available > 0 ? COLORS.orange : '#9CA3AF' }}>
+                      {mat.qty_total - mat.qty_available}
+                    </td>
+                    <td style={{ ...styles.td, textAlign: 'center' }}>
+                      {canModify && (
+                        <>
+                          <ActionButton color={COLORS.info} onClick={() => { setSelectedMaterial({...mat}); setShowEditMaterialModal(true); }}>✏️</ActionButton>
+                          <ActionButton color={COLORS.primary} onClick={() => deleteMaterial(mat)}>🗑️</ActionButton>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filteredMaterials.length === 0 && (
+                  <tr><td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF' }}>No materials found</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {/* Summary */}
+          <div style={{ padding: '16px', backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB', display: 'flex', gap: '24px' }}>
+            <span>Total Materials: <strong>{materials.length}</strong></span>
+            <span style={{ color: '#991B1B' }}>🔴 Loose: <strong>{materials.filter(m => m.material_type === 'Loose').length}</strong></span>
+            <span style={{ color: '#065F46' }}>🟢 Returnable: <strong>{materials.filter(m => m.material_type === 'Returnable').length}</strong></span>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: New Request */}
+      {activeTab === 'newRequest' && (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF' }}>
+            <h3 style={{ fontWeight: '600', color: '#1E40AF' }}>📝 Create New Internal Request</h3>
+          </div>
+          <div style={{ padding: '24px' }}>
+            {/* Request Info */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+              <div>
+                <label style={styles.label}>Request Number</label>
+                <div style={{ padding: '12px 16px', backgroundColor: '#F3F4F6', borderRadius: '8px', fontFamily: 'monospace', fontSize: '20px', fontWeight: 'bold', color: COLORS.info }}>
+                  {nextRequestNumber}
+                </div>
+                <p style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '4px' }}>Auto-generated</p>
+              </div>
+              <div>
+                <label style={styles.label}>Requester</label>
+                <div style={{ padding: '12px 16px', backgroundColor: '#F3F4F6', borderRadius: '8px' }}>
+                  <strong>{user.full_name}</strong>
+                  <span style={{ color: '#6B7280', marginLeft: '8px' }}>(Badge: {user.badge_number || 'N/A'})</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
+              <div>
+                <label style={styles.label}>Usage Location *</label>
+                <input
+                  type="text"
+                  value={usageLocation}
+                  onChange={(e) => setUsageLocation(e.target.value)}
+                  placeholder="ISO number, Spool, Area..."
+                  style={styles.input}
+                />
+              </div>
+              <div>
+                <label style={styles.label}>⏰ Return Alert (days)</label>
+                <input
+                  type="number"
+                  value={alertDays}
+                  onChange={(e) => setAlertDays(parseInt(e.target.value) || 7)}
+                  min="1"
+                  max="30"
+                  style={styles.input}
+                />
+                <p style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '4px' }}>You'll receive notification if returnables not back after {alertDays} days</p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={styles.label}>Note (optional)</label>
+              <textarea
+                value={requestNote}
+                onChange={(e) => setRequestNote(e.target.value)}
+                placeholder="Additional information..."
+                rows={2}
+                style={styles.input}
+              />
+            </div>
+
+            {/* Materials Section */}
+            <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h4 style={{ fontWeight: '600' }}>📦 Materials to Request</h4>
+                <button
+                  onClick={() => setShowAddItemModal(true)}
+                  style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                >
+                  + Add Material
+                </button>
+              </div>
+
+              <table style={{ ...styles.table, border: '1px solid #E5E7EB', borderRadius: '8px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#F9FAFB' }}>
+                    <th style={styles.th}>Ident</th>
+                    <th style={styles.th}>Description</th>
+                    <th style={{ ...styles.th, textAlign: 'center' }}>Type</th>
+                    <th style={{ ...styles.th, textAlign: 'center' }}>Available</th>
+                    <th style={{ ...styles.th, textAlign: 'center' }}>Qty Request</th>
+                    <th style={{ ...styles.th, textAlign: 'center' }}>Remove</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {requestItems.map((item, idx) => (
+                    <tr key={idx} style={{ backgroundColor: item.material_type === 'Returnable' ? '#F0FDF4' : 'white' }}>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
+                      <td style={styles.td}>{item.description}</td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <span style={{
+                          ...styles.statusBadge,
+                          backgroundColor: item.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
+                          color: item.material_type === 'Loose' ? '#991B1B' : '#065F46'
+                        }}>
+                          {item.material_type}
+                        </span>
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'center', color: COLORS.success, fontWeight: '600' }}>{item.qty_available}</td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <input
+                          type="number"
+                          value={item.qty_requested}
+                          onChange={(e) => {
+                            const newQty = parseInt(e.target.value) || 1;
+                            setRequestItems(requestItems.map((i, iIdx) => 
+                              iIdx === idx ? { ...i, qty_requested: Math.min(newQty, i.qty_available) } : i
+                            ));
+                          }}
+                          min="1"
+                          max={item.qty_available}
+                          style={{ width: '80px', padding: '4px 8px', textAlign: 'center', border: '1px solid #D1D5DB', borderRadius: '4px' }}
+                        />
+                      </td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <button
+                          onClick={() => removeItemFromRequest(item.ident_code)}
+                          style={{ color: COLORS.primary, background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px' }}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {requestItems.length === 0 && (
+                    <tr><td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF', padding: '32px' }}>No materials added. Click "Add Material" to start.</td></tr>
+                  )}
+                </tbody>
+              </table>
+
+              {/* Summary */}
+              {requestItems.length > 0 && (
+                <div style={{ marginTop: '16px', padding: '16px', backgroundColor: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '8px' }}>
+                  <div style={{ display: 'flex', gap: '32px' }}>
+                    <span>Total Items: <strong>{requestItems.length}</strong></span>
+                    <span style={{ color: '#991B1B' }}>Loose: <strong>{requestItems.filter(i => i.material_type === 'Loose').length}</strong> ({requestItems.filter(i => i.material_type === 'Loose').reduce((sum, i) => sum + i.qty_requested, 0)} pcs - will be consumed)</span>
+                    <span style={{ color: '#065F46' }}>Returnable: <strong>{requestItems.filter(i => i.material_type === 'Returnable').length}</strong> ({requestItems.filter(i => i.material_type === 'Returnable').reduce((sum, i) => sum + i.qty_requested, 0)} pcs - must return)</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', marginTop: '32px', paddingTop: '24px', borderTop: '1px solid #E5E7EB' }}>
+              <button
+                onClick={() => { setRequestItems([]); setUsageLocation(''); setRequestNote(''); }}
+                style={{ ...styles.button, ...styles.buttonSecondary }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={generateRequest}
+                style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontWeight: '600' }}
+                disabled={requestItems.length === 0 || !usageLocation}
+              >
+                📄 Generate Request & Print
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Active Requests */}
+      {activeTab === 'active' && (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#FFF7ED' }}>
+            <h3 style={{ fontWeight: '600', color: '#C2410C' }}>📋 Active Requests (Returnable items pending)</h3>
+          </div>
+          <div style={{ padding: '16px' }}>
+            {requests.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px', color: '#9CA3AF' }}>No active requests</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {requests.map((req) => {
+                  const overdue = isOverdue(req);
+                  return (
+                    <div key={req.id} style={{ border: `2px solid ${overdue ? COLORS.primary : '#E5E7EB'}`, borderRadius: '8px', overflow: 'hidden' }}>
+                      {/* Header */}
+                      <div
+                        onClick={() => toggleRequest(req.id)}
+                        style={{
+                          padding: '16px',
+                          backgroundColor: overdue ? '#FEF2F2' : '#F9FAFB',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '18px', color: overdue ? COLORS.primary : COLORS.info }}>{req.request_number}</span>
+                          <span style={{ color: '#6B7280' }}>|</span>
+                          <span>📅 {new Date(req.created_at).toLocaleDateString()}</span>
+                          <span style={{ color: '#6B7280' }}>|</span>
+                          <span>👤 {req.requester_name}</span>
+                          <span style={{ color: '#6B7280' }}>|</span>
+                          <span>📍 {req.usage_location}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <span style={{
+                            ...styles.statusBadge,
+                            backgroundColor: req.status === 'Partial' ? COLORS.success : COLORS.orange
+                          }}>
+                            {req.status === 'Partial' ? '✅ Ready to close' : '⏳ Pending'}
+                          </span>
+                          <span style={{ color: '#9CA3AF', fontSize: '20px' }}>{expandedRequest === req.id ? '▼' : '▶'}</span>
+                        </div>
+                      </div>
+                      
+                      {/* Expanded Details */}
+                      {expandedRequest === req.id && (
+                        <div style={{ padding: '16px', borderTop: '1px solid #E5E7EB' }}>
+                          {overdue && (
+                            <div style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ color: COLORS.primary }}>⚠️</span>
+                              <span style={{ color: '#991B1B', fontWeight: '500' }}>Alert: Items overdue (out for more than {req.alert_days} days)</span>
+                            </div>
+                          )}
+                          
+                          <table style={styles.table}>
+                            <thead style={{ backgroundColor: '#F9FAFB' }}>
+                              <tr>
+                                <th style={styles.th}>Material</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>Type</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>Qty Out</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>Qty Returned</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>Location</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>Status</th>
+                                <th style={{ ...styles.th, textAlign: 'center' }}>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {requestDetails.map((item, idx) => (
+                                <tr key={idx} style={{ backgroundColor: item.status === 'Returned' ? '#F0FDF4' : item.material_type === 'Loose' ? '#F9FAFB' : item.status === 'Out' ? '#FEF2F2' : 'white' }}>
+                                  <td style={{ ...styles.td, fontFamily: 'monospace' }}>{item.ident_code}</td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                                    <span style={{
+                                      ...styles.statusBadge,
+                                      backgroundColor: item.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
+                                      color: item.material_type === 'Loose' ? '#991B1B' : '#065F46'
+                                    }}>
+                                      {item.material_type === 'Loose' ? 'Loose' : 'Ret.'}
+                                    </span>
+                                  </td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>{item.qty_requested}</td>
+                                  <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: item.status === 'Returned' ? COLORS.success : item.material_type === 'Loose' ? '#9CA3AF' : COLORS.orange }}>
+                                    {item.material_type === 'Loose' ? '-' : `${item.qty_returned}/${item.qty_requested}`}
+                                  </td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                                    {item.return_location ? (
+                                      <span style={{ padding: '4px 8px', backgroundColor: '#DBEAFE', color: '#1E40AF', borderRadius: '4px', fontSize: '12px' }}>{item.return_location}</span>
+                                    ) : '-'}
+                                  </td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                                    <span style={{
+                                      ...styles.statusBadge,
+                                      backgroundColor: item.status === 'Returned' ? COLORS.success : item.status === 'Used' ? '#6B7280' : COLORS.primary
+                                    }}>
+                                      {item.status === 'Returned' ? '✅ Returned' : item.status === 'Used' ? 'Used' : '⏳ Out'}
+                                    </span>
+                                  </td>
+                                  <td style={{ ...styles.td, textAlign: 'center' }}>
+                                    {item.material_type === 'Returnable' && item.status === 'Out' && canModify ? (
+                                      <select
+                                        onChange={(e) => e.target.value && returnItem(item, e.target.value)}
+                                        style={{ padding: '6px 12px', border: '1px solid #D1D5DB', borderRadius: '4px', fontSize: '12px' }}
+                                        defaultValue=""
+                                      >
+                                        <option value="">Return to...</option>
+                                        <option value="WH_Site">WH Site</option>
+                                        <option value="WH_Yard">WH Yard</option>
+                                      </select>
+                                    ) : '-'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          
+                          {/* Close Button */}
+                          <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+                            {requestDetails.filter(i => i.material_type === 'Returnable' && i.status === 'Out').length === 0 ? (
+                              <button
+                                onClick={() => closeRequest(req)}
+                                style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+                              >
+                                ✅ Close Request
+                              </button>
+                            ) : (
+                              <button
+                                disabled
+                                style={{ ...styles.button, backgroundColor: '#E5E7EB', color: '#9CA3AF', cursor: 'not-allowed' }}
+                              >
+                                🔒 Close Request (all returnables must be back)
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: History */}
+      {activeTab === 'history' && (
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: '600' }}>📜 Request History</h3>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Request #</th>
+                  <th style={styles.th}>Created</th>
+                  <th style={styles.th}>Closed</th>
+                  <th style={styles.th}>Requester</th>
+                  <th style={styles.th}>Location</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Duration</th>
+                  <th style={{ ...styles.th, textAlign: 'center' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((req, idx) => {
+                  const created = new Date(req.created_at);
+                  const closed = new Date(req.closed_at);
+                  const duration = Math.floor((closed - created) / (1000 * 60 * 60 * 24));
+                  return (
+                    <tr key={idx}>
+                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{req.request_number}</td>
+                      <td style={styles.td}>{created.toLocaleDateString()}</td>
+                      <td style={styles.td}>{closed.toLocaleDateString()}</td>
+                      <td style={styles.td}>{req.requester_name}</td>
+                      <td style={styles.td}>{req.usage_location}</td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>{duration} days</td>
+                      <td style={{ ...styles.td, textAlign: 'center' }}>
+                        <ActionButton color={COLORS.info} onClick={async () => {
+                          const { data: items } = await supabase.from('internal_request_items').select('*').eq('request_id', req.id);
+                          setPrintRequest({ ...req, items: items || [] });
+                          setShowPrintModal(true);
+                        }}>📄</ActionButton>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {history.length === 0 && (
+                  <tr><td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF' }}>No history yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ADD MATERIAL MODAL */}
+      <Modal isOpen={showAddMaterialModal} onClose={() => setShowAddMaterialModal(false)} title="+ Add New Material">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={styles.label}>Ident Code *</label>
+            <input
+              type="text"
+              value={newMaterial.ident_code}
+              onChange={(e) => setNewMaterial({ ...newMaterial, ident_code: e.target.value.toUpperCase() })}
+              placeholder="e.g. HT-GASKET-50"
+              style={styles.input}
+            />
+          </div>
+          <div>
+            <label style={styles.label}>Description *</label>
+            <input
+              type="text"
+              value={newMaterial.description}
+              onChange={(e) => setNewMaterial({ ...newMaterial, description: e.target.value })}
+              placeholder="e.g. Spiral Wound Gasket DN50 PN40"
+              style={styles.input}
+            />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div>
+              <label style={styles.label}>Diameter</label>
+              <input
+                type="text"
+                value={newMaterial.diameter}
+                onChange={(e) => setNewMaterial({ ...newMaterial, diameter: e.target.value })}
+                placeholder="e.g. 50, M16"
+                style={styles.input}
+              />
+            </div>
+            <div>
+              <label style={styles.label}>Quantity</label>
+              <input
+                type="number"
+                value={newMaterial.qty_total}
+                onChange={(e) => setNewMaterial({ ...newMaterial, qty_total: parseInt(e.target.value) || 0 })}
+                min="0"
+                style={styles.input}
+              />
+            </div>
+          </div>
+          <div>
+            <label style={styles.label}>Type</label>
+            <select
+              value={newMaterial.material_type}
+              onChange={(e) => setNewMaterial({ ...newMaterial, material_type: e.target.value })}
+              style={styles.input}
+            >
+              <option value="Returnable">🟢 Returnable (must return after use)</option>
+              <option value="Loose">🔴 Loose (consumed, won't return)</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #E5E7EB' }}>
+            <button onClick={() => setShowAddMaterialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+            <button onClick={saveMaterial} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Save Material</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* EDIT MATERIAL MODAL */}
+      <Modal isOpen={showEditMaterialModal} onClose={() => setShowEditMaterialModal(false)} title="✏️ Edit Material">
+        {selectedMaterial && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div>
+              <label style={styles.label}>Ident Code</label>
+              <input type="text" value={selectedMaterial.ident_code} disabled style={{ ...styles.input, backgroundColor: '#F3F4F6' }} />
+            </div>
+            <div>
+              <label style={styles.label}>Description</label>
+              <input
+                type="text"
+                value={selectedMaterial.description}
+                onChange={(e) => setSelectedMaterial({ ...selectedMaterial, description: e.target.value })}
+                style={styles.input}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
+              <div>
+                <label style={styles.label}>Diameter</label>
+                <input
+                  type="text"
+                  value={selectedMaterial.diameter || ''}
+                  onChange={(e) => setSelectedMaterial({ ...selectedMaterial, diameter: e.target.value })}
+                  style={styles.input}
+                />
+              </div>
+              <div>
+                <label style={styles.label}>Qty Total</label>
+                <input
+                  type="number"
+                  value={selectedMaterial.qty_total}
+                  onChange={(e) => setSelectedMaterial({ ...selectedMaterial, qty_total: parseInt(e.target.value) || 0 })}
+                  min="0"
+                  style={styles.input}
+                />
+              </div>
+              <div>
+                <label style={styles.label}>Qty Available</label>
+                <input
+                  type="number"
+                  value={selectedMaterial.qty_available}
+                  onChange={(e) => setSelectedMaterial({ ...selectedMaterial, qty_available: parseInt(e.target.value) || 0 })}
+                  min="0"
+                  style={styles.input}
+                />
+              </div>
+            </div>
+            <div>
+              <label style={styles.label}>Type</label>
+              <select
+                value={selectedMaterial.material_type}
+                onChange={(e) => setSelectedMaterial({ ...selectedMaterial, material_type: e.target.value })}
+                style={styles.input}
+              >
+                <option value="Returnable">🟢 Returnable</option>
+                <option value="Loose">🔴 Loose</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #E5E7EB' }}>
+              <button onClick={() => setShowEditMaterialModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+              <button onClick={updateMaterial} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>Update</button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ADD ITEM TO REQUEST MODAL */}
+      <Modal isOpen={showAddItemModal} onClose={() => { setShowAddItemModal(false); setItemSearch(''); setSelectedItemToAdd(null); }} title="+ Add Material to Request">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={styles.label}>Search Material</label>
+            <input
+              type="text"
+              value={itemSearch}
+              onChange={(e) => setItemSearch(e.target.value)}
+              placeholder="Type at least 2 characters to search..."
+              style={styles.input}
+            />
+          </div>
+          
+          {availableMaterials.length > 0 && (
+            <div style={{ border: '1px solid #E5E7EB', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto' }}>
+              {availableMaterials.map((mat, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => { setSelectedItemToAdd(mat); setItemQty(1); }}
+                  style={{
+                    padding: '12px',
+                    borderBottom: idx < availableMaterials.length - 1 ? '1px solid #E5E7EB' : 'none',
+                    cursor: 'pointer',
+                    backgroundColor: selectedItemToAdd?.id === mat.id ? '#EFF6FF' : 'white',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}
+                >
+                  <div>
+                    <span style={{ fontFamily: 'monospace', fontWeight: 'bold' }}>{mat.ident_code}</span>
+                    <span style={{ color: '#6B7280', marginLeft: '8px' }}>{mat.description}</span>
+                    <span style={{
+                      marginLeft: '8px',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '10px',
+                      backgroundColor: mat.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
+                      color: mat.material_type === 'Loose' ? '#991B1B' : '#065F46'
+                    }}>
+                      {mat.material_type}
+                    </span>
+                  </div>
+                  <span style={{ color: COLORS.success, fontWeight: 'bold' }}>Avail: {mat.qty_available}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {selectedItemToAdd && (
+            <div style={{ padding: '16px', backgroundColor: '#EFF6FF', borderRadius: '8px' }}>
+              <p style={{ fontWeight: '600', marginBottom: '12px' }}>Selected: {selectedItemToAdd.ident_code}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <label>Quantity:</label>
+                <input
+                  type="number"
+                  value={itemQty}
+                  onChange={(e) => setItemQty(Math.min(parseInt(e.target.value) || 1, selectedItemToAdd.qty_available))}
+                  min="1"
+                  max={selectedItemToAdd.qty_available}
+                  style={{ width: '100px', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '4px' }}
+                />
+                <span style={{ color: '#6B7280' }}>(max: {selectedItemToAdd.qty_available})</span>
+              </div>
+            </div>
+          )}
+          
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '16px', borderTop: '1px solid #E5E7EB' }}>
+            <button onClick={() => { setShowAddItemModal(false); setItemSearch(''); setSelectedItemToAdd(null); }} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+            <button onClick={addItemToRequest} disabled={!selectedItemToAdd} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', opacity: selectedItemToAdd ? 1 : 0.5 }}>+ Add to Request</button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* PRINT MODAL */}
+      <Modal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} title="📄 Internal Material Request Document" width="900px">
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginBottom: '16px' }}>
+          <button onClick={downloadDocument} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>⬇️ Download HTML</button>
+          <button onClick={printDocument} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>🖨️ Print</button>
+        </div>
+        
+        <div id="print-content" style={{ padding: '40px', border: '1px solid #E5E7EB', backgroundColor: 'white', fontFamily: 'Arial, sans-serif' }}>
+          {/* Header */}
+          <div className="header" style={{ textAlign: 'center', marginBottom: '30px' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '10px' }}>
+              <div style={{ width: '60px', height: '60px', backgroundColor: COLORS.primary, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ color: 'white', fontWeight: 'bold', fontSize: '20px' }}>MS</span>
+              </div>
+              <div>
+                <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>MAX STREICHER S.p.A.</h1>
+                <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>Construction & Engineering</p>
+              </div>
+            </div>
+            <h2 style={{ fontSize: '18px', border: '2px solid #000', display: 'inline-block', padding: '8px 30px', marginTop: '10px' }}>
+              INTERNAL MATERIAL REQUEST
+            </h2>
+          </div>
+
+          {/* Request Info */}
+          <div className="info-box" style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+            <div>
+              <p style={{ margin: '4px 0' }}><strong>Request #:</strong> <span style={{ fontSize: '18px', color: COLORS.primary, fontFamily: 'monospace' }}>{printRequest?.request_number}</span></p>
+              <p style={{ margin: '4px 0' }}><strong>Date:</strong> {printRequest?.created_at ? new Date(printRequest.created_at).toLocaleDateString() : ''}</p>
+            </div>
+            <div>
+              <p style={{ margin: '4px 0' }}><strong>Requester:</strong> {printRequest?.requester_name}</p>
+              <p style={{ margin: '4px 0' }}><strong>Badge:</strong> {printRequest?.requester_badge || 'N/A'}</p>
+            </div>
+            <div>
+              <p style={{ margin: '4px 0' }}><strong>Department:</strong> Engineering</p>
+              <p style={{ margin: '4px 0' }}><strong>Return Alert:</strong> {printRequest?.alert_days} days</p>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px', padding: '10px 15px', backgroundColor: '#E3F2FD', borderLeft: '4px solid #2196F3', borderRadius: '4px' }}>
+            <p style={{ margin: 0 }}><strong>Usage Location:</strong> {printRequest?.usage_location}</p>
+            {printRequest?.note && <p style={{ margin: '8px 0 0 0', color: '#666' }}><strong>Note:</strong> {printRequest.note}</p>}
+          </div>
+
+          {/* Materials Table */}
+          <h3 style={{ marginBottom: '10px', borderBottom: '2px solid #000', paddingBottom: '5px' }}>MATERIALS</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
+            <thead>
+              <tr style={{ backgroundColor: COLORS.primary, color: 'white' }}>
+                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>#</th>
+                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'left' }}>Ident Code</th>
+                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'left' }}>Description</th>
+                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Type</th>
+                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printRequest?.items?.map((item, idx) => (
+                <tr key={idx} className={item.material_type === 'Loose' ? 'loose' : 'returnable'} style={{ backgroundColor: item.material_type === 'Returnable' ? '#E8F5E9' : '#FFEBEE' }}>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center' }}>{idx + 1}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px', fontFamily: 'monospace' }}>{item.ident_code}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px' }}>{item.description}</td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center', fontWeight: 'bold', color: item.material_type === 'Loose' ? '#C62828' : '#2E7D32' }}>
+                    {item.material_type === 'Loose' ? 'LOOSE' : 'RETURNABLE'}
+                  </td>
+                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{item.qty_requested}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Warning */}
+          {printRequest?.items?.some(i => i.material_type === 'Returnable') && (
+            <div className="warning" style={{ padding: '15px', backgroundColor: '#FFF3E0', border: '2px solid #FF9800', borderRadius: '8px', marginBottom: '30px' }}>
+              <p style={{ margin: 0, color: '#E65100' }}>
+                <strong>⚠️ IMPORTANT:</strong> RETURNABLE items (marked in green) MUST be returned to the warehouse after use.
+                Failure to return within <strong>{printRequest?.alert_days} days</strong> will trigger an automatic alert.
+              </p>
+            </div>
+          )}
+
+          {/* Signatures */}
+          <div className="signatures" style={{ display: 'flex', justifyContent: 'space-between', marginTop: '50px' }}>
+            <div className="signature-box" style={{ textAlign: 'center' }}>
+              <p style={{ marginBottom: '40px' }}><strong>Requester</strong></p>
+              <div className="signature-line" style={{ borderBottom: '1px solid #000', width: '200px', margin: '0 auto' }}></div>
+              <p style={{ marginTop: '10px', color: '#666' }}>{printRequest?.requester_name}</p>
+              <p style={{ color: '#666', fontSize: '12px' }}>Date: ___/___/______</p>
+            </div>
+            <div className="signature-box" style={{ textAlign: 'center' }}>
+              <p style={{ marginBottom: '40px' }}><strong>Warehouse Operator</strong></p>
+              <div className="signature-line" style={{ borderBottom: '1px solid #000', width: '200px', margin: '0 auto' }}></div>
+              <p style={{ marginTop: '10px', color: '#666' }}>Name: ________________</p>
+              <p style={{ color: '#666', fontSize: '12px' }}>Date: ___/___/______</p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="footer" style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #ccc', textAlign: 'center', color: '#999', fontSize: '11px' }}>
+            <p>Generated: {new Date().toLocaleString()} | Materials Manager V32.6 | MAX STREICHER S.p.A.</p>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -11453,7 +12716,7 @@ function SparePartsPage({ user }) {
         request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
       
-      await logHistory(component.id, 'Delivered - To Site', 'Spare', 'WH_Site', '');
+      await logHistory(component.id, 'Delivered - To Site', 'Spare', 'WH_Site', 'Spare part delivered to WH Site');
       alert(`✅ Spare Parts delivered to Site: ${component.quantity} pcs`);
       loadComponents();
     } catch (err) {
@@ -11512,7 +12775,7 @@ function SparePartsPage({ user }) {
         request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
       
-      await logHistory(component.id, 'Delivered - To Yard', 'Spare', 'Yard', '');
+      await logHistory(component.id, 'Delivered - To Yard', 'Spare', 'Yard', 'Spare part delivered to Yard');
       alert(`✅ Spare Parts delivered to Yard: ${component.quantity} pcs`);
       loadComponents();
     } catch (err) {
@@ -11525,7 +12788,7 @@ function SparePartsPage({ user }) {
     await supabase.from('request_components')
       .update({ status: 'Eng', forecast_date: null })
       .eq('id', component.id);
-    await logHistory(component.id, 'Returned to Engineering', 'Spare', 'Eng', '');
+    await logHistory(component.id, 'Returned to Engineering', 'Spare', 'Eng', 'Returned from Spare Parts to Engineering');
     loadComponents();
   };
 
@@ -11534,7 +12797,7 @@ function SparePartsPage({ user }) {
       await supabase.from('request_components')
         .update({ status: 'Cancelled', forecast_date: null })
         .eq('id', component.id);
-      await logHistory(component.id, 'Cancelled', 'Spare', 'Cancelled', '');
+      await logHistory(component.id, 'Cancelled', 'Spare', 'Cancelled', 'Request cancelled from Spare Parts');
       loadComponents();
     }
   };
@@ -11925,7 +13188,7 @@ function OrdersPage({ user }) {
         request_number: reqNum
       });
       
-      await logHistory(component.id, 'Order Received - To Site', 'Ordered', 'WH_Site', '');
+      await logHistory(component.id, 'Order Received - To Site', 'Ordered', 'WH_Site', 'Order received, delivered to WH Site');
       
       alert(`✅ Received ${component.quantity} pcs of ${component.ident_code}\nInventory Site updated!`);
       loadData();
@@ -11999,7 +13262,7 @@ function OrdersPage({ user }) {
         request_number: reqNum
       });
       
-      await logHistory(component.id, 'Order Received - To Yard', 'Ordered', 'Yard', '');
+      await logHistory(component.id, 'Order Received - To Yard', 'Ordered', 'Yard', 'Order received, delivered to Yard');
       
       alert(`✅ Received ${component.quantity} pcs of ${component.ident_code}\nInventory Yard updated!`);
       loadData();
@@ -12014,7 +13277,7 @@ function OrdersPage({ user }) {
     await supabase.from('request_components')
       .update({ status: 'Order', order_date: null, order_forecast: null })
       .eq('id', component.id);
-    await logHistory(component.id, 'Back to To Order', 'Ordered', 'Order', '');
+    await logHistory(component.id, 'Back to To Order', 'Ordered', 'Order', 'Order reverted to pending');
     loadData();
   };
 
@@ -12024,7 +13287,7 @@ function OrdersPage({ user }) {
       await supabase.from('request_components')
         .update({ status: 'Cancelled' })
         .eq('id', component.id);
-      await logHistory(component.id, 'Cancelled', fromStatus, 'Cancelled', '');
+      await logHistory(component.id, 'Cancelled', fromStatus, 'Cancelled', 'Request cancelled');
       loadData();
     }
   };
@@ -14668,1290 +15931,6 @@ function PrintRequestsPage({ user }) {
           Total: {requests.length} active requests
         </div>
       </div>
-    </div>
-  );
-}
-
-// ============================================================
-// INTERNAL MATERIALS PAGE - V32.6 - Hydro Test Materials
-// ============================================================
-function InternalMaterialsPage({ user }) {
-  const [activeTab, setActiveTab] = useState('database');
-  const [materials, setMaterials] = useState([]);
-  const [requests, setRequests] = useState([]);
-  const [activeRequests, setActiveRequests] = useState([]);
-  const [historyRequests, setHistoryRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  
-  // Materials DB modal
-  const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
-  const [showEditMaterialModal, setShowEditMaterialModal] = useState(false);
-  const [selectedMaterial, setSelectedMaterial] = useState(null);
-  const [newMaterial, setNewMaterial] = useState({ ident_code: '', description: '', diameter: '', qty_total: 0, material_type: 'Returnable' });
-  
-  // New Request state
-  const [nextRequestNumber, setNextRequestNumber] = useState('INT001');
-  const [requestItems, setRequestItems] = useState([]);
-  const [usageLocation, setUsageLocation] = useState('');
-  const [alertDays, setAlertDays] = useState(7);
-  const [requestNote, setRequestNote] = useState('');
-  const [showAddItemModal, setShowAddItemModal] = useState(false);
-  const [itemSearch, setItemSearch] = useState('');
-  const [selectedAddItem, setSelectedAddItem] = useState(null);
-  const [addItemQty, setAddItemQty] = useState(1);
-  
-  // Print modal
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [printRequest, setPrintRequest] = useState(null);
-  
-  // Expanded request in active tab
-  const [expandedRequest, setExpandedRequest] = useState(null);
-
-  useEffect(() => { loadData(); }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Load materials
-      const { data: matData } = await supabase
-        .from('internal_materials')
-        .select('*')
-        .order('ident_code');
-      if (matData) setMaterials(matData);
-
-      // Load active requests (Open or Partial)
-      const { data: activeData } = await supabase
-        .from('internal_requests')
-        .select('*, internal_request_items(*)')
-        .in('status', ['Open', 'Partial'])
-        .order('created_at', { ascending: false });
-      if (activeData) setActiveRequests(activeData);
-
-      // Load history (Closed)
-      const { data: historyData } = await supabase
-        .from('internal_requests')
-        .select('*, internal_request_items(*)')
-        .eq('status', 'Closed')
-        .order('closed_at', { ascending: false })
-        .limit(100);
-      if (historyData) setHistoryRequests(historyData);
-
-      // Get next request number
-      const { data: nextNum } = await supabase.rpc('get_next_internal_request_number');
-      if (nextNum) setNextRequestNumber(nextNum);
-
-    } catch (err) {
-      console.error('InternalMaterialsPage loadData error:', err);
-    }
-    setLoading(false);
-  };
-
-  // ===== MATERIALS DB FUNCTIONS =====
-  const saveMaterial = async () => {
-    if (!newMaterial.ident_code) {
-      alert('Ident Code is required');
-      return;
-    }
-    
-    const materialData = {
-      ident_code: newMaterial.ident_code.toUpperCase(),
-      description: newMaterial.description,
-      diameter: newMaterial.diameter,
-      qty_total: parseInt(newMaterial.qty_total) || 0,
-      qty_available: parseInt(newMaterial.qty_total) || 0,
-      material_type: newMaterial.material_type,
-      created_by: user.full_name
-    };
-
-    const { error } = await supabase.from('internal_materials').insert(materialData);
-    if (error) {
-      alert('Error: ' + error.message);
-      return;
-    }
-    
-    setShowAddMaterialModal(false);
-    setNewMaterial({ ident_code: '', description: '', diameter: '', qty_total: 0, material_type: 'Returnable' });
-    loadData();
-  };
-
-  const updateMaterial = async () => {
-    if (!selectedMaterial) return;
-    
-    const { error } = await supabase
-      .from('internal_materials')
-      .update({
-        description: selectedMaterial.description,
-        diameter: selectedMaterial.diameter,
-        qty_total: parseInt(selectedMaterial.qty_total) || 0,
-        qty_available: parseInt(selectedMaterial.qty_available) || 0,
-        material_type: selectedMaterial.material_type,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', selectedMaterial.id);
-    
-    if (error) {
-      alert('Error: ' + error.message);
-      return;
-    }
-    
-    setShowEditMaterialModal(false);
-    setSelectedMaterial(null);
-    loadData();
-  };
-
-  const deleteMaterial = async (material) => {
-    if (!confirm(`Delete ${material.ident_code}?`)) return;
-    
-    const { error } = await supabase
-      .from('internal_materials')
-      .delete()
-      .eq('id', material.id);
-    
-    if (error) {
-      alert('Error: ' + error.message);
-      return;
-    }
-    loadData();
-  };
-
-  const openEditModal = (material) => {
-    setSelectedMaterial({ ...material });
-    setShowEditMaterialModal(true);
-  };
-
-  // ===== NEW REQUEST FUNCTIONS =====
-  const addItemToRequest = () => {
-    if (!selectedAddItem) return;
-    if (addItemQty > selectedAddItem.qty_available) {
-      alert(`Only ${selectedAddItem.qty_available} available`);
-      return;
-    }
-    
-    // Check if already in list
-    const exists = requestItems.find(i => i.material_id === selectedAddItem.id);
-    if (exists) {
-      alert('Item already in request');
-      return;
-    }
-    
-    setRequestItems([...requestItems, {
-      material_id: selectedAddItem.id,
-      ident_code: selectedAddItem.ident_code,
-      description: selectedAddItem.description,
-      material_type: selectedAddItem.material_type,
-      qty_available: selectedAddItem.qty_available,
-      qty_requested: addItemQty
-    }]);
-    
-    setShowAddItemModal(false);
-    setSelectedAddItem(null);
-    setAddItemQty(1);
-    setItemSearch('');
-  };
-
-  const removeItemFromRequest = (idx) => {
-    setRequestItems(requestItems.filter((_, i) => i !== idx));
-  };
-
-  const updateItemQty = (idx, qty) => {
-    const updated = [...requestItems];
-    updated[idx].qty_requested = parseInt(qty) || 1;
-    setRequestItems(updated);
-  };
-
-  const generateRequest = async () => {
-    if (!usageLocation) {
-      alert('Usage Location is required');
-      return;
-    }
-    if (requestItems.length === 0) {
-      alert('Add at least one material');
-      return;
-    }
-    
-    try {
-      // 1. Create request
-      const { data: reqData, error: reqError } = await supabase
-        .from('internal_requests')
-        .insert({
-          request_number: nextRequestNumber,
-          requester_id: user.id,
-          requester_name: user.full_name,
-          requester_badge: user.badge_number || '',
-          usage_location: usageLocation,
-          note: requestNote,
-          alert_days: alertDays,
-          status: 'Open'
-        })
-        .select()
-        .single();
-      
-      if (reqError) throw reqError;
-      
-      // 2. Create items and decrement available qty
-      for (const item of requestItems) {
-        // Insert item
-        await supabase.from('internal_request_items').insert({
-          request_id: reqData.id,
-          material_id: item.material_id,
-          ident_code: item.ident_code,
-          description: item.description,
-          material_type: item.material_type,
-          qty_requested: item.qty_requested,
-          status: item.material_type === 'Loose' ? 'Used' : 'Out'
-        });
-        
-        // Decrement available qty
-        await supabase
-          .from('internal_materials')
-          .update({ 
-            qty_available: Math.max(0, item.qty_available - item.qty_requested) 
-          })
-          .eq('id', item.material_id);
-      }
-      
-      // 3. Show print modal
-      const fullRequest = {
-        ...reqData,
-        items: requestItems
-      };
-      setPrintRequest(fullRequest);
-      setShowPrintModal(true);
-      
-      // 4. Reset form
-      setRequestItems([]);
-      setUsageLocation('');
-      setRequestNote('');
-      setAlertDays(7);
-      
-      loadData();
-      
-    } catch (err) {
-      console.error('Generate request error:', err);
-      alert('Error creating request: ' + err.message);
-    }
-  };
-
-  // ===== ACTIVE REQUESTS FUNCTIONS =====
-  const returnItem = async (requestId, item, location) => {
-    try {
-      // Update item
-      await supabase
-        .from('internal_request_items')
-        .update({
-          status: 'Returned',
-          return_location: location,
-          qty_returned: item.qty_requested,
-          returned_at: new Date().toISOString()
-        })
-        .eq('id', item.id);
-      
-      // Return qty to inventory
-      const { data: mat } = await supabase
-        .from('internal_materials')
-        .select('qty_available')
-        .eq('id', item.material_id)
-        .single();
-      
-      if (mat) {
-        await supabase
-          .from('internal_materials')
-          .update({ qty_available: (mat.qty_available || 0) + item.qty_requested })
-          .eq('id', item.material_id);
-      }
-      
-      // Check if all returnables are back
-      const { data: allItems } = await supabase
-        .from('internal_request_items')
-        .select('*')
-        .eq('request_id', requestId);
-      
-      const returnablesOut = allItems?.filter(i => 
-        i.material_type === 'Returnable' && i.status === 'Out'
-      ) || [];
-      
-      // Update request status
-      if (returnablesOut.length === 0) {
-        // All returned
-        await supabase
-          .from('internal_requests')
-          .update({ status: 'Partial' })  // Ready to close
-          .eq('id', requestId);
-      }
-      
-      loadData();
-    } catch (err) {
-      console.error('Return item error:', err);
-      alert('Error: ' + err.message);
-    }
-  };
-
-  const closeRequest = async (request) => {
-    // Check all returnables are back
-    const returnablesOut = request.internal_request_items?.filter(i => 
-      i.material_type === 'Returnable' && i.status === 'Out'
-    ) || [];
-    
-    if (returnablesOut.length > 0) {
-      alert('Cannot close: ' + returnablesOut.length + ' returnable items still out');
-      return;
-    }
-    
-    await supabase
-      .from('internal_requests')
-      .update({ 
-        status: 'Closed',
-        closed_at: new Date().toISOString()
-      })
-      .eq('id', request.id);
-    
-    loadData();
-  };
-
-  // ===== PRINT FUNCTIONS =====
-  const printDocument = () => {
-    const printContent = document.getElementById('print-content');
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Internal Request ${printRequest?.request_number}</title>
-          <style>
-            body { font-family: 'Times New Roman', serif; padding: 20px; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-            th { background: #E31E24; color: white; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .info-box { background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
-            .signature { display: flex; justify-content: space-between; margin-top: 50px; }
-            .sig-box { text-align: center; width: 45%; }
-            .sig-line { border-bottom: 1px solid #000; height: 40px; margin-bottom: 5px; }
-            .warning { background: #FFF3E0; border: 2px solid #FF9800; padding: 15px; border-radius: 8px; margin: 20px 0; }
-            .loose { background: #FFEBEE; color: #C62828; }
-            .returnable { background: #E8F5E9; color: #2E7D32; }
-          </style>
-        </head>
-        <body>${printContent.innerHTML}</body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
-  };
-
-  const downloadPDF = () => {
-    // For now, just trigger print which can save as PDF
-    printDocument();
-  };
-
-  // ===== FILTERING =====
-  const filteredMaterials = materials.filter(m => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return m.ident_code?.toLowerCase().includes(term) ||
-           m.description?.toLowerCase().includes(term);
-  });
-
-  const filteredAddItems = materials.filter(m => {
-    if (!itemSearch) return true;
-    const term = itemSearch.toLowerCase();
-    return m.ident_code?.toLowerCase().includes(term) ||
-           m.description?.toLowerCase().includes(term);
-  }).filter(m => m.qty_available > 0);
-
-  // Calculate stats
-  const looseCount = materials.filter(m => m.material_type === 'Loose').length;
-  const returnableCount = materials.filter(m => m.material_type === 'Returnable').length;
-  const totalOut = materials.reduce((sum, m) => sum + ((m.qty_total || 0) - (m.qty_available || 0)), 0);
-
-  const canModify = user.role === 'admin' || user.perm_engineering === 'full';
-
-  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
-
-  return (
-    <div>
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '24px' }}>
-        {[
-          { id: 'database', label: '📦 Materials DB', count: materials.length },
-          { id: 'newRequest', label: '📝 New Request' },
-          { id: 'active', label: '📋 Active Requests', count: activeRequests.length },
-          { id: 'history', label: '📜 History' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              padding: '12px 24px',
-              borderRadius: '8px 8px 0 0',
-              border: 'none',
-              fontWeight: '600',
-              cursor: 'pointer',
-              backgroundColor: activeTab === tab.id ? 'white' : '#E5E7EB',
-              color: activeTab === tab.id ? COLORS.secondary : '#6B7280',
-              borderBottom: activeTab === tab.id ? `3px solid ${COLORS.primary}` : 'none'
-            }}
-          >
-            {tab.label}
-            {tab.count > 0 && (
-              <span style={{
-                marginLeft: '8px',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                fontSize: '11px',
-                backgroundColor: activeTab === tab.id ? COLORS.primary : '#9CA3AF',
-                color: 'white'
-              }}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* TAB 1: Materials Database */}
-      {activeTab === 'database' && (
-        <div style={styles.card}>
-          <div style={{ ...styles.cardHeader, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontWeight: '600' }}>📦 Internal Materials Inventory</h3>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ ...styles.input, width: '200px' }}
-              />
-              {canModify && (
-                <button
-                  onClick={() => setShowAddMaterialModal(true)}
-                  style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
-                >
-                  + Add Material
-                </button>
-              )}
-            </div>
-          </div>
-          
-          <div style={{ overflowX: 'auto' }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Ident Code</th>
-                  <th style={styles.th}>Description</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Ø Diam</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Type</th>
-                  <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.info, color: 'white' }}>Qty Total</th>
-                  <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.success, color: 'white' }}>Available</th>
-                  <th style={{ ...styles.th, textAlign: 'center', backgroundColor: COLORS.orange, color: 'white' }}>Out</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMaterials.map((mat, idx) => {
-                  const qtyOut = (mat.qty_total || 0) - (mat.qty_available || 0);
-                  return (
-                    <tr key={idx}>
-                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', color: COLORS.info }}>{mat.ident_code}</td>
-                      <td style={styles.td}>{mat.description || '-'}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>{mat.diameter || '-'}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>
-                        <span style={{
-                          padding: '4px 10px',
-                          borderRadius: '20px',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          backgroundColor: mat.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
-                          color: mat.material_type === 'Loose' ? '#991B1B' : '#065F46'
-                        }}>
-                          {mat.material_type === 'Loose' ? '🔴 Loose' : '🟢 Returnable'}
-                        </span>
-                      </td>
-                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600' }}>{mat.qty_total || 0}</td>
-                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.success }}>{mat.qty_available || 0}</td>
-                      <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: qtyOut > 0 ? COLORS.orange : '#9CA3AF' }}>{qtyOut}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>
-                        {canModify && (
-                          <>
-                            <ActionButton color={COLORS.info} onClick={() => openEditModal(mat)}>✏️</ActionButton>
-                            <ActionButton color={COLORS.primary} onClick={() => deleteMaterial(mat)}>🗑️</ActionButton>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* Summary */}
-          <div style={{ padding: '16px', backgroundColor: '#F9FAFB', borderTop: '1px solid #E5E7EB', display: 'flex', gap: '24px' }}>
-            <span>Total Materials: <strong>{materials.length}</strong></span>
-            <span style={{ padding: '2px 10px', borderRadius: '20px', backgroundColor: '#FEE2E2', color: '#991B1B', fontSize: '12px' }}>
-              🔴 Loose: {looseCount}
-            </span>
-            <span style={{ padding: '2px 10px', borderRadius: '20px', backgroundColor: '#D1FAE5', color: '#065F46', fontSize: '12px' }}>
-              🟢 Returnable: {returnableCount}
-            </span>
-            <span>Items Out: <strong style={{ color: COLORS.orange }}>{totalOut}</strong></span>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: New Request */}
-      {activeTab === 'newRequest' && (
-        <div style={styles.card}>
-          <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF' }}>
-            <h3 style={{ fontWeight: '600', color: '#1E40AF' }}>📝 Create New Internal Request</h3>
-          </div>
-          <div style={{ padding: '24px' }}>
-            {/* Request Info */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-              <div>
-                <label style={styles.label}>Request Number</label>
-                <div style={{ padding: '12px 16px', backgroundColor: '#F3F4F6', borderRadius: '8px', fontFamily: 'monospace', fontWeight: 'bold', fontSize: '20px', color: COLORS.info }}>
-                  {nextRequestNumber}
-                </div>
-                <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px' }}>Auto-generated</p>
-              </div>
-              <div>
-                <label style={styles.label}>Requester</label>
-                <div style={{ padding: '12px 16px', backgroundColor: '#F3F4F6', borderRadius: '8px' }}>
-                  <strong>{user.full_name}</strong>
-                  <span style={{ color: '#6B7280', marginLeft: '8px' }}>(Badge: {user.badge_number || '-'})</span>
-                </div>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
-              <div>
-                <label style={styles.label}>Usage Location *</label>
-                <input
-                  type="text"
-                  value={usageLocation}
-                  onChange={(e) => setUsageLocation(e.target.value)}
-                  placeholder="ISO number, Spool, Area..."
-                  style={styles.input}
-                />
-              </div>
-              <div>
-                <label style={styles.label}>⏰ Return Alert (days)</label>
-                <input
-                  type="number"
-                  value={alertDays}
-                  onChange={(e) => setAlertDays(parseInt(e.target.value) || 7)}
-                  min="1"
-                  style={styles.input}
-                />
-                <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px' }}>
-                  You'll receive notification if returnables not back after {alertDays} days
-                </p>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '24px' }}>
-              <label style={styles.label}>Note (optional)</label>
-              <textarea
-                value={requestNote}
-                onChange={(e) => setRequestNote(e.target.value)}
-                placeholder="Additional information..."
-                style={{ ...styles.input, minHeight: '60px' }}
-              />
-            </div>
-
-            {/* Materials Section */}
-            <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h4 style={{ fontWeight: '600' }}>📦 Materials to Request</h4>
-                <button
-                  onClick={() => setShowAddItemModal(true)}
-                  style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
-                >
-                  + Add Material
-                </button>
-              </div>
-
-              {requestItems.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', backgroundColor: '#F9FAFB', borderRadius: '8px', color: '#6B7280' }}>
-                  No materials added yet. Click "+ Add Material" to start.
-                </div>
-              ) : (
-                <table style={{ ...styles.table, marginBottom: '16px' }}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Ident</th>
-                      <th style={styles.th}>Description</th>
-                      <th style={{ ...styles.th, textAlign: 'center' }}>Type</th>
-                      <th style={{ ...styles.th, textAlign: 'center' }}>Available</th>
-                      <th style={{ ...styles.th, textAlign: 'center' }}>Qty Request</th>
-                      <th style={{ ...styles.th, textAlign: 'center' }}>Remove</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {requestItems.map((item, idx) => (
-                      <tr key={idx} style={{ backgroundColor: item.material_type === 'Returnable' ? '#F0FDF4' : 'white' }}>
-                        <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
-                        <td style={styles.td}>{item.description}</td>
-                        <td style={{ ...styles.td, textAlign: 'center' }}>
-                          <span style={{
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontSize: '11px',
-                            backgroundColor: item.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
-                            color: item.material_type === 'Loose' ? '#991B1B' : '#065F46'
-                          }}>
-                            {item.material_type}
-                          </span>
-                        </td>
-                        <td style={{ ...styles.td, textAlign: 'center', color: COLORS.success, fontWeight: '600' }}>{item.qty_available}</td>
-                        <td style={{ ...styles.td, textAlign: 'center' }}>
-                          <input
-                            type="number"
-                            value={item.qty_requested}
-                            onChange={(e) => updateItemQty(idx, e.target.value)}
-                            min="1"
-                            max={item.qty_available}
-                            style={{ width: '70px', padding: '4px 8px', textAlign: 'center', borderRadius: '4px', border: '1px solid #D1D5DB' }}
-                          />
-                        </td>
-                        <td style={{ ...styles.td, textAlign: 'center' }}>
-                          <button
-                            onClick={() => removeItemFromRequest(idx)}
-                            style={{ color: COLORS.primary, background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer' }}
-                          >
-                            ✕
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {requestItems.length > 0 && (
-                <div style={{ padding: '16px', backgroundColor: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: '8px', marginBottom: '24px' }}>
-                  <div style={{ display: 'flex', gap: '32px' }}>
-                    <span>Total Items: <strong>{requestItems.length}</strong></span>
-                    <span>Loose: <strong style={{ color: '#991B1B' }}>
-                      {requestItems.filter(i => i.material_type === 'Loose').length} 
-                      ({requestItems.filter(i => i.material_type === 'Loose').reduce((s, i) => s + i.qty_requested, 0)} pcs - will be consumed)
-                    </strong></span>
-                    <span>Returnable: <strong style={{ color: '#065F46' }}>
-                      {requestItems.filter(i => i.material_type === 'Returnable').length}
-                      ({requestItems.filter(i => i.material_type === 'Returnable').reduce((s, i) => s + i.qty_requested, 0)} pcs - must return)
-                    </strong></span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', paddingTop: '24px', borderTop: '1px solid #E5E7EB' }}>
-              <button
-                onClick={() => { setRequestItems([]); setUsageLocation(''); setRequestNote(''); }}
-                style={{ ...styles.button, backgroundColor: '#E5E7EB', color: '#374151' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={generateRequest}
-                disabled={requestItems.length === 0 || !usageLocation}
-                style={{
-                  ...styles.button,
-                  backgroundColor: requestItems.length === 0 || !usageLocation ? '#D1D5DB' : COLORS.info,
-                  color: 'white',
-                  cursor: requestItems.length === 0 || !usageLocation ? 'not-allowed' : 'pointer'
-                }}
-              >
-                📄 Generate Request & Print
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: Active Requests */}
-      {activeTab === 'active' && (
-        <div style={styles.card}>
-          <div style={{ ...styles.cardHeader, backgroundColor: '#FFF7ED' }}>
-            <h3 style={{ fontWeight: '600', color: '#C2410C' }}>📋 Active Requests (Returnable items pending)</h3>
-          </div>
-          
-          {activeRequests.length === 0 ? (
-            <div style={{ padding: '60px', textAlign: 'center', color: '#6B7280' }}>
-              No active requests
-            </div>
-          ) : (
-            <div style={{ padding: '16px' }}>
-              {activeRequests.map((req, idx) => {
-                const items = req.internal_request_items || [];
-                const returnables = items.filter(i => i.material_type === 'Returnable');
-                const returnablesReturned = returnables.filter(i => i.status === 'Returned').length;
-                const returnablesOut = returnables.filter(i => i.status === 'Out');
-                const daysSince = Math.floor((new Date() - new Date(req.created_at)) / (1000 * 60 * 60 * 24));
-                const isOverdue = daysSince > req.alert_days && returnablesOut.length > 0;
-                const isExpanded = expandedRequest === req.id;
-                const allReturned = returnablesOut.length === 0;
-
-                return (
-                  <div
-                    key={idx}
-                    style={{
-                      marginBottom: '16px',
-                      border: `2px solid ${isOverdue ? COLORS.primary : allReturned ? COLORS.success : '#E5E7EB'}`,
-                      borderRadius: '8px',
-                      overflow: 'hidden'
-                    }}
-                  >
-                    {/* Header */}
-                    <div
-                      onClick={() => setExpandedRequest(isExpanded ? null : req.id)}
-                      style={{
-                        padding: '16px',
-                        backgroundColor: isOverdue ? '#FEF2F2' : allReturned ? '#F0FDF4' : '#F9FAFB',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <span style={{ fontFamily: 'monospace', fontWeight: 'bold', fontSize: '18px', color: isOverdue ? COLORS.primary : COLORS.info }}>
-                          {req.request_number}
-                        </span>
-                        <span style={{ color: '#6B7280' }}>|</span>
-                        <span>📅 {new Date(req.created_at).toLocaleDateString()}</span>
-                        <span style={{ color: '#6B7280' }}>|</span>
-                        <span>👤 {req.requester_name}</span>
-                        <span style={{ color: '#6B7280' }}>|</span>
-                        <span>📍 {req.usage_location}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                        <span style={{
-                          padding: '4px 12px',
-                          borderRadius: '20px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          backgroundColor: allReturned ? COLORS.success : COLORS.orange,
-                          color: 'white'
-                        }}>
-                          {allReturned ? '✅ All returned' : `⏳ ${returnablesReturned}/${returnables.length} returned`}
-                        </span>
-                        {allReturned && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); closeRequest(req); }}
-                            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', padding: '6px 16px' }}
-                          >
-                            Close Request
-                          </button>
-                        )}
-                        <span style={{ color: '#6B7280', fontSize: '20px' }}>{isExpanded ? '▼' : '▶'}</span>
-                      </div>
-                    </div>
-
-                    {/* Expanded Details */}
-                    {isExpanded && (
-                      <div style={{ padding: '16px', borderTop: '1px solid #E5E7EB' }}>
-                        {isOverdue && (
-                          <div style={{ marginBottom: '16px', padding: '12px', backgroundColor: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ color: COLORS.primary }}>⚠️</span>
-                            <span style={{ color: '#991B1B', fontWeight: '500' }}>
-                              Alert: {returnablesOut.length} items overdue (out for {daysSince} days, limit was {req.alert_days})
-                            </span>
-                          </div>
-                        )}
-
-                        <table style={styles.table}>
-                          <thead>
-                            <tr>
-                              <th style={styles.th}>Material</th>
-                              <th style={{ ...styles.th, textAlign: 'center' }}>Type</th>
-                              <th style={{ ...styles.th, textAlign: 'center' }}>Qty Out</th>
-                              <th style={{ ...styles.th, textAlign: 'center' }}>Qty Returned</th>
-                              <th style={{ ...styles.th, textAlign: 'center' }}>Location</th>
-                              <th style={{ ...styles.th, textAlign: 'center' }}>Status</th>
-                              <th style={{ ...styles.th, textAlign: 'center' }}>Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {items.map((item, iIdx) => (
-                              <tr
-                                key={iIdx}
-                                style={{
-                                  backgroundColor: item.material_type === 'Loose' ? '#F3F4F6' :
-                                                   item.status === 'Returned' ? '#F0FDF4' :
-                                                   item.status === 'Out' ? '#FEF2F2' : 'white'
-                                }}
-                              >
-                                <td style={{ ...styles.td, fontFamily: 'monospace' }}>{item.ident_code}</td>
-                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                  <span style={{
-                                    padding: '2px 8px',
-                                    borderRadius: '10px',
-                                    fontSize: '11px',
-                                    backgroundColor: item.material_type === 'Loose' ? '#E5E7EB' : '#D1FAE5',
-                                    color: item.material_type === 'Loose' ? '#6B7280' : '#065F46'
-                                  }}>
-                                    {item.material_type === 'Loose' ? 'Loose' : 'Ret.'}
-                                  </span>
-                                </td>
-                                <td style={{ ...styles.td, textAlign: 'center' }}>{item.qty_requested}</td>
-                                <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: item.status === 'Returned' ? COLORS.success : '#6B7280' }}>
-                                  {item.material_type === 'Loose' ? '-' : `${item.qty_returned || 0}/${item.qty_requested}`}
-                                </td>
-                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                  {item.return_location ? (
-                                    <span style={{ padding: '2px 8px', backgroundColor: '#DBEAFE', color: '#1E40AF', borderRadius: '4px', fontSize: '12px' }}>
-                                      {item.return_location === 'WH_Site' ? 'WH Site' : 'WH Yard'}
-                                    </span>
-                                  ) : '-'}
-                                </td>
-                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                  <span style={{
-                                    padding: '4px 10px',
-                                    borderRadius: '20px',
-                                    fontSize: '11px',
-                                    fontWeight: '600',
-                                    backgroundColor: item.status === 'Used' ? '#E5E7EB' :
-                                                     item.status === 'Returned' ? COLORS.success :
-                                                     COLORS.primary,
-                                    color: 'white'
-                                  }}>
-                                    {item.status === 'Used' ? 'Used' : item.status === 'Returned' ? '✅ Returned' : '⏳ Out'}
-                                  </span>
-                                </td>
-                                <td style={{ ...styles.td, textAlign: 'center' }}>
-                                  {item.material_type === 'Returnable' && item.status === 'Out' && (
-                                    <select
-                                      onChange={(e) => {
-                                        if (e.target.value) returnItem(req.id, item, e.target.value);
-                                        e.target.value = '';
-                                      }}
-                                      style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #D1D5DB', fontSize: '12px' }}
-                                    >
-                                      <option value="">Return to...</option>
-                                      <option value="WH_Site">WH Site</option>
-                                      <option value="WH_Yard">WH Yard</option>
-                                    </select>
-                                  )}
-                                  {item.material_type === 'Loose' && <span style={{ color: '#9CA3AF' }}>-</span>}
-                                  {item.status === 'Returned' && <span style={{ color: '#9CA3AF' }}>-</span>}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-
-                        <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end' }}>
-                          <button
-                            onClick={() => {
-                              setPrintRequest({ ...req, items: items });
-                              setShowPrintModal(true);
-                            }}
-                            style={{ ...styles.button, backgroundColor: COLORS.gray, color: 'white' }}
-                          >
-                            🖨️ Print
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 4: History */}
-      {activeTab === 'history' && (
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <h3 style={{ fontWeight: '600' }}>📜 Request History</h3>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Request #</th>
-                  <th style={styles.th}>Created</th>
-                  <th style={styles.th}>Closed</th>
-                  <th style={styles.th}>Requester</th>
-                  <th style={styles.th}>Location</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Loose</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Returnable</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Duration</th>
-                  <th style={{ ...styles.th, textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyRequests.map((req, idx) => {
-                  const items = req.internal_request_items || [];
-                  const looseItems = items.filter(i => i.material_type === 'Loose').length;
-                  const returnableItems = items.filter(i => i.material_type === 'Returnable').length;
-                  const days = req.closed_at ? Math.floor((new Date(req.closed_at) - new Date(req.created_at)) / (1000 * 60 * 60 * 24)) : '-';
-                  
-                  return (
-                    <tr key={idx}>
-                      <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{req.request_number}</td>
-                      <td style={styles.td}>{new Date(req.created_at).toLocaleDateString()}</td>
-                      <td style={styles.td}>{req.closed_at ? new Date(req.closed_at).toLocaleDateString() : '-'}</td>
-                      <td style={styles.td}>{req.requester_name}</td>
-                      <td style={styles.td}>{req.usage_location}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>{looseItems}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>{returnableItems}</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>{days} days</td>
-                      <td style={{ ...styles.td, textAlign: 'center' }}>
-                        <ActionButton
-                          color={COLORS.info}
-                          onClick={() => {
-                            setPrintRequest({ ...req, items: items });
-                            setShowPrintModal(true);
-                          }}
-                        >
-                          📄
-                        </ActionButton>
-                        <ActionButton
-                          color={COLORS.gray}
-                          onClick={() => {
-                            setPrintRequest({ ...req, items: items });
-                            setShowPrintModal(true);
-                            setTimeout(printDocument, 100);
-                          }}
-                        >
-                          🖨️
-                        </ActionButton>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {historyRequests.length === 0 && (
-                  <tr>
-                    <td colSpan="9" style={{ ...styles.td, textAlign: 'center', color: '#6B7280', padding: '40px' }}>
-                      No closed requests yet
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Add Material Modal */}
-      <Modal isOpen={showAddMaterialModal} onClose={() => setShowAddMaterialModal(false)} title="➕ Add New Material">
-        <div style={{ display: 'grid', gap: '16px' }}>
-          <div>
-            <label style={styles.label}>Ident Code *</label>
-            <input
-              type="text"
-              value={newMaterial.ident_code}
-              onChange={(e) => setNewMaterial({ ...newMaterial, ident_code: e.target.value.toUpperCase() })}
-              placeholder="e.g. HT-GASKET-50"
-              style={styles.input}
-            />
-          </div>
-          <div>
-            <label style={styles.label}>Description</label>
-            <input
-              type="text"
-              value={newMaterial.description}
-              onChange={(e) => setNewMaterial({ ...newMaterial, description: e.target.value })}
-              placeholder="e.g. Spiral Wound Gasket DN50 PN40"
-              style={styles.input}
-            />
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <div>
-              <label style={styles.label}>Diameter</label>
-              <input
-                type="text"
-                value={newMaterial.diameter}
-                onChange={(e) => setNewMaterial({ ...newMaterial, diameter: e.target.value })}
-                placeholder="e.g. 50, M16"
-                style={styles.input}
-              />
-            </div>
-            <div>
-              <label style={styles.label}>Quantity</label>
-              <input
-                type="number"
-                value={newMaterial.qty_total}
-                onChange={(e) => setNewMaterial({ ...newMaterial, qty_total: e.target.value })}
-                min="0"
-                style={styles.input}
-              />
-            </div>
-          </div>
-          <div>
-            <label style={styles.label}>Type</label>
-            <select
-              value={newMaterial.material_type}
-              onChange={(e) => setNewMaterial({ ...newMaterial, material_type: e.target.value })}
-              style={styles.input}
-            >
-              <option value="Returnable">🟢 Returnable (must return after use)</option>
-              <option value="Loose">🔴 Loose (consumed, not returned)</option>
-            </select>
-          </div>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #E5E7EB' }}>
-          <button onClick={() => setShowAddMaterialModal(false)} style={{ ...styles.button, backgroundColor: '#E5E7EB' }}>Cancel</button>
-          <button onClick={saveMaterial} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Save Material</button>
-        </div>
-      </Modal>
-
-      {/* Edit Material Modal */}
-      <Modal isOpen={showEditMaterialModal} onClose={() => setShowEditMaterialModal(false)} title="✏️ Edit Material">
-        {selectedMaterial && (
-          <>
-            <div style={{ display: 'grid', gap: '16px' }}>
-              <div>
-                <label style={styles.label}>Ident Code</label>
-                <input type="text" value={selectedMaterial.ident_code} disabled style={{ ...styles.input, backgroundColor: '#F3F4F6' }} />
-              </div>
-              <div>
-                <label style={styles.label}>Description</label>
-                <input
-                  type="text"
-                  value={selectedMaterial.description || ''}
-                  onChange={(e) => setSelectedMaterial({ ...selectedMaterial, description: e.target.value })}
-                  style={styles.input}
-                />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-                <div>
-                  <label style={styles.label}>Diameter</label>
-                  <input
-                    type="text"
-                    value={selectedMaterial.diameter || ''}
-                    onChange={(e) => setSelectedMaterial({ ...selectedMaterial, diameter: e.target.value })}
-                    style={styles.input}
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Qty Total</label>
-                  <input
-                    type="number"
-                    value={selectedMaterial.qty_total || 0}
-                    onChange={(e) => setSelectedMaterial({ ...selectedMaterial, qty_total: e.target.value })}
-                    style={styles.input}
-                  />
-                </div>
-                <div>
-                  <label style={styles.label}>Qty Available</label>
-                  <input
-                    type="number"
-                    value={selectedMaterial.qty_available || 0}
-                    onChange={(e) => setSelectedMaterial({ ...selectedMaterial, qty_available: e.target.value })}
-                    style={styles.input}
-                  />
-                </div>
-              </div>
-              <div>
-                <label style={styles.label}>Type</label>
-                <select
-                  value={selectedMaterial.material_type}
-                  onChange={(e) => setSelectedMaterial({ ...selectedMaterial, material_type: e.target.value })}
-                  style={styles.input}
-                >
-                  <option value="Returnable">🟢 Returnable</option>
-                  <option value="Loose">🔴 Loose</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #E5E7EB' }}>
-              <button onClick={() => setShowEditMaterialModal(false)} style={{ ...styles.button, backgroundColor: '#E5E7EB' }}>Cancel</button>
-              <button onClick={updateMaterial} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>Update</button>
-            </div>
-          </>
-        )}
-      </Modal>
-
-      {/* Add Item to Request Modal */}
-      <Modal isOpen={showAddItemModal} onClose={() => { setShowAddItemModal(false); setSelectedAddItem(null); setItemSearch(''); }} title="➕ Add Material to Request">
-        <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Search Material</label>
-          <input
-            type="text"
-            value={itemSearch}
-            onChange={(e) => setItemSearch(e.target.value)}
-            placeholder="Type ident code or description..."
-            style={styles.input}
-          />
-        </div>
-
-        <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #E5E7EB', borderRadius: '8px', marginBottom: '16px' }}>
-          {filteredAddItems.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: '#6B7280' }}>No available materials found</div>
-          ) : (
-            filteredAddItems.map((mat, idx) => (
-              <div
-                key={idx}
-                onClick={() => { setSelectedAddItem(mat); setAddItemQty(1); }}
-                style={{
-                  padding: '12px',
-                  borderBottom: '1px solid #E5E7EB',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  backgroundColor: selectedAddItem?.id === mat.id ? '#EFF6FF' : 'white'
-                }}
-              >
-                <div>
-                  <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>{mat.ident_code}</span>
-                  <span style={{ color: '#6B7280', marginLeft: '12px' }}>{mat.description}</span>
-                  <span style={{
-                    marginLeft: '12px',
-                    padding: '2px 8px',
-                    borderRadius: '10px',
-                    fontSize: '11px',
-                    backgroundColor: mat.material_type === 'Loose' ? '#FEE2E2' : '#D1FAE5',
-                    color: mat.material_type === 'Loose' ? '#991B1B' : '#065F46'
-                  }}>
-                    {mat.material_type}
-                  </span>
-                </div>
-                <span style={{ color: COLORS.success, fontWeight: '600' }}>Avail: {mat.qty_available}</span>
-              </div>
-            ))
-          )}
-        </div>
-
-        {selectedAddItem && (
-          <div style={{ padding: '16px', backgroundColor: '#EFF6FF', borderRadius: '8px', marginBottom: '16px' }}>
-            <p style={{ fontWeight: '600', marginBottom: '12px' }}>Selected: {selectedAddItem.ident_code}</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <label>Quantity:</label>
-              <input
-                type="number"
-                value={addItemQty}
-                onChange={(e) => setAddItemQty(Math.min(parseInt(e.target.value) || 1, selectedAddItem.qty_available))}
-                min="1"
-                max={selectedAddItem.qty_available}
-                style={{ width: '80px', padding: '8px', borderRadius: '4px', border: '1px solid #D1D5DB', textAlign: 'center' }}
-              />
-              <span style={{ color: '#6B7280' }}>(max: {selectedAddItem.qty_available})</span>
-            </div>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-          <button onClick={() => { setShowAddItemModal(false); setSelectedAddItem(null); setItemSearch(''); }} style={{ ...styles.button, backgroundColor: '#E5E7EB' }}>Cancel</button>
-          <button
-            onClick={addItemToRequest}
-            disabled={!selectedAddItem}
-            style={{ ...styles.button, backgroundColor: selectedAddItem ? COLORS.success : '#D1D5DB', color: 'white' }}
-          >
-            + Add to Request
-          </button>
-        </div>
-      </Modal>
-
-      {/* Print Modal */}
-      <Modal isOpen={showPrintModal} onClose={() => setShowPrintModal(false)} title="📄 Internal Material Request Document" width="800px">
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginBottom: '16px' }}>
-          <button onClick={downloadPDF} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>⬇️ Download PDF</button>
-          <button onClick={printDocument} style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}>🖨️ Print</button>
-        </div>
-
-        <div id="print-content" style={{ padding: '40px', border: '2px solid #E5E7EB', fontFamily: "'Times New Roman', serif", backgroundColor: 'white' }}>
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px', marginBottom: '10px' }}>
-              <div style={{ width: '60px', height: '60px', backgroundColor: COLORS.primary, borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ color: 'white', fontWeight: 'bold', fontSize: '24px' }}>MS</span>
-              </div>
-              <div>
-                <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>MAX STREICHER S.p.A.</h1>
-                <p style={{ fontSize: '14px', color: '#666', margin: 0 }}>Construction & Engineering</p>
-              </div>
-            </div>
-            <h2 style={{ fontSize: '20px', border: '2px solid #000', display: 'inline-block', padding: '8px 30px', marginTop: '10px' }}>
-              INTERNAL MATERIAL REQUEST
-            </h2>
-          </div>
-
-          {/* Request Info */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
-            <div>
-              <p style={{ margin: '4px 0' }}><strong>Request #:</strong> <span style={{ fontSize: '20px', color: COLORS.primary, fontFamily: 'monospace' }}>{printRequest?.request_number}</span></p>
-              <p style={{ margin: '4px 0' }}><strong>Date:</strong> {printRequest ? new Date(printRequest.created_at).toLocaleDateString() : ''}</p>
-            </div>
-            <div>
-              <p style={{ margin: '4px 0' }}><strong>Requester:</strong> {printRequest?.requester_name}</p>
-              <p style={{ margin: '4px 0' }}><strong>Badge:</strong> {printRequest?.requester_badge || '-'}</p>
-            </div>
-            <div>
-              <p style={{ margin: '4px 0' }}><strong>Department:</strong> Engineering</p>
-              <p style={{ margin: '4px 0' }}><strong>Return Alert:</strong> {printRequest?.alert_days} days</p>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#E3F2FD', borderLeft: '4px solid #2196F3', borderRadius: '4px' }}>
-            <p style={{ margin: 0 }}><strong>Usage Location:</strong> {printRequest?.usage_location}</p>
-            {printRequest?.note && <p style={{ margin: '4px 0 0 0', color: '#666' }}><strong>Note:</strong> {printRequest.note}</p>}
-          </div>
-
-          {/* Materials Table */}
-          <h3 style={{ marginBottom: '10px', borderBottom: '2px solid #000', paddingBottom: '5px' }}>MATERIALS</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-            <thead>
-              <tr style={{ backgroundColor: COLORS.primary, color: 'white' }}>
-                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>#</th>
-                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'left' }}>Ident Code</th>
-                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'left' }}>Description</th>
-                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Type</th>
-                <th style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Qty</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(printRequest?.items || printRequest?.internal_request_items || []).map((item, idx) => (
-                <tr key={idx} style={{ backgroundColor: item.material_type === 'Returnable' ? '#E8F5E9' : 'white' }}>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center' }}>{idx + 1}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px', fontFamily: 'monospace' }}>{item.ident_code}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px' }}>{item.description}</td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center', backgroundColor: item.material_type === 'Loose' ? '#FFEBEE' : '#C8E6C9', color: item.material_type === 'Loose' ? '#C62828' : '#2E7D32' }}>
-                    {item.material_type === 'Loose' ? 'LOOSE' : 'RETURNABLE'}
-                  </td>
-                  <td style={{ border: '1px solid #000', padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{item.qty_requested}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Warning */}
-          <div style={{ padding: '15px', backgroundColor: '#FFF3E0', border: '2px solid #FF9800', borderRadius: '8px', marginBottom: '30px' }}>
-            <p style={{ margin: 0, color: '#E65100' }}>
-              <strong>⚠️ IMPORTANT:</strong> RETURNABLE items (marked in green) MUST be returned to the warehouse after use.
-              Failure to return within <strong>{printRequest?.alert_days} days</strong> will trigger an automatic alert.
-            </p>
-          </div>
-
-          {/* Signatures */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '40px' }}>
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ marginBottom: '40px' }}><strong>Requester</strong></p>
-              <div style={{ borderBottom: '1px solid #000', width: '200px', margin: '0 auto' }}></div>
-              <p style={{ marginTop: '5px', color: '#666' }}>{printRequest?.requester_name}</p>
-              <p style={{ color: '#666', fontSize: '12px' }}>Date: ___/___/______</p>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <p style={{ marginBottom: '40px' }}><strong>Warehouse Operator</strong></p>
-              <div style={{ borderBottom: '1px solid #000', width: '200px', margin: '0 auto' }}></div>
-              <p style={{ marginTop: '5px', color: '#666' }}>Name: ________________</p>
-              <p style={{ color: '#666', fontSize: '12px' }}>Date: ___/___/______</p>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #ccc', textAlign: 'center', color: '#999', fontSize: '11px' }}>
-            <p style={{ margin: 0 }}>Generated: {new Date().toLocaleString()} | Materials Manager V32.6 | MAX STREICHER S.p.A.</p>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }
