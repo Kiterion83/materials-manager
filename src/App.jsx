@@ -1,15 +1,26 @@
 // ============================================================
-// MATERIALS MANAGER V32.7 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.8 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.8 Changes:
+//   - Internal Materials: Fixed .catch() error on request creation
+//   - MIR: Added Notes (📝) feature with modal for adding/viewing notes
+//   - Database: Yard > 0 and Site > 0 filter buttons
+//   - All previous V32.7 fixes included
 // V32.7 Changes:
 //   - TP Display: Only 4 digits shown in all locations (no MAX-TP-)
 //   - Material In: Added UOM column (from project_materials)
 //   - Request Form: Added UOM display field (auto-filled)
 //   - Request Form: Full Spool Number is now optional
 //   - To Collect: Spool column uses abbrevSpool (last 5 chars)
+//   - To Collect: Added Requester column
+//   - Site IN: Added Requester column
+//   - WH Site Ready: Normal items go directly to ToCollect (no popup)
+//   - WH Site Ready: Popup only shows for HF/TP items
+//   - Spare Parts: Removed Internal section, only Client spares
+//   - Spare Parts: Added Pending/Received tabs
+//   - Spare Parts: Added Received Spares log (from Client)
+//   - Spare Parts: Added History (ℹ️) button
 //   - WH Yard Found: Removed unused destination popup
-//   - History Popup: Already has Add Note feature (from V32.6)
-//   - Orders Ordered: History (ℹ️) button already present
 // V32.6 Changes:
 //   - Internal Materials Page: Complete Hydro Test materials management
 //   - Internal Materials DB: Add/Edit/Delete materials (Loose/Returnable)
@@ -979,11 +990,11 @@ function Modal({ isOpen, onClose, title, children, wide }) {
     <div style={{
       position: 'fixed',
       inset: 0,
-      backgroundColor: 'rgba(0,0,0,0.5)',
+      backgroundColor: 'rgba(0,0,0,0.6)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000
+      zIndex: 9999
     }} onClick={onClose}>
       <div style={{
         backgroundColor: 'white',
@@ -4359,6 +4370,21 @@ function WHSitePage({ user }) {
     try {
       switch (action) {
         case 'ready':
+          // V32.7: For normal items (no HF, no TP), go directly to To Be Collected
+          const isHF = !!component.requests?.hf_number;
+          const isTP = !!component.requests?.test_pack_number || component.requests?.request_type === 'TestPack';
+          
+          if (!isHF && !isTP) {
+            // Normal item - go directly to To Be Collected
+            await supabase.from('request_components')
+              .update({ status: 'ToCollect', current_location: 'SITE' })
+              .eq('id', component.id);
+            await logHistory(component.id, 'Ready for Collection', 'WH_Site', 'ToCollect', 'Material ready for collection');
+            loadComponents();
+            return;
+          }
+          
+          // HF or TP item - show destination popup
           setSelectedComponent(component);
           setShowDestPopup(true);
           setPendingAction('ready');
@@ -7202,6 +7228,7 @@ function SiteInPage({ user }) {
                 <th style={styles.th}>Request</th>
                 <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
+                <th style={styles.th}>Requester</th>
                 <th style={{ ...styles.th, backgroundColor: '#7C3AED', color: 'white', textAlign: 'center' }}>Qty Ric.</th>
                 <th style={{ ...styles.th, backgroundColor: '#2563EB', color: 'white', textAlign: 'center' }}>Site Sent</th>
                 <th style={{ ...styles.th, backgroundColor: '#EA580C', color: 'white', textAlign: 'center' }}>Qty Arrivo</th>
@@ -7236,6 +7263,7 @@ function SiteInPage({ user }) {
                   <td style={{ ...styles.td, maxWidth: '150px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
                     {comp.description ? (comp.description.length > 35 ? comp.description.substring(0, 35) + '...' : comp.description) : '-'}
                   </td>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.created_by_name || '-'}</td>
                   {/* V32.1: Qty Requested (original total requested) */}
                   <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: '#7C3AED' }}>
                     {isBothRequest ? originalQty : comp.quantity}
@@ -9979,17 +10007,21 @@ function InternalMaterialsPage({ user }) {
         });
       }
       
-      // 4. Create notification for alert
+      // 4. Create notification for alert (ignore errors if table doesn't exist)
       const alertDate = new Date();
       alertDate.setDate(alertDate.getDate() + alertDays);
       
-      await supabase.from('notifications').insert({
+      // V32.7: Use error result instead of try-catch (Supabase doesn't throw)
+      const { error: notifError } = await supabase.from('notifications').insert({
         user_id: user.id,
         type: 'internal_material_alert',
         title: `Internal Materials Alert - ${nextRequestNumber}`,
         message: `Returnable materials from ${nextRequestNumber} should be returned. Location: ${usageLocation}`,
         scheduled_for: alertDate.toISOString()
-      }).catch(() => {}); // Ignore if notifications table doesn't exist
+      });
+      if (notifError) {
+        console.log('Notifications table not available, skipping alert:', notifError.message);
+      }
       
       // 5. Show print modal
       setPrintRequest({
@@ -10986,7 +11018,7 @@ function InternalMaterialsPage({ user }) {
 
           {/* Footer */}
           <div className="footer" style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #ccc', textAlign: 'center', color: '#999', fontSize: '11px' }}>
-            <p>Generated: {new Date().toLocaleString()} | Materials Manager V32.6 | MAX STREICHER S.p.A.</p>
+            <p>Generated: {new Date().toLocaleString()} | Materials Manager V32.8 | MAX STREICHER S.p.A.</p>
           </div>
         </div>
       </Modal>
@@ -11240,6 +11272,7 @@ function ToBeCollectedPage({ user }) {
                 <th style={styles.th}>Request</th>
                 <th style={styles.th}>Code</th>
                 <th style={styles.th}>Description</th>
+                <th style={styles.th}>Requester</th>
                 <th style={styles.th}>Qty</th>
                 <th style={styles.th}>Actions</th>
                 <th style={styles.th}>🏷️</th>
@@ -11261,6 +11294,7 @@ function ToBeCollectedPage({ user }) {
                   <td style={{ ...styles.td, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description}>
                     {comp.description ? (comp.description.length > 40 ? comp.description.substring(0, 40) + '...' : comp.description) : '-'}
                   </td>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.created_by_name || '-'}</td>
                   <td style={styles.td}>{comp.quantity}</td>
                   <td style={styles.td}>
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -12770,23 +12804,41 @@ function SparePartsPage({ user }) {
   const [showClientModal, setShowClientModal] = useState(false);
   const [selectedComponent, setSelectedComponent] = useState(null);
   const [forecastDate, setForecastDate] = useState('');
+  
+  // V32.7: History modal
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyComponentId, setHistoryComponentId] = useState(null);
+  
+  // V32.7: State for received spare parts log
+  const [receivedSpares, setReceivedSpares] = useState([]);
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' or 'received'
 
-  useEffect(() => { loadComponents(); }, []);
+  useEffect(() => { loadComponents(); loadReceivedSpares(); }, []);
 
   const loadComponents = async () => {
     setLoading(true);
     const { data } = await supabase.from('request_components')
-      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description)`)
+      .select(`*, requests (request_number, sub_number, request_number_full, level_component, level_wh_split, level_yard_split, sub_category, request_type, iso_number, full_spool_number, hf_number, test_pack_number, description, created_by_name)`)
       .eq('status', 'Spare');
     
     if (data) {
-      // Split by order_type: Internal vs Client (default to Client if not set)
-      const internal = data.filter(c => c.order_type === 'Internal');
-      const client = data.filter(c => c.order_type !== 'Internal');
-      setInternalComponents(internal);
-      setClientComponents(client);
+      // V32.7: Only show Client spare parts (all spares are Client now)
+      setClientComponents(data);
     }
     setLoading(false);
+  };
+
+  // V32.7: Load received spare parts from movements
+  const loadReceivedSpares = async () => {
+    const { data } = await supabase.from('movements')
+      .select('*')
+      .like('note', '%Client spare%')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    
+    if (data) {
+      setReceivedSpares(data);
+    }
   };
 
   const logHistory = async (compId, action, fromStatus, toStatus, note) => {
@@ -12853,21 +12905,22 @@ function SparePartsPage({ user }) {
         .update({ status: 'WH_Site', forecast_date: null })
         .eq('id', component.id);
       
-      // V32.5: Include request_number in movement
+      // V32.7: Include Client spare text for tracking in received log
       await supabase.from('movements').insert({
         ident_code: component.ident_code, 
         movement_type: 'IN', 
         quantity: component.quantity,
-        from_location: component.order_type === 'Internal' ? 'INTERNAL' : 'CLIENT', 
+        from_location: 'CLIENT', 
         to_location: 'SITE', 
         performed_by: user.full_name, 
-        note: `Spare Parts - ${component.order_type || 'Client'} Delivery`,
+        note: `Client spare received - ${displayRequestNumber(component.requests)}`,
         request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
       
       await logHistory(component.id, 'Delivered - To Site', 'Spare', 'WH_Site', 'Spare part delivered to WH Site');
       alert(`✅ Spare Parts delivered to Site: ${component.quantity} pcs`);
       loadComponents();
+      loadReceivedSpares();  // V32.7: Refresh received log
     } catch (err) {
       console.error('handleToSite (Spare) error:', err);
       alert('Error: ' + err.message);
@@ -12912,21 +12965,22 @@ function SparePartsPage({ user }) {
         .update({ status: 'Yard', forecast_date: null })
         .eq('id', component.id);
       
-      // V32.5: Include request_number in movement
+      // V32.7: Include Client spare text for tracking in received log
       await supabase.from('movements').insert({
         ident_code: component.ident_code, 
         movement_type: 'IN', 
         quantity: component.quantity,
-        from_location: component.order_type === 'Internal' ? 'INTERNAL' : 'CLIENT', 
+        from_location: 'CLIENT', 
         to_location: 'YARD', 
         performed_by: user.full_name, 
-        note: `Spare Parts - ${component.order_type || 'Client'} Delivery`,
+        note: `Client spare received - ${displayRequestNumber(component.requests)}`,
         request_number: component.requests ? displayRequestNumber(component.requests) : null
       });
       
       await logHistory(component.id, 'Delivered - To Yard', 'Spare', 'Yard', 'Spare part delivered to Yard');
       alert(`✅ Spare Parts delivered to Yard: ${component.quantity} pcs`);
       loadComponents();
+      loadReceivedSpares();  // V32.7: Refresh received log
     } catch (err) {
       console.error('handleToYard (Spare) error:', err);
       alert('Error: ' + err.message);
@@ -12976,7 +13030,7 @@ function SparePartsPage({ user }) {
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
-  const filteredInternal = filterComponents(internalComponents);
+  // V32.7: Only Client spare parts (Internal removed)
   const filteredClient = filterComponents(clientComponents);
 
   // Render table for a section
@@ -12994,6 +13048,7 @@ function SparePartsPage({ user }) {
           <th style={styles.th}>Qty</th>
           <th style={styles.th}>Expected</th>
           <th style={styles.th}>Actions</th>
+          <th style={styles.th}>ℹ️</th>
         </tr>
       </thead>
       <tbody>
@@ -13037,11 +13092,18 @@ function SparePartsPage({ user }) {
                   componentId={comp.id}
                 />
               </td>
+              <td style={{ ...styles.td, textAlign: 'center' }}>
+                <ActionButton 
+                  color={comp.requests?.description ? COLORS.primary : COLORS.info} 
+                  onClick={() => { setHistoryComponentId(comp.id); setShowHistory(true); }}
+                  title="History"
+                >ℹ️</ActionButton>
+              </td>
             </tr>
           );
         })}
         {components.length === 0 && (
-          <tr><td colSpan="10" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No components</td></tr>
+          <tr><td colSpan="11" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No components</td></tr>
         )}
       </tbody>
     </table>
@@ -13051,56 +13113,43 @@ function SparePartsPage({ user }) {
     <div>
       <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="Search code, description, request..." />
 
-      {/* INTERNAL SECTION (TOP) */}
-      <div style={{ ...styles.card, marginBottom: '24px' }}>
-        <div style={{ ...styles.cardHeader, backgroundColor: '#EFF6FF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ fontWeight: '600', color: '#1E40AF' }}>🏢 Internal Spare Parts ({filteredInternal.length})</h3>
-          <button
-            onClick={() => {
-              const printWindow = window.open('', '_blank');
-              printWindow.document.write(`
-                <html><head><title>Internal Spare Parts</title>
-                <style>
-                  body { font-family: Arial, sans-serif; padding: 20px; }
-                  h1 { color: #1E40AF; }
-                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
-                  th { background-color: #EFF6FF; }
-                  .overdue { color: #DC2626; font-weight: bold; }
-                </style></head><body>
-                <h1>🏢 Internal Spare Parts</h1>
-                <p>Printed: ${new Date().toLocaleString()} | Total: ${filteredInternal.length}</p>
-                <table>
-                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th><th>Expected</th></tr>
-                  ${filteredInternal.map(comp => `<tr>
-                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
-                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
-                    <td>${comp.requests?.iso_number || '-'}</td>
-                    <td>${comp.requests?.full_spool_number || '-'}</td>
-                    <td>${displayRequestNumber(comp.requests)}</td>
-                    <td>${comp.ident_code}</td>
-                    <td>${comp.description || '-'}</td>
-                    <td>${comp.quantity}</td>
-                    <td class="${comp.forecast_date && new Date(comp.forecast_date) < new Date() ? 'overdue' : ''}">${comp.forecast_date ? new Date(comp.forecast_date).toLocaleDateString() : 'Not set'}</td>
-                  </tr>`).join('')}
-                </table>
-                </body></html>
-              `);
-              printWindow.document.close();
-              printWindow.print();
-            }}
-            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
-          >
-            🖨️ Print
-          </button>
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          {renderTable(filteredInternal, 'Internal')}
-        </div>
+      {/* V32.7: Tabs for Pending vs Received */}
+      <div style={{ display: 'flex', gap: '4px', marginBottom: '16px' }}>
+        <button
+          onClick={() => setActiveTab('pending')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'pending' ? '#0F766E' : '#E5E7EB',
+            color: activeTab === 'pending' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          👤 Pending ({filteredClient.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('received')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'received' ? COLORS.success : '#E5E7EB',
+            color: activeTab === 'received' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          ✅ Received ({receivedSpares.length})
+        </button>
       </div>
 
-      {/* CLIENT SECTION (BOTTOM) */}
-      <div style={styles.card}>
+      {/* V32.7: PENDING - Client Spare Parts waiting for delivery */}
+      {activeTab === 'pending' && (
+        <div style={styles.card}>
         <div style={{ ...styles.cardHeader, backgroundColor: '#F0FDFA', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ fontWeight: '600', color: '#0F766E' }}>👤 Client Spare Parts ({filteredClient.length})</h3>
           <button
@@ -13146,6 +13195,49 @@ function SparePartsPage({ user }) {
           {renderTable(filteredClient, 'Client')}
         </div>
       </div>
+      )}
+
+      {/* V32.7: RECEIVED - Client Spare Parts already delivered */}
+      {activeTab === 'received' && (
+        <div style={styles.card}>
+          <div style={{ ...styles.cardHeader, backgroundColor: '#DCFCE7' }}>
+            <h3 style={{ fontWeight: '600', color: '#166534' }}>✅ Received Client Spare Parts</h3>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Date</th>
+                  <th style={styles.th}>Request</th>
+                  <th style={styles.th}>Code</th>
+                  <th style={styles.th}>Qty</th>
+                  <th style={styles.th}>To</th>
+                  <th style={styles.th}>By</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receivedSpares.map(m => (
+                  <tr key={m.id}>
+                    <td style={styles.td}>{new Date(m.created_at).toLocaleDateString()} {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{m.request_number || '-'}</td>
+                    <td style={{ ...styles.td, fontFamily: 'monospace' }}>{m.ident_code}</td>
+                    <td style={styles.td}>{m.quantity}</td>
+                    <td style={styles.td}>
+                      <span style={{ ...styles.statusBadge, backgroundColor: m.to_location === 'SITE' ? COLORS.info : COLORS.secondary }}>
+                        {m.to_location}
+                      </span>
+                    </td>
+                    <td style={styles.td}>{m.performed_by}</td>
+                  </tr>
+                ))}
+                {receivedSpares.length === 0 && (
+                  <tr><td colSpan="6" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No received spare parts yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Date Modal */}
       <Modal isOpen={showClientModal} onClose={() => setShowClientModal(false)} title="Set Expected Delivery Date">
@@ -13159,6 +13251,14 @@ function SparePartsPage({ user }) {
           <button onClick={submitClientConfirmation} style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}>Confirm</button>
         </div>
       </Modal>
+
+      {/* V32.7: History Popup */}
+      <HistoryPopup
+        isOpen={showHistory}
+        onClose={() => setShowHistory(false)}
+        componentId={historyComponentId}
+        user={user}
+      />
     </div>
   );
 }
@@ -14009,6 +14109,12 @@ function MIRPage({ user }) {
   const [mirDescription, setMirDescription] = useState('');
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // V32.7: MIR Notes feature
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [selectedMirForNotes, setSelectedMirForNotes] = useState(null);
+  const [newMirNote, setNewMirNote] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
 
   useEffect(() => { loadMirs(); }, []);
 
@@ -14079,6 +14185,43 @@ function MIRPage({ user }) {
     await supabase.from('mirs').delete().eq('id', mir.id);
     
     loadMirs();
+  };
+
+  // V32.7: MIR Notes functions
+  const openNotesModal = (mir) => {
+    setSelectedMirForNotes(mir);
+    setNewMirNote('');
+    setShowNotesModal(true);
+  };
+
+  const addMirNote = async () => {
+    if (!newMirNote.trim() || !selectedMirForNotes) return;
+    
+    setSavingNote(true);
+    try {
+      const existingNotes = selectedMirForNotes.notes || [];
+      const newNote = {
+        id: Date.now(),
+        text: newMirNote.trim(),
+        created_at: new Date().toISOString(),
+        created_by: user.full_name
+      };
+      
+      await supabase.from('mirs')
+        .update({ notes: [...existingNotes, newNote] })
+        .eq('id', selectedMirForNotes.id);
+      
+      // Update local state
+      setSelectedMirForNotes({
+        ...selectedMirForNotes,
+        notes: [...existingNotes, newNote]
+      });
+      setNewMirNote('');
+      loadMirs();  // Refresh list
+    } catch (error) {
+      alert('Error adding note: ' + error.message);
+    }
+    setSavingNote(false);
   };
 
   // V28.9: Handle MIR actions
@@ -14400,6 +14543,7 @@ function MIRPage({ user }) {
               {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>ℹ️</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📝</th>
             </tr>
           </thead>
           <tbody>
@@ -14477,11 +14621,44 @@ function MIRPage({ user }) {
                 <td style={{ ...styles.td, textAlign: 'center' }}>
                   <RKDownloadInfo mir={mir} />
                 </td>
+                {/* V32.7: Notes button */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => openNotesModal(mir)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      padding: '4px',
+                      position: 'relative'
+                    }}
+                    title="Notes"
+                  >
+                    📝
+                    {mir.notes && mir.notes.length > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-4px',
+                        right: '-4px',
+                        backgroundColor: COLORS.primary,
+                        color: 'white',
+                        fontSize: '10px',
+                        borderRadius: '50%',
+                        width: '16px',
+                        height: '16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>{mir.notes.length}</span>
+                    )}
+                  </button>
+                </td>
               </tr>
             ))}
             {displayedMirs.length === 0 && (
               <tr>
-                <td colSpan={13} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                <td colSpan={14} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                   No {activeTab === 'open' ? 'open' : 'closed'} MIRs
                 </td>
               </tr>
@@ -14599,6 +14776,88 @@ function MIRPage({ user }) {
           <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button onClick={createMir} style={{ ...styles.button, ...styles.buttonPrimary }}>Create MIR</button>
         </div>
+      </Modal>
+
+      {/* V32.7: MIR Notes Modal */}
+      <Modal isOpen={showNotesModal} onClose={() => setShowNotesModal(false)} title={`📝 Notes - MIR ${selectedMirForNotes?.mir_number || ''} / RK ${selectedMirForNotes?.rk_number || ''}`}>
+        {selectedMirForNotes && (
+          <>
+            {/* Add Note Section */}
+            <div style={{ 
+              marginBottom: '20px', 
+              padding: '16px', 
+              backgroundColor: '#EFF6FF', 
+              borderRadius: '8px',
+              border: '1px solid #BFDBFE'
+            }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#1E40AF' }}>
+                ✏️ Add Note
+              </label>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <input
+                  type="text"
+                  value={newMirNote}
+                  onChange={(e) => setNewMirNote(e.target.value)}
+                  placeholder="Enter a note about this MIR..."
+                  style={{ 
+                    flex: 1, 
+                    padding: '10px 12px', 
+                    border: '1px solid #D1D5DB', 
+                    borderRadius: '6px',
+                    fontSize: '14px'
+                  }}
+                  onKeyPress={(e) => e.key === 'Enter' && addMirNote()}
+                />
+                <button
+                  onClick={addMirNote}
+                  disabled={savingNote || !newMirNote.trim()}
+                  style={{
+                    padding: '10px 20px',
+                    backgroundColor: savingNote ? '#9CA3AF' : '#2563EB',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: savingNote || !newMirNote.trim() ? 'not-allowed' : 'pointer',
+                    fontWeight: '600',
+                    opacity: !newMirNote.trim() ? 0.5 : 1
+                  }}
+                >
+                  {savingNote ? '...' : '➕ Add'}
+                </button>
+              </div>
+            </div>
+
+            {/* Notes List */}
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              {selectedMirForNotes.notes && selectedMirForNotes.notes.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {[...selectedMirForNotes.notes].reverse().map((note, idx) => (
+                    <div key={note.id || idx} style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#F9FAFB',
+                      borderRadius: '8px',
+                      border: '1px solid #E5E7EB'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '12px', color: '#6B7280' }}>
+                          👤 {note.created_by || 'Unknown'}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#6B7280' }}>
+                          📅 {new Date(note.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p style={{ margin: 0, color: '#1F2937', lineHeight: '1.5' }}>{note.text}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#9CA3AF' }}>
+                  No notes yet. Add the first note above.
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </Modal>
     </div>
   );
@@ -15383,9 +15642,13 @@ function DatabasePage({ user }) {
   const [showIsoDropdown, setShowIsoDropdown] = useState(false);
   const [showIdentDropdown, setShowIdentDropdown] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
+  
+  // V32.7: Quantity filter states
+  const [filterYardGtZero, setFilterYardGtZero] = useState(false);
+  const [filterSiteGtZero, setFilterSiteGtZero] = useState(false);
 
   useEffect(() => { loadFilters(); loadInventory(); }, []);
-  useEffect(() => { loadInventory(); }, [isoFilter, identFilter]);
+  useEffect(() => { loadInventory(); }, [isoFilter, identFilter, filterYardGtZero, filterSiteGtZero]);
 
   // V28.3: Load unique ISO and Ident options for autocomplete
   // V28.5: Filtered to P121 project only
@@ -15498,12 +15761,20 @@ function DatabasePage({ user }) {
     }
     
     // Convert to array and sort by ISO then ident_code
-    const merged = Object.values(groupedData);
+    let merged = Object.values(groupedData);
     merged.sort((a, b) => {
       const isoCompare = (a.iso_number || '').localeCompare(b.iso_number || '');
       if (isoCompare !== 0) return isoCompare;
       return (a.ident_code || '').localeCompare(b.ident_code || '');
     });
+    
+    // V32.7: Apply quantity filters
+    if (filterYardGtZero) {
+      merged = merged.filter(item => item.yard_qty > 0);
+    }
+    if (filterSiteGtZero) {
+      merged = merged.filter(item => item.site_qty > 0);
+    }
     
     setTotalCount(merged.length);
     setInventoryData(merged);
@@ -15800,9 +16071,55 @@ function DatabasePage({ user }) {
           )}
         </div>
 
+        {/* V32.7: Quantity Filters */}
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            cursor: 'pointer',
+            padding: '8px 12px',
+            backgroundColor: filterYardGtZero ? COLORS.secondary : 'white',
+            color: filterYardGtZero ? 'white' : '#374151',
+            borderRadius: '6px',
+            border: '1px solid #D1D5DB',
+            fontWeight: '500',
+            fontSize: '13px'
+          }}>
+            <input
+              type="checkbox"
+              checked={filterYardGtZero}
+              onChange={(e) => setFilterYardGtZero(e.target.checked)}
+              style={{ width: '16px', height: '16px' }}
+            />
+            Yard &gt; 0
+          </label>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '6px', 
+            cursor: 'pointer',
+            padding: '8px 12px',
+            backgroundColor: filterSiteGtZero ? '#2563EB' : 'white',
+            color: filterSiteGtZero ? 'white' : '#374151',
+            borderRadius: '6px',
+            border: '1px solid #D1D5DB',
+            fontWeight: '500',
+            fontSize: '13px'
+          }}>
+            <input
+              type="checkbox"
+              checked={filterSiteGtZero}
+              onChange={(e) => setFilterSiteGtZero(e.target.checked)}
+              style={{ width: '16px', height: '16px' }}
+            />
+            Site &gt; 0
+          </label>
+        </div>
+
         {/* Clear Filters Button */}
         <button 
-          onClick={() => { setIsoFilter(''); setIdentFilter(''); }}
+          onClick={() => { setIsoFilter(''); setIdentFilter(''); setFilterYardGtZero(false); setFilterSiteGtZero(false); }}
           style={{ ...styles.button, backgroundColor: COLORS.gray, color: 'white', height: '38px' }}
         >
           Clear Filters
