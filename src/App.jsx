@@ -1,6 +1,15 @@
 // ============================================================
-// MATERIALS MANAGER V32.6 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.7 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.7 Changes:
+//   - TP Display: Only 4 digits shown in all locations (no MAX-TP-)
+//   - Material In: Added UOM column (from project_materials)
+//   - Request Form: Added UOM display field (auto-filled)
+//   - Request Form: Full Spool Number is now optional
+//   - To Collect: Spool column uses abbrevSpool (last 5 chars)
+//   - WH Yard Found: Removed unused destination popup
+//   - History Popup: Already has Add Note feature (from V32.6)
+//   - Orders Ordered: History (ℹ️) button already present
 // V32.6 Changes:
 //   - Internal Materials Page: Complete Hydro Test materials management
 //   - Internal Materials DB: Add/Edit/Delete materials (Loose/Returnable)
@@ -9,8 +18,16 @@
 //   - Print Document: Printable request with signatures
 //   - Sidebar: Added ⭕ Internal Mat. under TestPack
 //   - History Notes: Added descriptive notes to all history entries
+//   - History Popup: Added ability to add notes to component history
 //   - Split Button Fix: Allow Found = Total when Not Found = None
-//   - WH Site & Yard: Improved partial split validation
+//   - WH Yard Found: Goes directly to Site IN (removed popup)
+//   - WH Yard Found: Label prints automatically
+//   - TP Display: Shows only 4 digits (without MAX-TP- prefix)
+//   - To Collect Spool: Shows only last 5 digits (SP001, SP002)
+//   - Orders Page: Added History (ℹ️) column in Ordered section
+//   - Material In: Added UOM field to form and loaded items table
+//   - Request Form: Added UOM column to materials table
+//   - Request Form: Full Spool Number is now optional
 // V32.5 Changes:
 //   - TestPack Number Format: MAX-TP-XXXX (fixed prefix + 4 digits)
 //   - TestPack Form: Input shows "MAX-TP-" prefix fixed, user enters only 4 digits
@@ -222,6 +239,14 @@ function abbrevSpool(spool) {
   if (!spool) return '-';
   // Return last 5 characters
   return spool.length > 5 ? spool.slice(-5) : spool;
+}
+
+// V32.6: Display only 4 digits of TP number (without MAX-TP- prefix)
+function displayTPNumber(tpNum) {
+  if (!tpNum) return '-';
+  // Extract last 4 digits from MAX-TP-XXXX format
+  const match = tpNum.match(/(\d{4})$/);
+  return match ? match[1] : tpNum;
 }
 
 // V28.6: Role-based permission helper
@@ -643,7 +668,7 @@ function PrintRequestsButton({ requests }) {
               <tr>
                 <td style="font-weight:bold;">${String(r.requests?.request_number || r.request_number || '').padStart(5, '0')}-${r.requests?.sub_number || r.sub_number || 0}</td>
                 <td>${r.requests?.request_type || r.request_type || '-'}</td>
-                <td>${r.requests?.test_pack_number || r.test_pack_number || '-'}</td>
+                <td>${displayTPNumber(r.requests?.test_pack_number || r.test_pack_number)}</td>
                 <td>${r.requests?.hf_number || r.hf_number || '-'}</td>
                 <td style="font-family:monospace;font-size:10px;">${r.ident_code || '-'}</td>
                 <td style="max-width:200px;">${(r.description || '').substring(0, 50)}</td>
@@ -1214,7 +1239,7 @@ function LabelPrintModal({ isOpen, onClose, component }) {
             <div class="info-item"><span class="info-label">ISO:</span> ${component.requests?.iso_number || component.iso_number || '-'}</div>
             <div class="info-item"><span class="info-label">Spool:</span> ${component.requests?.full_spool_number || component.full_spool_number || '-'}</div>
             ${component.requests?.hf_number ? `<div class="info-item" style="background:#F0FDFA;border:1px solid #14B8A6;"><span class="info-label">HF:</span> ${component.requests.hf_number}</div>` : ''}
-            ${component.requests?.test_pack_number ? `<div class="info-item" style="background:#F3E8FF;border:1px solid #A855F7;"><span class="info-label">TP:</span> ${component.requests.test_pack_number}</div>` : ''}
+            ${component.requests?.test_pack_number ? `<div class="info-item" style="background:#F3E8FF;border:1px solid #A855F7;"><span class="info-label">TP:</span> ${displayTPNumber(component.requests.test_pack_number)}</div>` : ''}
           </div>
           
           <div style="font-size: 8px; text-align: center; margin-bottom: 2px; color: #374151;">
@@ -1288,7 +1313,7 @@ function LabelPrintModal({ isOpen, onClose, component }) {
             </div>
             {component.requests?.test_pack_number && (
               <div style={{ padding: '4px 8px', backgroundColor: '#F3E8FF', borderRadius: '4px', border: '1px solid #A855F7' }}>
-                <strong>TP#:</strong> {component.requests.test_pack_number}
+                <strong>TP#:</strong> {displayTPNumber(component.requests.test_pack_number)}
               </div>
             )}
             {component.requests?.hf_number && (
@@ -1426,7 +1451,7 @@ function printLabelSiteToTP(component, user, yardSent, totalQty) {
           <span class="logo">MAX STREICHER</span>
           <span class="status">📦 TO TESTPACK</span>
         </div>
-        <div class="tp-num">TP: ${component.requests?.test_pack_number || '-'}</div>
+        <div class="tp-num">TP: ${displayTPNumber(component.requests?.test_pack_number)}</div>
         <div class="code">${component.ident_code || '-'}</div>
         <div style="font-size: 8px; text-align: center; color: #374151; margin: 2px 0;">${component.description ? (component.description.length > 40 ? component.description.substring(0, 40) + '...' : component.description) : '-'}</div>
         <div class="qty">${component.quantity} pz</div>
@@ -1487,7 +1512,7 @@ function printLabelYardToSiteIN(component, user, siteSent, totalQty, notFoundQty
           <span class="status">🚚 YARD → SITE IN</span>
         </div>
         <div class="dest">Destinazione: SITE IN → TestPack</div>
-        <div class="tp-num">TP: ${component.requests?.test_pack_number || '-'}</div>
+        <div class="tp-num">TP: ${displayTPNumber(component.requests?.test_pack_number)}</div>
         <div class="code">${component.ident_code || '-'}</div>
         <div style="font-size: 8px; text-align: center; color: #374151; margin: 2px 0;">${component.description ? (component.description.length > 40 ? component.description.substring(0, 40) + '...' : component.description) : '-'}</div>
         <div class="qty">${component.quantity} pz</div>
@@ -1547,7 +1572,7 @@ function printLabelTPToCollect(component, user, siteSentQty = 0, yardSentQty = 0
           <span class="logo">MAX STREICHER</span>
           <span class="status">✅ TO COLLECT</span>
         </div>
-        <div class="tp-num">TP: ${component.requests?.test_pack_number || '-'}</div>
+        <div class="tp-num">TP: ${displayTPNumber(component.requests?.test_pack_number)}</div>
         <div class="code">${component.ident_code || '-'}</div>
         <div style="font-size: 8px; text-align: center; color: #374151; margin: 2px 0;">${component.description ? (component.description.length > 40 ? component.description.substring(0, 40) + '...' : component.description) : '-'}</div>
         <div class="qty">${component.quantity} pz ✅</div>
@@ -1987,15 +2012,18 @@ function DestinationPopup({ isOpen, onClose, onSelect, title }) {
   );
 }
 
-// Component History Popup
-function HistoryPopup({ isOpen, onClose, componentId }) {
+// Component History Popup - V32.6: Added ability to add notes
+function HistoryPopup({ isOpen, onClose, componentId, user }) {
   const [history, setHistory] = useState([]);
   const [componentInfo, setComponentInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [newNote, setNewNote] = useState('');
+  const [saving, setSaving] = useState(false);
   
   useEffect(() => {
     if (isOpen && componentId) {
       loadHistory();
+      setNewNote('');
     }
   }, [isOpen, componentId]);
   
@@ -2018,6 +2046,28 @@ function HistoryPopup({ isOpen, onClose, componentId }) {
       .order('created_at', { ascending: true });
     if (data) setHistory(data);
     setLoading(false);
+  };
+
+  // V32.6: Add note to history
+  const addNote = async () => {
+    if (!newNote.trim() || !componentInfo) return;
+    setSaving(true);
+    
+    const currentUser = user || { id: null, full_name: 'System' };
+    
+    await supabase.from('component_history').insert({
+      component_id: componentId,
+      action: 'Note Added',
+      from_status: componentInfo.status,
+      to_status: componentInfo.status,
+      performed_by_user_id: currentUser.id,
+      performed_by_name: currentUser.full_name,
+      note: newNote.trim()
+    });
+    
+    setNewNote('');
+    await loadHistory();
+    setSaving(false);
   };
   
   if (!isOpen) return null;
@@ -2059,6 +2109,54 @@ function HistoryPopup({ isOpen, onClose, componentId }) {
               )}
             </div>
           )}
+
+          {/* V32.6: Add Note Section */}
+          <div style={{ 
+            marginBottom: '20px', 
+            padding: '16px', 
+            backgroundColor: '#EFF6FF', 
+            borderRadius: '8px',
+            border: '1px solid #BFDBFE'
+          }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#1E40AF' }}>
+              ✏️ Add Note to History
+            </label>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <input
+                type="text"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Enter a note about current status or location..."
+                style={{ 
+                  flex: 1, 
+                  padding: '10px 12px', 
+                  border: '1px solid #D1D5DB', 
+                  borderRadius: '6px',
+                  fontSize: '14px'
+                }}
+                onKeyPress={(e) => e.key === 'Enter' && addNote()}
+              />
+              <button
+                onClick={addNote}
+                disabled={!newNote.trim() || saving}
+                style={{
+                  padding: '10px 20px',
+                  backgroundColor: saving ? '#9CA3AF' : '#2563EB',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: saving || !newNote.trim() ? 'not-allowed' : 'pointer',
+                  fontWeight: '600',
+                  opacity: !newNote.trim() ? 0.5 : 1
+                }}
+              >
+                {saving ? '...' : '➕ Add'}
+              </button>
+            </div>
+            <p style={{ fontSize: '11px', color: '#6B7280', marginTop: '6px' }}>
+              Current Status: <strong style={{ color: STATUS_COLORS[componentInfo?.status] || '#6B7280' }}>{componentInfo?.status}</strong>
+            </p>
+          </div>
 
           {history.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>No history recorded</div>
@@ -2639,7 +2737,7 @@ function RequestsPage({ user }) {
   const [testPackNumber, setTestPackNumber] = useState('');
   const [missingType, setMissingType] = useState('Material');
   const [materials, setMaterials] = useState([]);
-  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '', description: '', dia1: '' });
+  const [currentMaterial, setCurrentMaterial] = useState({ ident_code: '', tag: '', qty: '', description: '', dia1: '', uom: '' });
   const [isoOptions, setIsoOptions] = useState([]);
   const [spoolOptions, setSpoolOptions] = useState([]);
   const [identOptions, setIdentOptions] = useState([]);
@@ -3035,8 +3133,8 @@ function RequestsPage({ user }) {
     // Clear previous timeout
     if (identSearchTimeout) clearTimeout(identSearchTimeout);
     
-    // Clear description/dia1 when typing
-    setCurrentMaterial(prev => ({ ...prev, ident_code: searchTerm, description: '', dia1: '' }));
+    // Clear description/dia1/uom when typing
+    setCurrentMaterial(prev => ({ ...prev, ident_code: searchTerm, description: '', dia1: '', uom: '' }));
     
     if (searchTerm.length < 3) {
       setIdentSearchResults([]);
@@ -3048,7 +3146,7 @@ function RequestsPage({ user }) {
     const timeout = setTimeout(async () => {
       const { data } = await supabase
         .from('project_materials')
-        .select('ident_code, description, dia1')
+        .select('ident_code, description, dia1, uom')
         .ilike('ident_code', `%${searchTerm}%`)
         .order('ident_code')
         .limit(50);
@@ -3079,7 +3177,8 @@ function RequestsPage({ user }) {
       ...prev,
       ident_code: item.ident_code,
       description: item.description || '',
-      dia1: item.dia1 || ''
+      dia1: item.dia1 || '',
+      uom: item.uom || ''
     }));
     setShowIdentResults(false);
     setIdentSearchResults([]);
@@ -3091,11 +3190,13 @@ function RequestsPage({ user }) {
     let identCode = identCodeOrObject;
     let desc = '';
     let dia1 = '';
+    let uom = '';
     
     if (typeof identCodeOrObject === 'object' && identCodeOrObject !== null) {
       identCode = identCodeOrObject.value || identCodeOrObject;
       desc = identCodeOrObject.description || '';
       dia1 = identCodeOrObject.dia1 || '';
+      uom = identCodeOrObject.uom || '';
       console.log('Selected material:', identCodeOrObject); // Debug log
     }
     
@@ -3103,7 +3204,7 @@ function RequestsPage({ user }) {
     if (!desc && identCode) {
       const { data } = await supabase
         .from('project_materials')
-        .select('description, dia1')
+        .select('description, dia1, uom')
         .eq('ident_code', identCode)
         .limit(1)
         .single();
@@ -3111,6 +3212,7 @@ function RequestsPage({ user }) {
       if (data) {
         desc = data.description || '';
         dia1 = data.dia1 || '';
+        uom = data.uom || '';
         console.log('Fetched from DB:', data); // Debug log
       }
     }
@@ -3120,7 +3222,8 @@ function RequestsPage({ user }) {
       ident_code: identCode, 
       tag: '', 
       description: desc, 
-      dia1: dia1 
+      dia1: dia1,
+      uom: uom 
     });
     loadTagsForIdent(identCode);
     // Reset warnings when changing ident
@@ -3146,17 +3249,19 @@ function RequestsPage({ user }) {
     }
     
     // V28.10: Include sub_category with each material
+    // V32.6: Include UOM
     setMaterials([...materials, {
       ident_code: currentMaterial.ident_code,
       tag: currentMaterial.tag,
       description: materialDesc,
       dia1: currentMaterial.dia1 || '',
+      uom: selected?.uom || currentMaterial.uom || '',
       qty: currentMaterial.qty,
       pos_qty: selected?.pos_qty || 0,
       sub_category: subCategory || null  // Save current sub_category with material
     }]);
     // V29.0: Clear form completely including search results
-    setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '', dia1: '' });
+    setCurrentMaterial({ ident_code: '', tag: '', qty: '', description: '', dia1: '', uom: '' });
     setTagOptions([]);
     setIdentSearchResults([]);
     setShowIdentResults(false);
@@ -3176,7 +3281,8 @@ function RequestsPage({ user }) {
       // Validations
       if (requestType === 'Piping') {
         if (!isoNumber) throw new Error('ISO Number required');
-        if (!spoolNumber) throw new Error('Full Spool Number required');
+        // V32.6: Full Spool Number is now optional
+        // if (!spoolNumber) throw new Error('Full Spool Number required');
         if (subCategory === 'Erection' && !hfNumber) throw new Error('HF Number required for Erection');
         if (subCategory === 'Erection' && hfError) throw new Error('Cannot create request with duplicate HF');
         if (subCategory === 'Erection' && !/^HF\d{6}$/.test(hfNumber)) throw new Error('HF Number must be HF + 6 digits (e.g., HF123456)');
@@ -3434,7 +3540,7 @@ function RequestsPage({ user }) {
                   />
                 </div>
                 <div>
-                  <label style={styles.label}>Full Spool Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 3+ chars)</span></label>
+                  <label style={styles.label}>Full Spool Number <span style={{ fontSize: '11px', color: '#9ca3af' }}>(optional - type 3+ chars)</span></label>
                   {isoNumber ? (
                     <AsyncSearchInput
                       value={spoolNumber}
@@ -3719,7 +3825,7 @@ function RequestsPage({ user }) {
 
               {(missingType === 'Spool' || missingType === 'Both') && (
                 <div style={{ marginBottom: '20px' }}>
-                  <label style={styles.label}>Full Spool Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 6+ chars)</span></label>
+                  <label style={styles.label}>Full Spool Number <span style={{ fontSize: '11px', color: '#9ca3af' }}>(optional - type 6+ chars)</span></label>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
                       <AsyncSearchInput
@@ -3890,6 +3996,17 @@ function RequestsPage({ user }) {
                     placeholder="Auto"
                   />
                 </div>
+                {/* UOM (auto-filled) */}
+                <div style={{ width: '70px' }}>
+                  <label style={styles.label}>UOM</label>
+                  <input
+                    type="text"
+                    value={currentMaterial.uom || ''}
+                    readOnly
+                    style={{ ...styles.input, backgroundColor: '#f3f4f6' }}
+                    placeholder="Auto"
+                  />
+                </div>
               </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 80px', gap: '12px', alignItems: 'end', marginTop: '12px' }}>
@@ -3992,6 +4109,7 @@ function RequestsPage({ user }) {
                       <th style={styles.th}>Code</th>
                       <th style={styles.th}>Description</th>
                       <th style={styles.th}>Diam</th>
+                      <th style={styles.th}>UOM</th>
                       <th style={styles.th}>Tag</th>
                       <th style={styles.th}>Qty</th>
                       <th style={styles.th}></th>
@@ -4029,6 +4147,7 @@ function RequestsPage({ user }) {
                         <td style={{ ...styles.td, fontFamily: 'monospace' }}>{mat.ident_code}</td>
                         <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{mat.description || '-'}</td>
                         <td style={styles.td}>{mat.dia1 || '-'}</td>
+                        <td style={styles.td}>{mat.uom || '-'}</td>
                         <td style={styles.td}>{mat.tag || '-'}</td>
                         <td style={styles.td}>{mat.qty}</td>
                         <td style={styles.td}>
@@ -4830,7 +4949,7 @@ function WHSitePage({ user }) {
                     <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(check.requests?.full_spool_number || check.full_spool_number)}</td>
                     <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
-                    <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
+                    <td style={styles.td}>{displayTPNumber(check.requests?.test_pack_number)}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                       {displayRequestNumber(check.requests)}
                     </td>
@@ -5002,7 +5121,7 @@ function WHSitePage({ user }) {
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
+                  <td style={styles.td}>{displayTPNumber(comp.requests?.test_pack_number)}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                     {displayRequestNumber(comp.requests)}
                   </td>
@@ -5409,6 +5528,7 @@ function WHSitePage({ user }) {
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
         componentId={historyComponentId}
+        user={user}
       />
     </div>
   );
@@ -5539,13 +5659,28 @@ function WHYardPage({ user }) {
     try {
       switch (action) {
         case 'found':
+          // V32.6: Go directly to Site IN without popup (HF/TP options removed)
           if (available < component.quantity) {
             alert(`Only ${available} available in YARD!`);
             return;
           }
-          setSelectedComponent(component);
-          setShowDestPopup(true);
-          return;
+          // Directly send to Site IN (Trans)
+          await supabase.from('request_components')
+            .update({ status: 'Trans', current_location: 'TRANSIT' })
+            .eq('id', component.id);
+          await logHistory(component.id, 'Found - To Site IN', 'Yard', 'Trans', 'In transit to Site (inventory unchanged until confirmed)');
+          await supabase.from('movements').insert({
+            ident_code: component.ident_code,
+            movement_type: 'TRANSFER',
+            quantity: component.quantity,
+            from_location: 'YARD',
+            to_location: 'TRANSIT',
+            performed_by: user.full_name,
+            request_number: displayRequestNumber(component.requests)
+          });
+          // V32.6: Print Label B (Yard → Site IN)
+          printLabelYardToSiteIN(component, user, 0, component.quantity, 0);
+          break;
         case 'pt':
           setSelectedComponent(component);
           setShowPartialModal(true);
@@ -6205,7 +6340,7 @@ function WHYardPage({ user }) {
                       <td style={{ ...styles.td, fontSize: '11px' }}>{check.requests?.iso_number || check.iso_number || '-'}</td>
                       <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(check.requests?.full_spool_number || check.full_spool_number)}</td>
                       <td style={styles.td}>{check.requests?.hf_number || '-'}</td>
-                      <td style={styles.td}>{check.requests?.test_pack_number || '-'}</td>
+                      <td style={styles.td}>{displayTPNumber(check.requests?.test_pack_number)}</td>
                       <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                         {displayRequestNumber(check.requests)}
                       </td>
@@ -6393,7 +6528,7 @@ function WHYardPage({ user }) {
                     <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                     <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                     <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-                    <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
+                    <td style={styles.td}>{displayTPNumber(comp.requests?.test_pack_number)}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                       {displayRequestNumber(comp.requests)}
                     </td>
@@ -6439,13 +6574,7 @@ function WHYardPage({ user }) {
         </div>
       </div>
 
-      {/* Destination Popup */}
-      <DestinationPopup
-        isOpen={showDestPopup}
-        onClose={() => setShowDestPopup(false)}
-        onSelect={handleDestinationSelect}
-        title="Where to send the found material?"
-      />
+      {/* V32.7: Removed DestinationPopup - WH Yard Found goes directly to Site IN */}
 
       {/* Partial Modal - V29.0: With inventory validation */}
       <Modal isOpen={showPartialModal} onClose={() => setShowPartialModal(false)} title="🔶 Partial Split">
@@ -6665,6 +6794,7 @@ function WHYardPage({ user }) {
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
         componentId={historyComponentId}
+        user={user}
       />
     </div>
   );
@@ -7098,7 +7228,7 @@ function SiteInPage({ user }) {
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
+                  <td style={styles.td}>{displayTPNumber(comp.requests?.test_pack_number)}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                     {displayRequestNumber(comp.requests)}
                   </td>
@@ -7568,7 +7698,7 @@ function EngineeringPage({ user }) {
         <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
         <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
         <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-        <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
+        <td style={styles.td}>{displayTPNumber(comp.requests?.test_pack_number)}</td>
         <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
           {displayRequestNumber(comp.requests)}
         </td>
@@ -7652,7 +7782,7 @@ function EngineeringPage({ user }) {
                       <td>${comp.requests?.iso_number || '-'}</td>
                       <td>${comp.requests?.full_spool_number || '-'}</td>
                       <td>${comp.requests?.hf_number || '-'}</td>
-                      <td>${comp.requests?.test_pack_number || '-'}</td>
+                      <td>${displayTPNumber(comp.requests?.test_pack_number)}</td>
                       <td>${displayRequestNumber(comp.requests)}</td>
                       <td>${comp.ident_code}</td>
                       <td>${comp.description || '-'}</td>
@@ -7839,6 +7969,7 @@ function EngineeringPage({ user }) {
         isOpen={showHistory}
         onClose={() => setShowHistory(false)}
         componentId={historyComponentId}
+        user={user}
       />
     </div>
   );
@@ -8408,7 +8539,7 @@ function HFPage({ user }) {
       </>
       )}
 
-      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
+      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} user={user} />
     </div>
   );
 }
@@ -9601,7 +9732,7 @@ function TestPackPage({ user }) {
       </>
       )}
 
-      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
+      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} user={user} />
     </div>
   );
 }
@@ -11074,9 +11205,9 @@ function ToBeCollectedPage({ user }) {
                     <td>${abbrevCategory(comp.requests?.request_type)}</td>
                     <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                     <td>${comp.requests?.iso_number || '-'}</td>
-                    <td>${comp.requests?.full_spool_number || '-'}</td>
+                    <td>${abbrevSpool(comp.requests?.full_spool_number)}</td>
                     <td>${comp.requests?.hf_number || '-'}</td>
-                    <td>${comp.requests?.test_pack_number || '-'}</td>
+                    <td>${displayTPNumber(comp.requests?.test_pack_number)}</td>
                     <td>${displayRequestNumber(comp.requests)}</td>
                     <td>${comp.ident_code}</td>
                     <td>${comp.description || '-'}</td>
@@ -11120,9 +11251,9 @@ function ToBeCollectedPage({ user }) {
                   <td style={styles.td}>{abbrevCategory(comp.requests?.request_type)}</td>
                   <td style={styles.td}>{abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || '-'}</td>
-                  <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.full_spool_number || '-'}</td>
+                  <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
+                  <td style={styles.td}>{displayTPNumber(comp.requests?.test_pack_number)}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
                     {displayRequestNumber(comp.requests)}
                   </td>
@@ -11250,7 +11381,7 @@ function ToBeCollectedPage({ user }) {
         </div>
       </Modal>
 
-      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} />
+      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} user={user} />
       
       {/* V29.0: Label Print Modal */}
       <LabelPrintModal
@@ -11274,6 +11405,7 @@ function MaterialInPage({ user }) {
   const [identCode, setIdentCode] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [itemDiam1, setItemDiam1] = useState('');
+  const [itemUom, setItemUom] = useState('');
   const [quantity, setQuantity] = useState('');
   const [isPartial, setIsPartial] = useState(false);
   const [missingQty, setMissingQty] = useState('');
@@ -11526,7 +11658,7 @@ function MaterialInPage({ user }) {
     const timeout = setTimeout(async () => {
       const { data, error } = await supabase
         .from('project_materials')
-        .select('ident_code, description, dia1')
+        .select('ident_code, description, dia1, uom')
         .ilike('ident_code', `%${term}%`)
         .limit(30);
       
@@ -11555,6 +11687,7 @@ function MaterialInPage({ user }) {
     setIdentCode(item.ident_code);
     setItemDescription(item.description || '');
     setItemDiam1(item.dia1 || '');
+    setItemUom(item.uom || '');
     setShowSearchResults(false);
   };
 
@@ -11579,6 +11712,7 @@ function MaterialInPage({ user }) {
       ident_code: identCode,
       description: itemDescription,
       dia1: itemDiam1,
+      uom: itemUom,
       quantity: receivedQty,
       is_partial: isPartial,
       missing_qty: missing,
@@ -11591,6 +11725,7 @@ function MaterialInPage({ user }) {
     setIdentCode('');
     setItemDescription('');
     setItemDiam1('');
+    setItemUom('');
     setQuantity('');
     setIsPartial(false);
     setMissingQty('');
@@ -11915,9 +12050,21 @@ function MaterialInPage({ user }) {
                     placeholder="Auto"
                   />
                 </div>
+                
+                {/* UOM (auto-filled) - V32.6 */}
+                <div>
+                  <label style={styles.label}>UOM</label>
+                  <input
+                    type="text"
+                    value={itemUom}
+                    readOnly
+                    style={{ ...styles.input, backgroundColor: '#f3f4f6', width: '80px' }}
+                    placeholder="Auto"
+                  />
+                </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '120px 150px 120px 1fr 100px', gap: '16px', alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '120px 120px 120px 1fr 100px', gap: '16px', alignItems: 'end' }}>
                 {/* Quantity */}
                 <div>
                   <label style={styles.label}>Quantity</label>
@@ -12008,6 +12155,7 @@ function MaterialInPage({ user }) {
                 <th style={styles.th}>Ident Code</th>
                 <th style={styles.th}>Description</th>
                 <th style={styles.th}>Diam</th>
+                <th style={styles.th}>UOM</th>
                 <th style={styles.th}>Qty</th>
                 <th style={styles.th}>Partial</th>
                 <th style={styles.th}>Missing</th>
@@ -12022,6 +12170,7 @@ function MaterialInPage({ user }) {
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{item.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.description || '-'}</td>
                   <td style={styles.td}>{item.dia1 || '-'}</td>
+                  <td style={styles.td}>{item.uom || '-'}</td>
                   <td style={{ ...styles.td, fontWeight: '600' }}>{item.quantity}</td>
                   <td style={styles.td}>
                     {item.is_partial ? (
@@ -13031,6 +13180,9 @@ function OrdersPage({ user }) {
   // V29.0: Label print modal
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [selectedForLabel, setSelectedForLabel] = useState(null);
+  // V32.6: History popup
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyComponentId, setHistoryComponentId] = useState(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -13407,6 +13559,7 @@ function OrdersPage({ user }) {
           <th style={styles.th}>Order Date</th>
           <th style={styles.th}>Forecast</th>
           <th style={styles.th}>Actions</th>
+          <th style={styles.th}>ℹ️</th>
           <th style={styles.th}>🏷️</th>
         </tr>
       </thead>
@@ -13450,6 +13603,9 @@ function OrdersPage({ user }) {
                 </div>
               </td>
               <td style={{ ...styles.td, textAlign: 'center' }}>
+                <ActionButton color={COLORS.info} onClick={() => { setHistoryComponentId(comp.id); setShowHistory(true); }}>ℹ️</ActionButton>
+              </td>
+              <td style={{ ...styles.td, textAlign: 'center' }}>
                 <button
                   onClick={() => { setSelectedForLabel({...comp, status: 'Ordered'}); setShowLabelModal(true); }}
                   style={{ 
@@ -13470,7 +13626,7 @@ function OrdersPage({ user }) {
           );
         })}
         {components.length === 0 && (
-          <tr><td colSpan="11" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No items</td></tr>
+          <tr><td colSpan="12" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>No items</td></tr>
         )}
       </tbody>
     </table>
@@ -13637,6 +13793,7 @@ function OrdersPage({ user }) {
         onClose={() => { setShowLabelModal(false); setSelectedForLabel(null); }}
         component={selectedForLabel}
       />
+      <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} user={user} />
     </div>
   );
 }
@@ -13798,7 +13955,7 @@ function ManagementPage({ user }) {
                   <td style={{ ...styles.td, fontSize: '11px' }}>{comp.requests?.iso_number || comp.iso_number || '-'}</td>
                   <td style={{ ...styles.td, fontSize: '11px' }}>{abbrevSpool(comp.requests?.full_spool_number || comp.full_spool_number)}</td>
                   <td style={styles.td}>{comp.requests?.hf_number || '-'}</td>
-                  <td style={styles.td}>{comp.requests?.test_pack_number || '-'}</td>
+                  <td style={styles.td}>{displayTPNumber(comp.requests?.test_pack_number)}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{displayRequestNumber(comp.requests)}</td>
                   <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{comp.ident_code}</td>
                   <td style={{ ...styles.td, maxWidth: '180px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={comp.description || ''}>
@@ -15009,7 +15166,7 @@ function LogPage({ user }) {
                       {displayMotherNumber(req.requests)}
                     </td>
                     <td style={styles.td}>{req.requests?.request_type || '-'}</td>
-                    <td style={styles.td}>{req.requests?.test_pack_number || '-'}</td>
+                    <td style={styles.td}>{displayTPNumber(req.requests?.test_pack_number)}</td>
                     <td style={styles.td}>{req.requests?.hf_number || '-'}</td>
                     <td style={{ ...styles.td, fontFamily: 'monospace', fontSize: '11px' }}>{req.ident_code}</td>
                     <td style={{ ...styles.td, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={req.description}>
