@@ -14870,15 +14870,39 @@ function MIRPage({ user }) {
 
   // V28.9: Delete MIR
   const deleteMir = async (mir) => {
-    if (!window.confirm(`Delete MIR ${mir.mir_number || mir.rk_number}? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete MIR ${mir.mir_number || mir.rk_number}? This will also delete any related material records. This cannot be undone.`)) return;
     
     try {
+      // V32.9: First delete related records from material_in_partials
+      const { error: partialError } = await supabase
+        .from('material_in_partials')
+        .delete()
+        .eq('mir_id', mir.id);
+      
+      if (partialError) {
+        console.error('Delete partials error:', partialError);
+        // Continue anyway - might not have any partials
+      }
+      
+      // V32.9: Also delete from mir_items if exists
+      const { error: itemsError } = await supabase
+        .from('mir_items')
+        .delete()
+        .eq('mir_id', mir.id);
+      
+      if (itemsError) {
+        console.error('Delete mir_items error:', itemsError);
+        // Continue anyway - table might not exist
+      }
+      
+      // Now delete the MIR itself
       const { error } = await supabase.from('mirs').delete().eq('id', mir.id);
       if (error) {
         console.error('Delete MIR error:', error);
         alert('Error deleting MIR: ' + error.message);
         return;
       }
+      
       loadMirs();
     } catch (err) {
       console.error('Delete MIR exception:', err);
