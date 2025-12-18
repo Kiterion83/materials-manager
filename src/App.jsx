@@ -901,13 +901,11 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress, 
     const year = String(today.getFullYear());
     
     // ============================================================
-    // V32.9: Simplified placeholder system with simple single-word placeholders
+    // V32.9: Dynamic placeholder system with up to 10 lines
     // Template should have these placeholders (no underscores to avoid Word splitting):
-    // - LINEONE (Row 1 description - for Mechanical: first desc, for Piping: RDCG/MIRS.../0)
-    // - LINETWO (Row 2 description)
-    // - LINETHREE (Row 3 description)
-    // - LINEFOUR (Row 4 description)
-    // - LINEFIVE (Row 5 description)
+    // - LINEONE through LINETEN (Row 1-10 descriptions)
+    // - For Piping: Line 1 = RDCG/MIRS.../0, Lines 2-10 = descriptions
+    // - For Mechanical: Lines 1-10 = descriptions
     // - RKNUMBER (4 digits)
     // - DD, MM, YYYY for dates
     // ============================================================
@@ -922,25 +920,19 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress, 
       line1Content = descLines.line1 || '';
     }
     
-    const line2 = descLines.line2 || '';
-    const line3 = descLines.line3 || '';
-    const line4 = descLines.line4 || '';
-    const line5 = descLines.line5 || '';
+    // Get all lines (up to 10)
+    const lineNames = ['line1', 'line2', 'line3', 'line4', 'line5', 'line6', 'line7', 'line8', 'line9', 'line10'];
+    const placeholderNames = ['LINEONE', 'LINETWO', 'LINETHREE', 'LINEFOUR', 'LINEFIVE', 'LINESIX', 'LINESEVEN', 'LINEEIGHT', 'LINENINE', 'LINETEN'];
     
-    // STEP 1: Replace description lines (using simple placeholders without underscores)
-    // Simple placeholders like LINEONE are less likely to be split by Word
+    // STEP 1: Replace description lines
+    // Line 1 is special (MIR number for Piping)
     docXml = docXml.replace(/LINEONE/g, line1Content);
-    docXml = docXml.replace(/LINETWO/g, line2);
-    docXml = docXml.replace(/LINETHREE/g, line3);
-    docXml = docXml.replace(/LINEFOUR/g, line4);
-    docXml = docXml.replace(/LINEFIVE/g, line5);
     
-    // Also try old placeholders for backward compatibility
-    docXml = replaceInWordXml(docXml, 'DESC_LINE_1', line1Content);
-    docXml = replaceInWordXml(docXml, 'DESC_LINE_2', line2);
-    docXml = replaceInWordXml(docXml, 'DESC_LINE_3', line3);
-    docXml = replaceInWordXml(docXml, 'DESC_LINE_4', line4);
-    docXml = replaceInWordXml(docXml, 'DESC_LINE_5', line5);
+    // Lines 2-10
+    for (let i = 1; i < 10; i++) {
+      const lineContent = descLines[lineNames[i]] || '';
+      docXml = docXml.replace(new RegExp(placeholderNames[i], 'g'), lineContent);
+    }
     
     // STEP 2: Replace RK number
     docXml = docXml.replace(/RKNUMBER/g, rkNumber);
@@ -14836,11 +14828,8 @@ function MIRPage({ user }) {
   const [forecastDate, setForecastDate] = useState('');
   const [priority, setPriority] = useState('Medium');
   // V32.9: Multiple description lines for RK document
-  const [descLine1, setDescLine1] = useState(''); // For Mechanical only (Piping uses MIR number)
-  const [descLine2, setDescLine2] = useState('');
-  const [descLine3, setDescLine3] = useState('');
-  const [descLine4, setDescLine4] = useState('');
-  const [descLine5, setDescLine5] = useState('');
+  // V32.9: Dynamic description lines (up to 10)
+  const [descLines, setDescLines] = useState(['']); // Array of description lines
   const [mirTitle, setMirTitle] = useState(''); // V32.9: Optional MIR title/description
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
@@ -14878,11 +14867,7 @@ function MIRPage({ user }) {
     setCategory('Bulk');
     setForecastDate('');
     setPriority('Medium');
-    setDescLine1('');
-    setDescLine2('');
-    setDescLine3('');
-    setDescLine4('');
-    setDescLine5('');
+    setDescLines(['']); // Reset to single empty line
     setMirTitle('');
     setMirFile(null);
     setShowCreateModal(true);
@@ -14939,15 +14924,18 @@ function MIRPage({ user }) {
         forecast_date: forecastDate || null,
         priority: priority,
         title: mirTitle || null, // V32.9: Optional MIR title
-        // V32.9: Multiple description lines
-        desc_line_1: mirType === 'Mechanical' ? descLine1 : null, // Only for Mechanical
-        desc_line_2: descLine2 || null,
-        desc_line_3: descLine3 || null,
-        desc_line_4: descLine4 || null,
-        desc_line_5: descLine5 || null,
-        description: mirType === 'Piping' 
-          ? [descLine2, descLine3, descLine4, descLine5].filter(Boolean).join(' | ') 
-          : [descLine1, descLine2, descLine3, descLine4, descLine5].filter(Boolean).join(' | '),
+        // V32.9: Dynamic description lines (up to 10)
+        desc_line_1: mirType === 'Mechanical' ? (descLines[0] || null) : null, // Only for Mechanical
+        desc_line_2: descLines[mirType === 'Piping' ? 0 : 1] || null,
+        desc_line_3: descLines[mirType === 'Piping' ? 1 : 2] || null,
+        desc_line_4: descLines[mirType === 'Piping' ? 2 : 3] || null,
+        desc_line_5: descLines[mirType === 'Piping' ? 3 : 4] || null,
+        desc_line_6: descLines[mirType === 'Piping' ? 4 : 5] || null,
+        desc_line_7: descLines[mirType === 'Piping' ? 5 : 6] || null,
+        desc_line_8: descLines[mirType === 'Piping' ? 6 : 7] || null,
+        desc_line_9: descLines[mirType === 'Piping' ? 7 : 8] || null,
+        desc_line_10: descLines[mirType === 'Piping' ? 8 : 9] || null,
+        description: descLines.filter(Boolean).join(' | '),
         created_by: user.id,
         status: 'Open',
         file_url: fileUrl,
@@ -14961,11 +14949,7 @@ function MIRPage({ user }) {
       // Reset form
       setMirFile(null);
       setMirTitle('');
-      setDescLine1('');
-      setDescLine2('');
-      setDescLine3('');
-      setDescLine4('');
-      setDescLine5('');
+      setDescLines(['']);
       setShowCreateModal(false);
       loadMirs();
     } catch (err) {
@@ -15121,13 +15105,18 @@ function MIRPage({ user }) {
   const handleDownloadRK = async (mir) => {
     setDownloadingRK(mir.id);
     try {
-      // V32.9: Pass description lines for RK document
+      // V32.9: Pass description lines for RK document (up to 10)
       const descLines = {
         line1: mir.desc_line_1 || '',
         line2: mir.desc_line_2 || '',
         line3: mir.desc_line_3 || '',
         line4: mir.desc_line_4 || '',
-        line5: mir.desc_line_5 || ''
+        line5: mir.desc_line_5 || '',
+        line6: mir.desc_line_6 || '',
+        line7: mir.desc_line_7 || '',
+        line8: mir.desc_line_8 || '',
+        line9: mir.desc_line_9 || '',
+        line10: mir.desc_line_10 || ''
       };
       
       const success = await generateRKDocument(
@@ -15819,30 +15808,39 @@ function MIRPage({ user }) {
           </div>
         </div>
 
-        {/* V32.9: Multiple Description Lines for RK Document */}
+        {/* V32.9: Dynamic Description Lines for RK Document (up to 10) */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>
-            📋 RK Document Lines (optional)
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>
+              📋 RK Document Lines (optional)
+            </label>
+            {descLines.length < (mirType === 'Piping' ? 9 : 10) && (
+              <button
+                type="button"
+                onClick={() => setDescLines([...descLines, ''])}
+                style={{
+                  padding: '4px 12px',
+                  backgroundColor: COLORS.success,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                + Add Line
+              </button>
+            )}
+          </div>
           <p style={{ fontSize: '11px', color: '#6B7280', marginBottom: '12px' }}>
             {mirType === 'Piping' 
-              ? 'Line 1 = MIR number (automatic). Lines 2-5 for additional items.'
-              : 'Lines 1-5 for material descriptions.'}
+              ? `Line 1 = MIR number (automatic). Lines 2-${descLines.length + 1} for additional items.`
+              : `Lines 1-${descLines.length} for material descriptions. Max 10 lines.`}
           </p>
-          
-          {/* For Mechanical: Show Line 1 */}
-          {mirType === 'Mechanical' && (
-            <div style={{ marginBottom: '8px' }}>
-              <input
-                type="text"
-                value={descLine1}
-                onChange={(e) => setDescLine1(e.target.value)}
-                style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
-                placeholder="Line 1 - Description"
-                maxLength="60"
-              />
-            </div>
-          )}
           
           {/* For Piping: Line 1 is MIR number (info only) */}
           {mirType === 'Piping' && mirNumber && (
@@ -15853,53 +15851,72 @@ function MIRPage({ user }) {
               borderRadius: '6px',
               fontSize: '13px',
               color: COLORS.info,
-              fontFamily: 'monospace'
+              fontFamily: 'monospace',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
             }}>
-              Line 1: RDCG/MIRS{mirNumber}/0 (automatic)
+              <span style={{ 
+                backgroundColor: COLORS.info, 
+                color: 'white', 
+                padding: '2px 8px', 
+                borderRadius: '4px',
+                fontSize: '11px',
+                fontWeight: '600'
+              }}>1</span>
+              RDCG/MIRS{mirNumber}/0 (automatic)
             </div>
           )}
           
-          {/* Lines 2-5 for both types */}
-          <div style={{ marginBottom: '8px' }}>
-            <input
-              type="text"
-              value={descLine2}
-              onChange={(e) => setDescLine2(e.target.value)}
-              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
-              placeholder={mirType === 'Piping' ? 'Line 2 - Description' : 'Line 2 - Description'}
-              maxLength="60"
-            />
-          </div>
-          <div style={{ marginBottom: '8px' }}>
-            <input
-              type="text"
-              value={descLine3}
-              onChange={(e) => setDescLine3(e.target.value)}
-              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
-              placeholder="Line 3 - Description"
-              maxLength="60"
-            />
-          </div>
-          <div style={{ marginBottom: '8px' }}>
-            <input
-              type="text"
-              value={descLine4}
-              onChange={(e) => setDescLine4(e.target.value)}
-              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
-              placeholder="Line 4 - Description"
-              maxLength="60"
-            />
-          </div>
-          <div style={{ marginBottom: '8px' }}>
-            <input
-              type="text"
-              value={descLine5}
-              onChange={(e) => setDescLine5(e.target.value)}
-              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
-              placeholder="Line 5 - Description"
-              maxLength="60"
-            />
-          </div>
+          {/* Dynamic description lines */}
+          {descLines.map((line, index) => (
+            <div key={index} style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+              <span style={{ 
+                backgroundColor: '#E5E7EB', 
+                color: '#374151', 
+                padding: '6px 10px', 
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: '600',
+                minWidth: '28px',
+                textAlign: 'center'
+              }}>
+                {mirType === 'Piping' ? index + 2 : index + 1}
+              </span>
+              <input
+                type="text"
+                value={line}
+                onChange={(e) => {
+                  const newLines = [...descLines];
+                  newLines[index] = e.target.value;
+                  setDescLines(newLines);
+                }}
+                style={{ ...styles.input, marginBottom: 0, fontSize: '13px', flex: 1 }}
+                placeholder={`Description line ${mirType === 'Piping' ? index + 2 : index + 1}`}
+                maxLength="60"
+              />
+              {descLines.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newLines = descLines.filter((_, i) => i !== index);
+                    setDescLines(newLines);
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    backgroundColor: COLORS.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
         </div>
 
         {/* Forecast Date */}
