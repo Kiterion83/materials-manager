@@ -14850,6 +14850,14 @@ function MIRPage({ user }) {
   const [selectedMirForApproval, setSelectedMirForApproval] = useState(null);
   const [approvalDate, setApprovalDate] = useState('');
   const [savingApproval, setSavingApproval] = useState(false);
+  
+  // V32.9: File Upload Modal for 3 document types
+  const [showFileModal, setShowFileModal] = useState(false);
+  const [selectedMirForFile, setSelectedMirForFile] = useState(null);
+  const [selectedFileType, setSelectedFileType] = useState('allegati'); // allegati, approvazione, varie
+  const [uploadFile, setUploadFile] = useState(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
 
   useEffect(() => { loadMirs(); }, []);
 
@@ -15048,6 +15056,132 @@ function MIRPage({ user }) {
       alert('Error approving MIR: ' + err.message);
     }
     setSavingApproval(false);
+  };
+
+  // V32.9: File Upload Modal functions
+  const openFileModal = (mir, fileType) => {
+    setSelectedMirForFile(mir);
+    setSelectedFileType(fileType);
+    setUploadFile(null);
+    setShowFileModal(true);
+  };
+
+  const getFileTypeLabel = (type) => {
+    switch(type) {
+      case 'allegati': return '📎 Allegati';
+      case 'approvazione': return '✅ Approvazione';
+      case 'varie': return '📁 Varie';
+      default: return type;
+    }
+  };
+
+  const getCurrentFileUrl = () => {
+    if (!selectedMirForFile) return null;
+    switch(selectedFileType) {
+      case 'allegati': return selectedMirForFile.file_allegati_url;
+      case 'approvazione': return selectedMirForFile.file_approvazione_url;
+      case 'varie': return selectedMirForFile.file_varie_url;
+      default: return null;
+    }
+  };
+
+  const getCurrentFileName = () => {
+    if (!selectedMirForFile) return null;
+    switch(selectedFileType) {
+      case 'allegati': return selectedMirForFile.file_allegati_name;
+      case 'approvazione': return selectedMirForFile.file_approvazione_name;
+      case 'varie': return selectedMirForFile.file_varie_name;
+      default: return null;
+    }
+  };
+
+  const uploadDocument = async () => {
+    if (!uploadFile || !selectedMirForFile) return;
+    
+    setUploadingDocument(true);
+    try {
+      const fileExt = uploadFile.name.split('.').pop();
+      const fileName = `mir-${selectedFileType}/${selectedMirForFile.rk_number}_${selectedFileType}_${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, uploadFile);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(fileName);
+      
+      const fileUrl = urlData?.publicUrl;
+      
+      // Update database based on file type
+      const updateData = {};
+      switch(selectedFileType) {
+        case 'allegati':
+          updateData.file_allegati_url = fileUrl;
+          updateData.file_allegati_name = uploadFile.name;
+          break;
+        case 'approvazione':
+          updateData.file_approvazione_url = fileUrl;
+          updateData.file_approvazione_name = uploadFile.name;
+          break;
+        case 'varie':
+          updateData.file_varie_url = fileUrl;
+          updateData.file_varie_name = uploadFile.name;
+          break;
+      }
+      
+      const { error } = await supabase
+        .from('mirs')
+        .update(updateData)
+        .eq('id', selectedMirForFile.id);
+      
+      if (error) throw error;
+      
+      setShowFileModal(false);
+      setUploadFile(null);
+      loadMirs();
+    } catch (err) {
+      console.error('Upload error:', err);
+      alert('Error uploading file: ' + err.message);
+    }
+    setUploadingDocument(false);
+  };
+
+  const deleteDocument = async () => {
+    if (!selectedMirForFile) return;
+    if (!window.confirm(`Delete ${getFileTypeLabel(selectedFileType)} document?`)) return;
+    
+    try {
+      const updateData = {};
+      switch(selectedFileType) {
+        case 'allegati':
+          updateData.file_allegati_url = null;
+          updateData.file_allegati_name = null;
+          break;
+        case 'approvazione':
+          updateData.file_approvazione_url = null;
+          updateData.file_approvazione_name = null;
+          break;
+        case 'varie':
+          updateData.file_varie_url = null;
+          updateData.file_varie_name = null;
+          break;
+      }
+      
+      const { error } = await supabase
+        .from('mirs')
+        .update(updateData)
+        .eq('id', selectedMirForFile.id);
+      
+      if (error) throw error;
+      
+      setShowFileModal(false);
+      loadMirs();
+    } catch (err) {
+      alert('Error deleting file: ' + err.message);
+    }
   };
 
   // V32.7: MIR Notes functions
@@ -15417,7 +15551,7 @@ function MIRPage({ user }) {
           >
             🖨️ Print
           </button>
-          <button onClick={openCreateModal} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ New MIR</button>
+          <button onClick={openCreateModal} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ New MIR/RK0020</button>
         </div>
       </div>
 
@@ -15446,7 +15580,9 @@ function MIRPage({ user }) {
               {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
               {activeTab === 'closed' && <th style={styles.th}>Actions</th>}
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
-              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Attachment">📎</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Allegati">📎</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Approvazione">✅</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Varie">📁</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>ℹ️</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📝</th>
             </tr>
@@ -15567,25 +15703,53 @@ function MIRPage({ user }) {
                     {downloadingRK === mir.id ? '⏳' : '📄'}
                   </button>
                 </td>
-                {/* V32.9: File Attachment */}
+                {/* V32.9: Allegati (Attachments) */}
                 <td style={{ ...styles.td, textAlign: 'center' }}>
-                  {mir.file_url ? (
-                    <a
-                      href={mir.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title={`Download: ${mir.file_name || 'Attachment'}`}
-                      style={{
-                        color: COLORS.success,
-                        textDecoration: 'none',
-                        fontSize: '16px'
-                      }}
-                    >
-                      📎
-                    </a>
-                  ) : (
-                    <span style={{ color: '#D1D5DB', fontSize: '16px' }} title="No attachment">📎</span>
-                  )}
+                  <button
+                    onClick={() => openFileModal(mir, 'allegati')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      padding: '4px'
+                    }}
+                    title={mir.file_allegati_url ? `View: ${mir.file_allegati_name}` : 'Add Allegati'}
+                  >
+                    <span style={{ color: mir.file_allegati_url ? COLORS.success : '#D1D5DB' }}>📎</span>
+                  </button>
+                </td>
+                {/* V32.9: Approvazione */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => openFileModal(mir, 'approvazione')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      padding: '4px'
+                    }}
+                    title={mir.file_approvazione_url ? `View: ${mir.file_approvazione_name}` : 'Add Approvazione'}
+                  >
+                    <span style={{ color: mir.file_approvazione_url ? COLORS.success : '#D1D5DB' }}>✅</span>
+                  </button>
+                </td>
+                {/* V32.9: Varie */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => openFileModal(mir, 'varie')}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      padding: '4px'
+                    }}
+                    title={mir.file_varie_url ? `View: ${mir.file_varie_name}` : 'Add Varie'}
+                  >
+                    <span style={{ color: mir.file_varie_url ? COLORS.success : '#D1D5DB' }}>📁</span>
+                  </button>
                 </td>
                 {/* V31.0: RK Download Info */}
                 <td style={{ ...styles.td, textAlign: 'center' }}>
@@ -15628,7 +15792,7 @@ function MIRPage({ user }) {
             ))}
             {displayedMirs.length === 0 && (
               <tr>
-                <td colSpan={14} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                <td colSpan={18} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
                   No {activeTab === 'open' ? 'open' : 'closed'} MIRs
                 </td>
               </tr>
@@ -15638,7 +15802,7 @@ function MIRPage({ user }) {
       </div>
 
       {/* Create MIR Modal - V27 with Priority */}
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New MIR">
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New MIR/RK0020">
         {/* Step 1: Type Selection */}
         <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
           <label style={{ ...styles.label, marginBottom: '12px', fontSize: '16px', fontWeight: '600' }}>Step 1: Select Type</label>
@@ -16100,6 +16264,197 @@ function MIRPage({ user }) {
                 }}
               >
                 {savingApproval ? '⏳ Saving...' : '✓ Approve & Move to Open'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* V32.9: File Upload Modal for 3 document types */}
+      <Modal isOpen={showFileModal} onClose={() => setShowFileModal(false)} title={`${getFileTypeLabel(selectedFileType)} - RK ${selectedMirForFile?.rk_number || ''}`}>
+        {selectedMirForFile && (
+          <div>
+            {/* Current file preview/info */}
+            {getCurrentFileUrl() ? (
+              <div style={{ marginBottom: '24px' }}>
+                <div style={{ 
+                  padding: '16px', 
+                  backgroundColor: '#DEF7EC', 
+                  borderRadius: '8px',
+                  border: '1px solid #86EFAC'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '24px' }}>📄</span>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: '600', color: '#166534', margin: 0 }}>{getCurrentFileName()}</p>
+                      <p style={{ fontSize: '12px', color: '#15803D', margin: '4px 0 0 0' }}>File uploaded</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <a
+                      href={getCurrentFileUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        flex: 1,
+                        padding: '10px',
+                        backgroundColor: COLORS.info,
+                        color: 'white',
+                        textDecoration: 'none',
+                        borderRadius: '6px',
+                        textAlign: 'center',
+                        fontWeight: '500'
+                      }}
+                    >
+                      👁️ Preview / Download
+                    </a>
+                    <button
+                      onClick={deleteDocument}
+                      style={{
+                        padding: '10px 16px',
+                        backgroundColor: COLORS.primary,
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: '500'
+                      }}
+                    >
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+                
+                <div style={{ marginTop: '16px', textAlign: 'center', color: '#6B7280', fontSize: '13px' }}>
+                  — or upload a new file to replace —
+                </div>
+              </div>
+            ) : null}
+
+            {/* Upload area */}
+            <div
+              onDragOver={(e) => { e.preventDefault(); setFileDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setFileDragOver(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setFileDragOver(false);
+                const file = e.dataTransfer.files[0];
+                if (file) setUploadFile(file);
+              }}
+              onClick={() => document.getElementById('mir-doc-input').click()}
+              style={{
+                border: `2px dashed ${fileDragOver ? COLORS.info : '#D1D5DB'}`,
+                borderRadius: '12px',
+                padding: '32px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                backgroundColor: fileDragOver ? '#EFF6FF' : '#F9FAFB',
+                transition: 'all 0.2s'
+              }}
+            >
+              <input
+                id="mir-doc-input"
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) setUploadFile(file);
+                }}
+                style={{ display: 'none' }}
+              />
+              {uploadFile ? (
+                <div>
+                  <span style={{ fontSize: '40px' }}>📄</span>
+                  <p style={{ fontWeight: '600', color: COLORS.info, marginTop: '12px' }}>{uploadFile.name}</p>
+                  <p style={{ fontSize: '12px', color: '#6B7280' }}>{(uploadFile.size / 1024).toFixed(1)} KB</p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setUploadFile(null); }}
+                    style={{
+                      marginTop: '12px',
+                      padding: '6px 16px',
+                      backgroundColor: COLORS.primary,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    ✕ Remove
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <span style={{ fontSize: '40px' }}>📁</span>
+                  <p style={{ fontWeight: '600', color: '#374151', marginTop: '12px' }}>
+                    Drag & drop a file here
+                  </p>
+                  <p style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                    or click to browse (PDF, Word, Excel, Images)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Document type selector */}
+            <div style={{ marginTop: '20px', marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#374151' }}>
+                Document Type:
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {['allegati', 'approvazione', 'varie'].map(type => (
+                  <button
+                    key={type}
+                    onClick={() => setSelectedFileType(type)}
+                    style={{
+                      flex: 1,
+                      padding: '10px',
+                      backgroundColor: selectedFileType === type ? COLORS.info : '#F3F4F6',
+                      color: selectedFileType === type ? 'white' : '#374151',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: '500',
+                      fontSize: '13px'
+                    }}
+                  >
+                    {getFileTypeLabel(type)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowFileModal(false)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#E5E7EB',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={uploadDocument}
+                disabled={uploadingDocument || !uploadFile}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: uploadingDocument ? '#9CA3AF' : COLORS.success,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: uploadingDocument || !uploadFile ? 'not-allowed' : 'pointer',
+                  fontWeight: '600',
+                  opacity: !uploadFile ? 0.5 : 1
+                }}
+              >
+                {uploadingDocument ? '⏳ Uploading...' : '📤 Upload'}
               </button>
             </div>
           </div>
