@@ -14827,7 +14827,12 @@ function MIRPage({ user }) {
     setCategory('Bulk');
     setForecastDate('');
     setPriority('Medium');
-    setMirDescription('');
+    setDescLine1('');
+    setDescLine2('');
+    setDescLine3('');
+    setDescLine4('');
+    setDescLine5('');
+    setMirFile(null);
     setShowCreateModal(true);
   };
 
