@@ -824,6 +824,45 @@ const RK_TEMPLATE_URL = '/RK_0020_TEMPLATE.docx';
 
 // V31.0: Generate RK Document function
 // Uses JSZip to modify the DOCX template and replace placeholders
+// Helper function to replace text that may be split across XML runs
+function replaceInWordXml(xml, searchText, replaceText) {
+  // First try simple replacement (if text is not split)
+  if (xml.includes(searchText)) {
+    return xml.replace(new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replaceText);
+  }
+  
+  // If not found, the text might be split across XML tags
+  // Build a regex that can match text split by </w:t></w:r><w:r>...<w:t> patterns
+  const chars = searchText.split('');
+  let regexStr = '';
+  for (let i = 0; i < chars.length; i++) {
+    // Escape special regex characters
+    const char = chars[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    regexStr += char;
+    if (i < chars.length - 1) {
+      // Allow optional XML tags between characters
+      regexStr += '(?:</w:t></w:r>(?:<w:r[^>]*>)?(?:<[^>]*>)*<w:t[^>]*>)?';
+    }
+  }
+  
+  const regex = new RegExp(regexStr, 'g');
+  if (regex.test(xml)) {
+    // Found split text - replace keeping only the replacement text in first w:t
+    return xml.replace(regex, (match) => {
+      // If the match contains XML tags, we need to handle it carefully
+      if (match.includes('</w:t>')) {
+        // Extract the opening tag structure from the match
+        const firstTagEnd = match.indexOf('>') + 1;
+        // Just return the replacement text (it will be in the context of the first w:t)
+        return replaceText;
+      }
+      return replaceText;
+    });
+  }
+  
+  return xml;
+}
+
 async function generateRKDocument(mirNumber, rkNumber, description, onProgress, descLines = {}) {
   try {
     if (onProgress) onProgress('Loading template...');
@@ -862,66 +901,71 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress, 
     const year = String(today.getFullYear());
     
     // ============================================================
-    // Simple approach: Find and replace specific text patterns
-    // The template has these placeholders:
-    // 1. XX/XX/XXXX - header date (single node)
-    // 2. RDCG/MIRS + XXXX + /0 - in row 1 (three nodes)
-    // 3. RK0020_ + XXXX - in Remarks (two nodes)  
-    // 4. Date: + XX + / + XX + / + XXXX - Section A date (split nodes)
-    // 5. DESC_LINE_2, DESC_LINE_3, DESC_LINE_4, DESC_LINE_5 - description rows
+    // V32.9: Simplified placeholder system with simple single-word placeholders
+    // Template should have these placeholders (no underscores to avoid Word splitting):
+    // - LINEONE (Row 1 description - for Mechanical: first desc, for Piping: RDCG/MIRS.../0)
+    // - LINETWO (Row 2 description)
+    // - LINETHREE (Row 3 description)
+    // - LINEFOUR (Row 4 description)
+    // - LINEFIVE (Row 5 description)
+    // - RKNUMBER (4 digits)
+    // - DD, MM, YYYY for dates
     // ============================================================
     
-    // STEP 1: Header date XX/XX/XXXX -> DD/MM/YYYY
-    docXml = docXml.replace(/<w:t>XX\/XX\/XXXX<\/w:t>/g, `<w:t>${day}/${month}/${year}</w:t>`);
-    
-    // STEP 2: MIRS number - the text RDCG/MIRS followed by XXXX in next node
-    // If MIR exists, just replace the XXXX node after MIRS
-    // Template structure: <w:t>RDCG/MIRS</w:t></w:r><w:r...><...><w:t>XXXX</w:t></w:r><w:r...><w:t>/0</w:t>
+    // Build line 1 content based on MIR type
+    let line1Content;
     if (mirNumber) {
-      // Find RDCG/MIRS and replace the XXXX that follows
-      const mirsPattern = /RDCG\/MIRS<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
-      docXml = docXml.replace(mirsPattern, `RDCG/MIRS</w:t></w:r>$1${mirNumber}$2`);
+      // Piping: RDCG/MIRS{number}/0
+      line1Content = `RDCG/MIRS${mirNumber}/0`;
     } else {
-      // No MIR (Mechanical) - replace RDCG/MIRS with first description line
-      const descText = (descLines.line1 || description || 'MECHANICAL').substring(0, 40);
-      // Replace RDCG/MIRS with description
-      docXml = docXml.replace(/<w:t>RDCG\/MIRS<\/w:t>/, `<w:t>${descText}</w:t>`);
-      // Remove the XXXX that was after (now it's after description) - keep the run but empty text
-      docXml = docXml.replace(/(<w:t>)XXXX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)\/0(<\/w:t>)/, '$1$2$3');
+      // Mechanical: use description line 1
+      line1Content = descLines.line1 || '';
     }
     
-    // V32.9: Replace description line placeholders
-    // For Piping: line1 is MIR number (handled above), lines 2-5 are descriptions
-    // For Mechanical: line1 is first description (handled above), lines 2-5 are additional
-    const line2 = (descLines.line2 || '').substring(0, 50);
-    const line3 = (descLines.line3 || '').substring(0, 50);
-    const line4 = (descLines.line4 || '').substring(0, 50);
-    const line5 = (descLines.line5 || '').substring(0, 50);
+    const line2 = descLines.line2 || '';
+    const line3 = descLines.line3 || '';
+    const line4 = descLines.line4 || '';
+    const line5 = descLines.line5 || '';
     
-    // Replace placeholders (if template has them)
-    docXml = docXml.replace(/DESC_LINE_2/g, line2);
-    docXml = docXml.replace(/DESC_LINE_3/g, line3);
-    docXml = docXml.replace(/DESC_LINE_4/g, line4);
-    docXml = docXml.replace(/DESC_LINE_5/g, line5);
+    // STEP 1: Replace description lines (using simple placeholders without underscores)
+    // Simple placeholders like LINEONE are less likely to be split by Word
+    docXml = docXml.replace(/LINEONE/g, line1Content);
+    docXml = docXml.replace(/LINETWO/g, line2);
+    docXml = docXml.replace(/LINETHREE/g, line3);
+    docXml = docXml.replace(/LINEFOUR/g, line4);
+    docXml = docXml.replace(/LINEFIVE/g, line5);
     
-    // Also try replacing DESC_PLACEHOLDER with combined descriptions (for older templates)
-    const combinedDesc = [line2, line3, line4, line5].filter(Boolean).join(' | ');
-    docXml = docXml.replace(/DESC_PLACEHOLDER/g, combinedDesc || '');
+    // Also try old placeholders for backward compatibility
+    docXml = replaceInWordXml(docXml, 'DESC_LINE_1', line1Content);
+    docXml = replaceInWordXml(docXml, 'DESC_LINE_2', line2);
+    docXml = replaceInWordXml(docXml, 'DESC_LINE_3', line3);
+    docXml = replaceInWordXml(docXml, 'DESC_LINE_4', line4);
+    docXml = replaceInWordXml(docXml, 'DESC_LINE_5', line5);
     
-    // STEP 3: RK number - RK0020_ followed by XXXX
+    // STEP 2: Replace RK number
+    docXml = docXml.replace(/RKNUMBER/g, rkNumber);
+    docXml = replaceInWordXml(docXml, 'RK_NUMBER', rkNumber);
+    
+    // STEP 3: Replace dates
+    docXml = docXml.replace(/\bDD\b/g, day);
+    docXml = docXml.replace(/\bMM\b/g, month);
+    docXml = docXml.replace(/\bYYYY\b/g, year);
+    
+    // Also handle XX/XX/XXXX format if present
+    docXml = docXml.replace(/XX\/XX\/XXXX/g, `${day}/${month}/${year}`);
+    
+    // Legacy support: Try old patterns too
+    // Old pattern: RDCG/MIRS followed by XXXX
+    if (mirNumber) {
+      const mirsPattern = /RDCG\/MIRS<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
+      docXml = docXml.replace(mirsPattern, `RDCG/MIRS</w:t></w:r>$1${mirNumber}$2`);
+    }
+    
+    // Old pattern: RK0020_ followed by XXXX  
     const rkPattern = /RK0020_<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
     docXml = docXml.replace(rkPattern, `RK0020_</w:t></w:r>$1${rkNumber}$2`);
     
-    // STEP 4: Section A date - Date: followed by XX / XX / XXXX in separate nodes
-    // Find the pattern where Date: is followed by XX then / then XX then / then XXXX
-    // We need to replace these individually
-    
-    // The pattern in the template is:
-    // <w:t>Date:</w:t></w:r><w:r...><w:t>XX</w:t></w:r><w:r...><w:t>/</w:t></w:r><w:r...><w:t>XX</w:t></w:r><w:r...><w:t>/</w:t></w:r><w:r...><w:t>XXXX</w:t>
-    
-    // Strategy: Find Date: and then replace the XX and XXXX that follow before the next section
-    // Use a marker to identify we're in the right section
-    
+    // Old date pattern
     const datePattern = /(Date:<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)XX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>\/<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)XX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>\/<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
     docXml = docXml.replace(datePattern, `$1${day}$2${month}$3${year}$4`);
     
