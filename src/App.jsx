@@ -1578,7 +1578,8 @@ function Modal({ isOpen, onClose, title, children, wide }) {
       justifyContent: 'center',
       zIndex: 9999,
       padding: isMobileView ? 0 : '16px'
-    }} onClick={onClose}>
+    }}>
+      {/* V32.9: Removed onClick={onClose} from overlay - modal only closes via X button or Cancel */}
       <div style={{
         backgroundColor: 'white',
         borderRadius: isMobileView ? '16px 16px 0 0' : '12px',
@@ -1588,7 +1589,7 @@ function Modal({ isOpen, onClose, title, children, wide }) {
         maxHeight: isMobileView ? '90vh' : '85vh',
         overflow: 'auto',
         WebkitOverflowScrolling: 'touch'
-      }} onClick={e => e.stopPropagation()}>
+      }}>
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
@@ -16641,6 +16642,7 @@ function ReturnVoucherPage({ user }) {
         priority: priority,
         lines: voucherLines, // Store as JSON array
         created_by: user.id,
+        created_by_name: user.full_name || user.email,
         status: 'Under Approval' // Always starts in Under Approval
       });
 
