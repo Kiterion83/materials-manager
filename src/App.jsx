@@ -16439,7 +16439,7 @@ function MIRPage({ user }) {
 // RETURN VOUCHER PAGE - V32.9
 // Similar to Mechanical MIR but with Description, Unit, Delivered, Remarks per line
 // ============================================================
-const MS_RETURN_TEMPLATE_URL = 'https://eoxjnbghmoybmtspxzms.supabase.co/storage/v1/object/public/documents/templates/MS_Return_Voucher_Template.docx';
+const MS_RETURN_TEMPLATE_URL = '/MS_Return_Voucher_Template.docx';
 
 // Generate MS Return Voucher Document (Word format - user can save as PDF)
 async function generateReturnVoucherDocument(returnNumber, lines, onProgress) {
