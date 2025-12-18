@@ -14805,6 +14805,9 @@ function MIRPage({ user }) {
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // V32.9: Edit mode
+  const [editingMir, setEditingMir] = useState(null);
+  
   // V32.9: File upload for Mechanical MIR
   const [mirFile, setMirFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -14840,6 +14843,7 @@ function MIRPage({ user }) {
   };
 
   const openCreateModal = () => {
+    setEditingMir(null); // Clear edit mode
     setMirType('Piping');
     setMirNumber('');
     setRkNumber('');
@@ -14849,6 +14853,39 @@ function MIRPage({ user }) {
     setDescLines(['']); // Reset to single empty line
     setMirTitle('');
     setMirFile(null);
+    setShowCreateModal(true);
+  };
+
+  // V32.9: Open edit modal with existing MIR data
+  const openEditModal = (mir) => {
+    setEditingMir(mir);
+    setMirType(mir.mir_type || 'Piping');
+    setMirNumber(mir.mir_number || '');
+    setRkNumber(mir.rk_number || '');
+    setCategory(mir.category || 'Bulk');
+    setForecastDate(mir.forecast_date ? mir.forecast_date.split('T')[0] : '');
+    setPriority(mir.priority || 'Medium');
+    setMirTitle(mir.title || '');
+    
+    // Reconstruct descLines from desc_line_1 to desc_line_10
+    const lines = [];
+    for (let i = 1; i <= 10; i++) {
+      const lineVal = mir[`desc_line_${i}`];
+      if (lineVal) lines.push(lineVal);
+    }
+    // For Piping, lines start from desc_line_2
+    if (mir.mir_type === 'Piping') {
+      const pipingLines = [];
+      for (let i = 2; i <= 10; i++) {
+        const lineVal = mir[`desc_line_${i}`];
+        if (lineVal) pipingLines.push(lineVal);
+      }
+      setDescLines(pipingLines.length > 0 ? pipingLines : ['']);
+    } else {
+      setDescLines(lines.length > 0 ? lines : ['']);
+    }
+    
+    setMirFile(null); // Can't pre-load existing file
     setShowCreateModal(true);
   };
 
@@ -14868,8 +14905,8 @@ function MIRPage({ user }) {
     setUploadingFile(true);
     
     try {
-      let fileUrl = null;
-      let fileName = null;
+      let fileUrl = editingMir?.file_url || null;
+      let fileName = editingMir?.file_name || null;
       
       // V32.9: Upload file if present (for Mechanical MIRs)
       if (mirFile) {
@@ -14882,10 +14919,8 @@ function MIRPage({ user }) {
         
         if (uploadError) {
           console.error('File upload error:', uploadError);
-          // Don't block MIR creation if upload fails, just warn
           alert('Warning: File upload failed. MIR will be created without attachment.');
         } else {
-          // Get public URL
           const { data: urlData } = supabase.storage
             .from('documents')
             .getPublicUrl(filePath);
@@ -14895,16 +14930,15 @@ function MIRPage({ user }) {
         }
       }
 
-      const { error } = await supabase.from('mirs').insert({
+      const mirData = {
         mir_type: mirType,
         mir_number: mirType === 'Piping' ? mirNumber : null,
         rk_number: rkNumber,
         category: mirType === 'Piping' ? category : null,
         forecast_date: forecastDate || null,
         priority: priority,
-        title: mirTitle || null, // V32.9: Optional MIR title
-        // V32.9: Dynamic description lines (up to 10)
-        desc_line_1: mirType === 'Mechanical' ? (descLines[0] || null) : null, // Only for Mechanical
+        title: mirTitle || null,
+        desc_line_1: mirType === 'Mechanical' ? (descLines[0] || null) : null,
         desc_line_2: descLines[mirType === 'Piping' ? 0 : 1] || null,
         desc_line_3: descLines[mirType === 'Piping' ? 1 : 2] || null,
         desc_line_4: descLines[mirType === 'Piping' ? 2 : 3] || null,
@@ -14915,11 +14949,23 @@ function MIRPage({ user }) {
         desc_line_9: descLines[mirType === 'Piping' ? 7 : 8] || null,
         desc_line_10: descLines[mirType === 'Piping' ? 8 : 9] || null,
         description: descLines.filter(Boolean).join(' | '),
-        created_by: user.id,
-        status: 'Open',
         file_url: fileUrl,
         file_name: fileName
-      });
+      };
+
+      let error;
+      
+      if (editingMir) {
+        // UPDATE existing MIR
+        const result = await supabase.from('mirs').update(mirData).eq('id', editingMir.id);
+        error = result.error;
+      } else {
+        // INSERT new MIR
+        mirData.created_by = user.id;
+        mirData.status = 'Open';
+        const result = await supabase.from('mirs').insert(mirData);
+        error = result.error;
+      }
 
       if (error) {
         throw error;
@@ -14929,11 +14975,12 @@ function MIRPage({ user }) {
       setMirFile(null);
       setMirTitle('');
       setDescLines(['']);
+      setEditingMir(null);
       setShowCreateModal(false);
       loadMirs();
     } catch (err) {
-      console.error('Create MIR error:', err);
-      alert('Error creating MIR: ' + err.message);
+      console.error('Create/Update MIR error:', err);
+      alert('Error saving MIR: ' + err.message);
     }
     
     setUploadingFile(false);
@@ -15602,34 +15649,72 @@ function MIRPage({ user }) {
                 )}
                 {activeTab === 'open' && (
                   <td style={styles.td}>
-                    <ActionDropdown
-                      actions={[
-                        { id: 'close', icon: '✓', label: 'Close' },
-                        { id: 'delete', icon: '🗑️', label: 'Delete' }
-                      ]}
-                      onExecute={(action) => handleMirAction(mir, action)}
-                      disabled={!canModify}
-                      componentId={mir.id}
-                    />
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => openEditModal(mir)}
+                        disabled={!canModify}
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.info,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Edit MIR"
+                      >
+                        ✏️
+                      </button>
+                      <ActionDropdown
+                        actions={[
+                          { id: 'close', icon: '✓', label: 'Close' },
+                          { id: 'delete', icon: '🗑️', label: 'Delete' }
+                        ]}
+                        onExecute={(action) => handleMirAction(mir, action)}
+                        disabled={!canModify}
+                        componentId={mir.id}
+                      />
+                    </div>
                   </td>
                 )}
                 {activeTab === 'approval' && (
                   <td style={styles.td}>
-                    <button
-                      onClick={() => openApprovalModal(mir)}
-                      disabled={!canModify}
-                      style={{
-                        ...styles.button,
-                        backgroundColor: COLORS.success,
-                        color: 'white',
-                        padding: '6px 12px',
-                        fontSize: '12px',
-                        opacity: !canModify ? 0.5 : 1,
-                        cursor: !canModify ? 'not-allowed' : 'pointer'
-                      }}
-                    >
-                      ✓ Approve
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => openEditModal(mir)}
+                        disabled={!canModify}
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.info,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Edit MIR"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => openApprovalModal(mir)}
+                        disabled={!canModify}
+                        style={{
+                          ...styles.button,
+                          backgroundColor: COLORS.success,
+                          color: 'white',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1,
+                          cursor: !canModify ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        ✓ Approve
+                      </button>
+                    </div>
                   </td>
                 )}
                 {activeTab === 'closed' && (
@@ -15773,7 +15858,7 @@ function MIRPage({ user }) {
       </div>
 
       {/* Create MIR Modal - V27 with Priority */}
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New MIR/RK0020">
+      <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setEditingMir(null); }} title={editingMir ? "✏️ Edit MIR/RK0020" : "+ New MIR/RK0020"}>
         {/* Step 1: Type Selection */}
         <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#f9fafb', borderRadius: '8px' }}>
           <label style={{ ...styles.label, marginBottom: '12px', fontSize: '16px', fontWeight: '600' }}>Step 1: Select Type</label>
@@ -16062,7 +16147,7 @@ function MIRPage({ user }) {
 
         {/* Buttons */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
-          <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={() => { setShowCreateModal(false); setEditingMir(null); }} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button 
             onClick={createMir} 
             disabled={uploadingFile}
@@ -16073,7 +16158,7 @@ function MIRPage({ user }) {
               cursor: uploadingFile ? 'wait' : 'pointer'
             }}
           >
-            {uploadingFile ? '⏳ Uploading...' : 'Create MIR'}
+            {uploadingFile ? '⏳ Saving...' : (editingMir ? '💾 Update MIR' : 'Create MIR')}
           </button>
         </div>
       </Modal>
@@ -16544,6 +16629,9 @@ function ReturnVoucherPage({ user }) {
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // V32.9: Edit mode
+  const [editingVoucher, setEditingVoucher] = useState(null);
+  
   // Dynamic lines for Return Voucher (Description, Unit, Delivered, Remarks)
   const [voucherLines, setVoucherLines] = useState([{ description: '', unit: 'pcs', delivered: '', remark: '' }]);
   
@@ -16576,11 +16664,26 @@ function ReturnVoucherPage({ user }) {
   };
 
   const openCreateModal = () => {
+    setEditingVoucher(null); // Clear edit mode
     setReturnNumber('');
     setVoucherTitle('');
     setForecastDate('');
     setPriority('Medium');
     setVoucherLines([{ description: '', unit: 'pcs', delivered: '', remark: '' }]);
+    setShowCreateModal(true);
+  };
+
+  // V32.9: Open edit modal with existing voucher data
+  const openEditModal = (voucher) => {
+    setEditingVoucher(voucher);
+    setReturnNumber(voucher.return_number || '');
+    setVoucherTitle(voucher.title || '');
+    setForecastDate(voucher.forecast_date ? voucher.forecast_date.split('T')[0] : '');
+    setPriority(voucher.priority || 'Medium');
+    // Lines are stored as JSON array
+    setVoucherLines(voucher.lines && voucher.lines.length > 0 
+      ? voucher.lines 
+      : [{ description: '', unit: 'pcs', delivered: '', remark: '' }]);
     setShowCreateModal(true);
   };
 
@@ -16609,24 +16712,37 @@ function ReturnVoucherPage({ user }) {
     }
 
     try {
-      const { error } = await supabase.from('return_vouchers').insert({
+      const voucherData = {
         return_number: returnNumber,
         title: voucherTitle || null,
         forecast_date: forecastDate || null,
         priority: priority,
-        lines: voucherLines, // Store as JSON array
-        created_by: user.id,
-        created_by_name: user.full_name || user.email,
-        status: 'Under Approval' // Always starts in Under Approval
-      });
+        lines: voucherLines // Store as JSON array
+      };
+
+      let error;
+      
+      if (editingVoucher) {
+        // UPDATE existing voucher
+        const result = await supabase.from('return_vouchers').update(voucherData).eq('id', editingVoucher.id);
+        error = result.error;
+      } else {
+        // INSERT new voucher
+        voucherData.created_by = user.id;
+        voucherData.created_by_name = user.full_name || user.email;
+        voucherData.status = 'Under Approval'; // Always starts in Under Approval
+        const result = await supabase.from('return_vouchers').insert(voucherData);
+        error = result.error;
+      }
 
       if (error) throw error;
 
+      setEditingVoucher(null);
       setShowCreateModal(false);
       loadVouchers();
     } catch (err) {
-      console.error('Create Return Voucher error:', err);
-      alert('Error creating Return Voucher: ' + err.message);
+      console.error('Create/Update Return Voucher error:', err);
+      alert('Error saving Return Voucher: ' + err.message);
     }
   };
 
@@ -16895,32 +17011,70 @@ function ReturnVoucherPage({ user }) {
                 )}
                 <td style={styles.td}>
                   {activeTab === 'approval' ? (
-                    <button
-                      onClick={() => openApprovalModal(voucher)}
-                      disabled={!canModify}
-                      style={{
-                        ...styles.button,
-                        backgroundColor: COLORS.success,
-                        color: 'white',
-                        padding: '6px 12px',
-                        fontSize: '12px'
-                      }}
-                    >
-                      ✓ Approve
-                    </button>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => openEditModal(voucher)}
+                        disabled={!canModify}
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.info,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Edit Return Voucher"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        onClick={() => openApprovalModal(voucher)}
+                        disabled={!canModify}
+                        style={{
+                          ...styles.button,
+                          backgroundColor: COLORS.success,
+                          color: 'white',
+                          padding: '6px 12px',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ✓ Approve
+                      </button>
+                    </div>
                   ) : activeTab === 'open' ? (
-                    <ActionDropdown
-                      actions={[
-                        { id: 'close', icon: '✓', label: 'Close' },
-                        { id: 'delete', icon: '🗑️', label: 'Delete' }
-                      ]}
-                      onExecute={(action) => {
-                        if (action === 'close') closeVoucher(voucher);
-                        if (action === 'delete') deleteVoucher(voucher);
-                      }}
-                      disabled={!canModify}
-                      componentId={voucher.id}
-                    />
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <button
+                        onClick={() => openEditModal(voucher)}
+                        disabled={!canModify}
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.info,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Edit Return Voucher"
+                      >
+                        ✏️
+                      </button>
+                      <ActionDropdown
+                        actions={[
+                          { id: 'close', icon: '✓', label: 'Close' },
+                          { id: 'delete', icon: '🗑️', label: 'Delete' }
+                        ]}
+                        onExecute={(action) => {
+                          if (action === 'close') closeVoucher(voucher);
+                          if (action === 'delete') deleteVoucher(voucher);
+                        }}
+                        disabled={!canModify}
+                        componentId={voucher.id}
+                      />
+                    </div>
                   ) : (
                     <button
                       onClick={() => deleteVoucher(voucher)}
@@ -16996,7 +17150,7 @@ function ReturnVoucherPage({ user }) {
       </div>
 
       {/* Create Return Voucher Modal */}
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New Return Voucher">
+      <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setEditingVoucher(null); }} title={editingVoucher ? "✏️ Edit Return Voucher" : "+ New Return Voucher"}>
         {/* Return Number */}
         <div style={{ marginBottom: '16px' }}>
           <label style={{ ...styles.label, color: COLORS.info }}>Return Number * (4 digits)</label>
@@ -17165,9 +17319,9 @@ function ReturnVoucherPage({ user }) {
 
         {/* Buttons */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
-          <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={() => { setShowCreateModal(false); setEditingVoucher(null); }} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
           <button onClick={createVoucher} style={{ ...styles.button, ...styles.buttonPrimary }}>
-            Create Return Voucher
+            {editingVoucher ? '💾 Update Return Voucher' : 'Create Return Voucher'}
           </button>
         </div>
       </Modal>
