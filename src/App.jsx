@@ -15579,7 +15579,8 @@ function MIRPage({ user }) {
             {activeTab === 'open' ? '📂 Open' : activeTab === 'approval' ? '⏳ Under Approval' : '✅ Closed'} Material Issue Reports ({displayedMirs.length})
           </h3>
         </div>
-        <table style={styles.table}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table style={{ ...styles.table, minWidth: '1400px' }}>
           <thead>
             <tr>
               <th style={styles.th}>Priority</th>
@@ -15855,6 +15856,7 @@ function MIRPage({ user }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Create MIR Modal - V27 with Priority */}
@@ -16960,8 +16962,8 @@ function ReturnVoucherPage({ user }) {
             {activeTab === 'open' ? '📂 Open' : activeTab === 'approval' ? '⏳ Under Approval' : '✅ Closed'} Return Vouchers ({displayedVouchers.length})
           </h3>
         </div>
-        <ResponsiveTable>
-        <table style={styles.table}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+        <table style={{ ...styles.table, minWidth: '1200px' }}>
           <thead>
             <tr>
               <th style={styles.th}>Priority</th>
@@ -17146,7 +17148,7 @@ function ReturnVoucherPage({ user }) {
             )}
           </tbody>
         </table>
-        </ResponsiveTable>
+        </div>
       </div>
 
       {/* Create Return Voucher Modal */}
