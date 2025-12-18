@@ -824,7 +824,7 @@ const RK_TEMPLATE_URL = '/RK_0020_TEMPLATE.docx';
 
 // V31.0: Generate RK Document function
 // Uses JSZip to modify the DOCX template and replace placeholders
-async function generateRKDocument(mirNumber, rkNumber, description, onProgress) {
+async function generateRKDocument(mirNumber, rkNumber, description, onProgress, descLines = {}) {
   try {
     if (onProgress) onProgress('Loading template...');
     
@@ -868,6 +868,7 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress) 
     // 2. RDCG/MIRS + XXXX + /0 - in row 1 (three nodes)
     // 3. RK0020_ + XXXX - in Remarks (two nodes)  
     // 4. Date: + XX + / + XX + / + XXXX - Section A date (split nodes)
+    // 5. DESC_LINE_2, DESC_LINE_3, DESC_LINE_4, DESC_LINE_5 - description rows
     // ============================================================
     
     // STEP 1: Header date XX/XX/XXXX -> DD/MM/YYYY
@@ -881,23 +882,31 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress) 
       const mirsPattern = /RDCG\/MIRS<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
       docXml = docXml.replace(mirsPattern, `RDCG/MIRS</w:t></w:r>$1${mirNumber}$2`);
     } else {
-      // No MIR (Mechanical) - replace RDCG/MIRS with description and remove XXXX and /0
-      const descText = (description || 'MECHANICAL').substring(0, 25);
+      // No MIR (Mechanical) - replace RDCG/MIRS with first description line
+      const descText = (descLines.line1 || description || 'MECHANICAL').substring(0, 40);
       // Replace RDCG/MIRS with description
       docXml = docXml.replace(/<w:t>RDCG\/MIRS<\/w:t>/, `<w:t>${descText}</w:t>`);
       // Remove the XXXX that was after (now it's after description) - keep the run but empty text
       docXml = docXml.replace(/(<w:t>)XXXX(<\/w:t><\/w:r><w:r[^>]*>(?:<[^>]*>)*<w:t>)\/0(<\/w:t>)/, '$1$2$3');
     }
     
-    // V32.3: STEP 2b: If description exists, replace DESC_PLACEHOLDER in row 2
-    if (description && description.trim() && mirNumber) {
-      const descriptionText = description.substring(0, 50); // Limit length for cell width
-      // Simple text replacement for the placeholder
-      docXml = docXml.replace(/DESC_PLACEHOLDER/g, descriptionText);
-    } else {
-      // Remove placeholder if no description
-      docXml = docXml.replace(/DESC_PLACEHOLDER/g, '');
-    }
+    // V32.9: Replace description line placeholders
+    // For Piping: line1 is MIR number (handled above), lines 2-5 are descriptions
+    // For Mechanical: line1 is first description (handled above), lines 2-5 are additional
+    const line2 = (descLines.line2 || '').substring(0, 50);
+    const line3 = (descLines.line3 || '').substring(0, 50);
+    const line4 = (descLines.line4 || '').substring(0, 50);
+    const line5 = (descLines.line5 || '').substring(0, 50);
+    
+    // Replace placeholders (if template has them)
+    docXml = docXml.replace(/DESC_LINE_2/g, line2);
+    docXml = docXml.replace(/DESC_LINE_3/g, line3);
+    docXml = docXml.replace(/DESC_LINE_4/g, line4);
+    docXml = docXml.replace(/DESC_LINE_5/g, line5);
+    
+    // Also try replacing DESC_PLACEHOLDER with combined descriptions (for older templates)
+    const combinedDesc = [line2, line3, line4, line5].filter(Boolean).join(' | ');
+    docXml = docXml.replace(/DESC_PLACEHOLDER/g, combinedDesc || '');
     
     // STEP 3: RK number - RK0020_ followed by XXXX
     const rkPattern = /RK0020_<\/w:t><\/w:r>(<w:r[^>]*>(?:<[^>]*>)*<w:t>)XXXX(<\/w:t>)/;
@@ -12154,6 +12163,25 @@ function MaterialInPage({ user }) {
   };
 
   // V28.11: MIR Documents functions
+  
+  // V32.9: Delete Material IN Log entry
+  const deleteLogEntry = async (entry) => {
+    if (!window.confirm(`Delete this Material IN record?\n\nIdent: ${entry.ident_code}\nQty: ${entry.quantity}\nDate: ${new Date(entry.created_at).toLocaleDateString()}\n\nThis cannot be undone.`)) return;
+    
+    try {
+      const { error } = await supabase.from('movements').delete().eq('id', entry.id);
+      if (error) {
+        console.error('Delete log entry error:', error);
+        alert('Error deleting record: ' + error.message);
+        return;
+      }
+      loadData();
+    } catch (err) {
+      console.error('Delete log entry exception:', err);
+      alert('Error: ' + err.message);
+    }
+  };
+  
   const extractMirInfo = (note) => {
     if (!note) return { mir: null, rk: null };
     
@@ -13131,6 +13159,7 @@ function MaterialInPage({ user }) {
                   <th style={styles.th}>Destination</th>
                   <th style={styles.th}>Operator</th>
                   <th style={styles.th}>📎 Docs</th>
+                  <th style={styles.th}>🗑️</th>
                 </tr>
               </thead>
               <tbody>
@@ -13183,11 +13212,26 @@ function MaterialInPage({ user }) {
                         );
                       })()}
                     </td>
+                    <td style={styles.td}>
+                      <button
+                        onClick={() => deleteLogEntry(m)}
+                        style={{
+                          ...styles.button,
+                          backgroundColor: COLORS.primary,
+                          color: 'white',
+                          padding: '6px 10px',
+                          fontSize: '12px'
+                        }}
+                        title="Delete this record"
+                      >
+                        🗑️
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {filteredLog.length === 0 && (
                   <tr>
-                    <td colSpan="7" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF', padding: '40px' }}>
+                    <td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9CA3AF', padding: '40px' }}>
                       {logSearchMir ? `No results for "${logSearchMir}"` : 'No Material IN records yet'}
                     </td>
                   </tr>
@@ -14747,7 +14791,12 @@ function MIRPage({ user }) {
   const [category, setCategory] = useState('Bulk');
   const [forecastDate, setForecastDate] = useState('');
   const [priority, setPriority] = useState('Medium');
-  const [mirDescription, setMirDescription] = useState('');
+  // V32.9: Multiple description lines for RK document
+  const [descLine1, setDescLine1] = useState(''); // For Mechanical only (Piping uses MIR number)
+  const [descLine2, setDescLine2] = useState('');
+  const [descLine3, setDescLine3] = useState('');
+  const [descLine4, setDescLine4] = useState('');
+  const [descLine5, setDescLine5] = useState('');
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -14832,7 +14881,15 @@ function MIRPage({ user }) {
         category: mirType === 'Piping' ? category : null,
         forecast_date: forecastDate || null,
         priority: priority,
-        description: mirDescription || null,
+        // V32.9: Multiple description lines
+        desc_line_1: mirType === 'Mechanical' ? descLine1 : null, // Only for Mechanical
+        desc_line_2: descLine2 || null,
+        desc_line_3: descLine3 || null,
+        desc_line_4: descLine4 || null,
+        desc_line_5: descLine5 || null,
+        description: mirType === 'Piping' 
+          ? [descLine2, descLine3, descLine4, descLine5].filter(Boolean).join(' | ') 
+          : [descLine1, descLine2, descLine3, descLine4, descLine5].filter(Boolean).join(' | '),
         created_by: user.id,
         status: 'Open',
         file_url: fileUrl,
@@ -14845,6 +14902,11 @@ function MIRPage({ user }) {
 
       // Reset form
       setMirFile(null);
+      setDescLine1('');
+      setDescLine2('');
+      setDescLine3('');
+      setDescLine4('');
+      setDescLine5('');
       setShowCreateModal(false);
       loadMirs();
     } catch (err) {
@@ -14965,11 +15027,21 @@ function MIRPage({ user }) {
   const handleDownloadRK = async (mir) => {
     setDownloadingRK(mir.id);
     try {
+      // V32.9: Pass description lines for RK document
+      const descLines = {
+        line1: mir.desc_line_1 || '',
+        line2: mir.desc_line_2 || '',
+        line3: mir.desc_line_3 || '',
+        line4: mir.desc_line_4 || '',
+        line5: mir.desc_line_5 || ''
+      };
+      
       const success = await generateRKDocument(
         mir.mir_number || '',
         mir.rk_number || '',
-        mir.description || '',  // V31.0: Pass description for Mechanical type
-        null
+        mir.mir_type === 'Piping' ? null : descLines.line1, // For Mechanical, line 1 is the first description
+        null,
+        descLines // V32.9: Pass all description lines
       );
       
       if (success) {
@@ -15586,15 +15658,87 @@ function MIRPage({ user }) {
           </div>
         </div>
 
-        {/* Description (optional) */}
+        {/* V32.9: Multiple Description Lines for RK Document */}
         <div style={{ marginBottom: '16px' }}>
-          <label style={styles.label}>Description (optional)</label>
-          <textarea
-            value={mirDescription}
-            onChange={(e) => setMirDescription(e.target.value)}
-            style={{ ...styles.input, minHeight: '60px', resize: 'vertical' }}
-            placeholder="Add a description for this MIR..."
-          />
+          <label style={styles.label}>
+            📋 RK Document Lines (optional)
+          </label>
+          <p style={{ fontSize: '11px', color: '#6B7280', marginBottom: '12px' }}>
+            {mirType === 'Piping' 
+              ? 'Line 1 = MIR number (automatic). Lines 2-5 for additional items.'
+              : 'Lines 1-5 for material descriptions.'}
+          </p>
+          
+          {/* For Mechanical: Show Line 1 */}
+          {mirType === 'Mechanical' && (
+            <div style={{ marginBottom: '8px' }}>
+              <input
+                type="text"
+                value={descLine1}
+                onChange={(e) => setDescLine1(e.target.value)}
+                style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
+                placeholder="Line 1 - Description"
+                maxLength="60"
+              />
+            </div>
+          )}
+          
+          {/* For Piping: Line 1 is MIR number (info only) */}
+          {mirType === 'Piping' && mirNumber && (
+            <div style={{ 
+              marginBottom: '8px', 
+              padding: '8px 12px', 
+              backgroundColor: '#DBEAFE', 
+              borderRadius: '6px',
+              fontSize: '13px',
+              color: COLORS.info,
+              fontFamily: 'monospace'
+            }}>
+              Line 1: RDCG/MIRS{mirNumber}/0 (automatic)
+            </div>
+          )}
+          
+          {/* Lines 2-5 for both types */}
+          <div style={{ marginBottom: '8px' }}>
+            <input
+              type="text"
+              value={descLine2}
+              onChange={(e) => setDescLine2(e.target.value)}
+              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
+              placeholder={mirType === 'Piping' ? 'Line 2 - Description' : 'Line 2 - Description'}
+              maxLength="60"
+            />
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <input
+              type="text"
+              value={descLine3}
+              onChange={(e) => setDescLine3(e.target.value)}
+              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
+              placeholder="Line 3 - Description"
+              maxLength="60"
+            />
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <input
+              type="text"
+              value={descLine4}
+              onChange={(e) => setDescLine4(e.target.value)}
+              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
+              placeholder="Line 4 - Description"
+              maxLength="60"
+            />
+          </div>
+          <div style={{ marginBottom: '8px' }}>
+            <input
+              type="text"
+              value={descLine5}
+              onChange={(e) => setDescLine5(e.target.value)}
+              style={{ ...styles.input, marginBottom: 0, fontSize: '13px' }}
+              placeholder="Line 5 - Description"
+              maxLength="60"
+            />
+          </div>
         </div>
 
         {/* Forecast Date */}
