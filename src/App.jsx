@@ -2986,6 +2986,7 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
     { id: 'dashboard', icon: '📊', label: 'Dashboard', perm: null },
     { id: 'requests', icon: '📋', label: 'Requests', perm: 'perm_requests' },
     { id: 'mir', icon: '📦', label: 'MIR', perm: 'perm_mir' },
+    { id: 'returnVoucher', icon: '↩️', label: 'Return Voucher', perm: 'perm_mir' },  // V32.9
     { id: 'materialIn', icon: '📥', label: 'Material In', perm: 'perm_material_in' },
     { id: 'siteIn', icon: '🏗️', label: 'Site IN', perm: 'perm_site_in' },
     { id: 'whSite', icon: '🏭', label: 'WH Site', perm: 'perm_wh_site' },
@@ -16465,6 +16466,887 @@ function MIRPage({ user }) {
 }
 
 // ============================================================
+// RETURN VOUCHER PAGE - V32.9
+// Similar to Mechanical MIR but with Description, Unit, Delivered, Remarks per line
+// ============================================================
+const MS_RETURN_TEMPLATE_URL = 'https://eoxjnbghmoybmtspxzms.supabase.co/storage/v1/object/public/documents/templates/MS_Return_Voucher_Template.docx';
+
+// Generate MS Return Voucher Document
+async function generateReturnVoucherDocument(returnNumber, lines, onProgress) {
+  try {
+    if (onProgress) onProgress('Loading template...');
+    
+    // Load JSZip
+    if (typeof JSZip === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    
+    const response = await fetch(MS_RETURN_TEMPLATE_URL);
+    if (!response.ok) {
+      alert('Template not found! Please upload MS_Return_Voucher_Template.docx to Supabase Storage.');
+      return null;
+    }
+    const templateBlob = await response.blob();
+    
+    if (onProgress) onProgress('Processing document...');
+    
+    const zip = await JSZip.loadAsync(templateBlob);
+    let docXml = await zip.file('word/document.xml').async('string');
+    
+    // Get current date
+    const today = new Date();
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = String(today.getFullYear());
+    
+    // Placeholder names for 10 lines
+    const placeholders = [
+      { desc: 'DESCONE', unit: 'UNITONE', delivered: 'DELIVEREDONE', remark: 'REMARKONE' },
+      { desc: 'DESCTWO', unit: 'UNITTWO', delivered: 'DELIVEREDTWO', remark: 'REMARKTWO' },
+      { desc: 'DESCTHREE', unit: 'UNITTHREE', delivered: 'DELIVEREDTHREE', remark: 'REMARKTHREE' },
+      { desc: 'DESCFOUR', unit: 'UNITFOUR', delivered: 'DELIVEREDFOUR', remark: 'REMARKFOUR' },
+      { desc: 'DESCFIVE', unit: 'UNITFIVE', delivered: 'DELIVEREDFIVE', remark: 'REMARKFIVE' },
+      { desc: 'DESCSIX', unit: 'UNITSIX', delivered: 'DELIVEREDSIX', remark: 'REMARKSIX' },
+      { desc: 'DESCSEVEN', unit: 'UNITSEVEN', delivered: 'DELIVEREDSEVEN', remark: 'REMARKSEVEN' },
+      { desc: 'DESCEIGHT', unit: 'UNITEIGHT', delivered: 'DELIVEREDEIGHT', remark: 'REMARKEIGHT' },
+      { desc: 'DESCNINE', unit: 'UNITNINE', delivered: 'DELIVEREDNINE', remark: 'REMARKNINE' },
+      { desc: 'DESCTEN', unit: 'UNITTEN', delivered: 'DELIVEREDTEN', remark: 'REMARKTEN' }
+    ];
+    
+    // Replace placeholders for each line
+    for (let i = 0; i < placeholders.length; i++) {
+      const line = lines[i] || { description: '', unit: '', delivered: '', remark: '' };
+      const ph = placeholders[i];
+      docXml = docXml.replace(new RegExp(ph.desc, 'g'), line.description || '');
+      docXml = docXml.replace(new RegExp(ph.unit, 'g'), line.unit || '');
+      docXml = docXml.replace(new RegExp(ph.delivered, 'g'), line.delivered || '');
+      docXml = docXml.replace(new RegExp(ph.remark, 'g'), line.remark || '');
+    }
+    
+    // Replace return number
+    docXml = docXml.replace(/MSRETURNNUM/g, `MS RETURN_${returnNumber}`);
+    
+    // Replace date
+    docXml = docXml.replace(/DD\/MM\/YYYY/g, `${day}/${month}/${year}`);
+    docXml = docXml.replace(/xx\/xx\/xxxx/gi, `${day}/${month}/${year}`);
+    
+    zip.file('word/document.xml', docXml);
+    
+    if (onProgress) onProgress('Generating file...');
+    
+    const newDocx = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(newDocx);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MS_Return_${returnNumber}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    return true;
+  } catch (error) {
+    console.error('Generate Return Voucher error:', error);
+    alert('Error generating document: ' + error.message);
+    return null;
+  }
+}
+
+function ReturnVoucherPage({ user }) {
+  const [vouchers, setVouchers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [returnNumber, setReturnNumber] = useState('');
+  const [voucherTitle, setVoucherTitle] = useState('');
+  const [forecastDate, setForecastDate] = useState('');
+  const [priority, setPriority] = useState('Medium');
+  const [activeTab, setActiveTab] = useState('open');
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Dynamic lines for Return Voucher (Description, Unit, Delivered, Remarks)
+  const [voucherLines, setVoucherLines] = useState([{ description: '', unit: 'pcs', delivered: '', remark: '' }]);
+  
+  // Document download state
+  const [downloadingDoc, setDownloadingDoc] = useState(null);
+  
+  // Approval modal state
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [selectedVoucherForApproval, setSelectedVoucherForApproval] = useState(null);
+  const [approvalDate, setApprovalDate] = useState('');
+  const [savingApproval, setSavingApproval] = useState(false);
+  
+  // File upload modal state
+  const [showFileModal, setShowFileModal] = useState(false);
+  const [selectedVoucherForFile, setSelectedVoucherForFile] = useState(null);
+  const [selectedFileType, setSelectedFileType] = useState('allegati');
+  const [uploadFile, setUploadFile] = useState(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  
+  const canModify = user.role === 'admin' || (user.perm_mir && user.perm_mir !== 'view');
+
+  useEffect(() => { loadVouchers(); }, []);
+
+  const loadVouchers = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('return_vouchers').select('*').order('created_at', { ascending: false });
+    if (data) setVouchers(data);
+    setLoading(false);
+  };
+
+  const openCreateModal = () => {
+    setReturnNumber('');
+    setVoucherTitle('');
+    setForecastDate('');
+    setPriority('Medium');
+    setVoucherLines([{ description: '', unit: 'pcs', delivered: '', remark: '' }]);
+    setShowCreateModal(true);
+  };
+
+  const addLine = () => {
+    if (voucherLines.length < 10) {
+      setVoucherLines([...voucherLines, { description: '', unit: 'pcs', delivered: '', remark: '' }]);
+    }
+  };
+
+  const removeLine = (index) => {
+    if (voucherLines.length > 1) {
+      setVoucherLines(voucherLines.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateLine = (index, field, value) => {
+    const newLines = [...voucherLines];
+    newLines[index][field] = value;
+    setVoucherLines(newLines);
+  };
+
+  const createVoucher = async () => {
+    if (!returnNumber || returnNumber.length !== 4 || !/^\d{4}$/.test(returnNumber)) {
+      alert('Return Number must be exactly 4 digits!');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.from('return_vouchers').insert({
+        return_number: returnNumber,
+        title: voucherTitle || null,
+        forecast_date: forecastDate || null,
+        priority: priority,
+        lines: voucherLines, // Store as JSON array
+        created_by: user.id,
+        status: 'Under Approval' // Always starts in Under Approval
+      });
+
+      if (error) throw error;
+
+      setShowCreateModal(false);
+      loadVouchers();
+    } catch (err) {
+      console.error('Create Return Voucher error:', err);
+      alert('Error creating Return Voucher: ' + err.message);
+    }
+  };
+
+  // Approval functions
+  const openApprovalModal = (voucher) => {
+    setSelectedVoucherForApproval(voucher);
+    setApprovalDate(new Date().toISOString().split('T')[0]);
+    setShowApprovalModal(true);
+  };
+
+  const approveVoucher = async () => {
+    if (!approvalDate || !selectedVoucherForApproval) return;
+    
+    setSavingApproval(true);
+    try {
+      const { error } = await supabase
+        .from('return_vouchers')
+        .update({ 
+          client_approval_date: approvalDate,
+          status: 'Open'
+        })
+        .eq('id', selectedVoucherForApproval.id);
+      
+      if (error) throw error;
+      
+      setShowApprovalModal(false);
+      loadVouchers();
+    } catch (err) {
+      alert('Error approving voucher: ' + err.message);
+    }
+    setSavingApproval(false);
+  };
+
+  // Close voucher
+  const closeVoucher = async (voucher) => {
+    if (!window.confirm(`Close Return Voucher MS RETURN_${voucher.return_number}?`)) return;
+    
+    await supabase.from('return_vouchers').update({
+      status: 'Closed',
+      closed_at: new Date().toISOString()
+    }).eq('id', voucher.id);
+    
+    loadVouchers();
+  };
+
+  // Delete voucher
+  const deleteVoucher = async (voucher) => {
+    if (!window.confirm(`Delete Return Voucher MS RETURN_${voucher.return_number}? This cannot be undone.`)) return;
+    
+    await supabase.from('return_vouchers').delete().eq('id', voucher.id);
+    loadVouchers();
+  };
+
+  // Download document
+  const handleDownloadDoc = async (voucher) => {
+    setDownloadingDoc(voucher.id);
+    try {
+      const lines = voucher.lines || [];
+      await generateReturnVoucherDocument(voucher.return_number, lines, null);
+      
+      // Update download info
+      await supabase.from('return_vouchers').update({
+        doc_downloaded_at: new Date().toISOString(),
+        doc_downloaded_by_name: user.full_name || user.email
+      }).eq('id', voucher.id);
+      
+      loadVouchers();
+    } finally {
+      setDownloadingDoc(null);
+    }
+  };
+
+  // File upload functions
+  const openFileModal = (voucher, fileType) => {
+    setSelectedVoucherForFile(voucher);
+    setSelectedFileType(fileType);
+    setUploadFile(null);
+    setShowFileModal(true);
+  };
+
+  const getFileTypeLabel = (type) => {
+    switch(type) {
+      case 'allegati': return '📎 Allegati';
+      case 'approvazione': return '✅ Approvazione';
+      case 'varie': return '📁 Varie';
+      default: return type;
+    }
+  };
+
+  const getCurrentFileUrl = () => {
+    if (!selectedVoucherForFile) return null;
+    return selectedVoucherForFile[`file_${selectedFileType}_url`];
+  };
+
+  const getCurrentFileName = () => {
+    if (!selectedVoucherForFile) return null;
+    return selectedVoucherForFile[`file_${selectedFileType}_name`];
+  };
+
+  const uploadDocument = async () => {
+    if (!uploadFile || !selectedVoucherForFile) return;
+    
+    setUploadingDocument(true);
+    try {
+      const fileExt = uploadFile.name.split('.').pop();
+      const fileName = `return-voucher-${selectedFileType}/${selectedVoucherForFile.return_number}_${selectedFileType}_${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, uploadFile);
+      
+      if (uploadError) throw uploadError;
+      
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(fileName);
+      
+      const updateData = {};
+      updateData[`file_${selectedFileType}_url`] = urlData?.publicUrl;
+      updateData[`file_${selectedFileType}_name`] = uploadFile.name;
+      
+      const { error } = await supabase
+        .from('return_vouchers')
+        .update(updateData)
+        .eq('id', selectedVoucherForFile.id);
+      
+      if (error) throw error;
+      
+      setShowFileModal(false);
+      loadVouchers();
+    } catch (err) {
+      alert('Error uploading file: ' + err.message);
+    }
+    setUploadingDocument(false);
+  };
+
+  // Filter vouchers
+  const underApprovalVouchers = vouchers.filter(v => v.status === 'Under Approval');
+  const openVouchers = vouchers.filter(v => v.status === 'Open');
+  const closedVouchers = vouchers.filter(v => v.status === 'Closed');
+  
+  const filterVouchers = (list) => {
+    if (!searchTerm.trim()) return list;
+    const term = searchTerm.toLowerCase();
+    return list.filter(v => 
+      String(v.return_number || '').includes(term) ||
+      String(v.title || '').toLowerCase().includes(term)
+    );
+  };
+
+  const displayedVouchers = activeTab === 'open' 
+    ? filterVouchers(openVouchers) 
+    : activeTab === 'approval'
+    ? filterVouchers(underApprovalVouchers)
+    : filterVouchers(closedVouchers);
+
+  const getPriorityColor = (p) => {
+    if (p === 'High') return '#DC2626';
+    if (p === 'Low') return '#16a34a';
+    return '#D97706';
+  };
+
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            onClick={() => setActiveTab('open')}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: activeTab === 'open' ? COLORS.info : '#e5e7eb',
+              color: activeTab === 'open' ? 'white' : '#374151'
+            }}
+          >
+            📂 Open ({openVouchers.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('approval')}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: activeTab === 'approval' ? COLORS.warning : '#e5e7eb',
+              color: activeTab === 'approval' ? 'white' : '#374151'
+            }}
+          >
+            ⏳ Under Approval ({underApprovalVouchers.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('closed')}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: activeTab === 'closed' ? COLORS.success : '#e5e7eb',
+              color: activeTab === 'closed' ? 'white' : '#374151'
+            }}
+          >
+            ✅ Closed ({closedVouchers.length})
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search Return#, Title..."
+            style={{ ...styles.input, width: '200px' }}
+          />
+          <button onClick={openCreateModal} disabled={!canModify} style={{ ...styles.button, ...styles.buttonPrimary }}>+ New Return Voucher</button>
+        </div>
+      </div>
+
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <h3 style={{ fontWeight: '600' }}>
+            {activeTab === 'open' ? '📂 Open' : activeTab === 'approval' ? '⏳ Under Approval' : '✅ Closed'} Return Vouchers ({displayedVouchers.length})
+          </h3>
+        </div>
+        <ResponsiveTable>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Priority</th>
+              <th style={styles.th}>Return #</th>
+              <th style={styles.th}>Titolo</th>
+              <th style={styles.th}>Lines</th>
+              <th style={styles.th}>Forecast</th>
+              <th style={styles.th}>Status</th>
+              <th style={styles.th}>Created</th>
+              {activeTab === 'open' && <th style={styles.th}>Approved</th>}
+              <th style={styles.th}>Actions</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Allegati">📎</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Approvazione">✅</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Varie">📁</th>
+            </tr>
+          </thead>
+          <tbody>
+            {displayedVouchers.map(voucher => (
+              <tr key={voucher.id}>
+                <td style={styles.td}>
+                  <span style={{ ...styles.statusBadge, backgroundColor: getPriorityColor(voucher.priority || 'Medium') }}>
+                    {voucher.priority || 'Medium'}
+                  </span>
+                </td>
+                <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600', color: COLORS.info }}>
+                  {voucher.return_number}
+                </td>
+                <td style={{ ...styles.td, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={voucher.title || ''}>
+                  {voucher.title || '-'}
+                </td>
+                <td style={styles.td}>{(voucher.lines || []).length} items</td>
+                <td style={styles.td}>{voucher.forecast_date ? new Date(voucher.forecast_date).toLocaleDateString() : '-'}</td>
+                <td style={styles.td}>
+                  <span style={{ 
+                    ...styles.statusBadge, 
+                    backgroundColor: voucher.status === 'Open' ? COLORS.info : voucher.status === 'Under Approval' ? COLORS.warning : COLORS.success 
+                  }}>
+                    {voucher.status}
+                  </span>
+                </td>
+                <td style={styles.td}>{new Date(voucher.created_at).toLocaleDateString()}</td>
+                {activeTab === 'open' && (
+                  <td style={styles.td}>
+                    {voucher.client_approval_date ? new Date(voucher.client_approval_date).toLocaleDateString() : '-'}
+                  </td>
+                )}
+                <td style={styles.td}>
+                  {activeTab === 'approval' ? (
+                    <button
+                      onClick={() => openApprovalModal(voucher)}
+                      disabled={!canModify}
+                      style={{
+                        ...styles.button,
+                        backgroundColor: COLORS.success,
+                        color: 'white',
+                        padding: '6px 12px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      ✓ Approve
+                    </button>
+                  ) : activeTab === 'open' ? (
+                    <ActionDropdown
+                      actions={[
+                        { id: 'close', icon: '✓', label: 'Close' },
+                        { id: 'delete', icon: '🗑️', label: 'Delete' }
+                      ]}
+                      onExecute={(action) => {
+                        if (action === 'close') closeVoucher(voucher);
+                        if (action === 'delete') deleteVoucher(voucher);
+                      }}
+                      disabled={!canModify}
+                      componentId={voucher.id}
+                    />
+                  ) : (
+                    <button
+                      onClick={() => deleteVoucher(voucher)}
+                      disabled={!canModify}
+                      style={{
+                        ...styles.button,
+                        backgroundColor: COLORS.primary,
+                        color: 'white',
+                        padding: '6px 12px',
+                        fontSize: '12px'
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </td>
+                {/* Document Download */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => handleDownloadDoc(voucher)}
+                    disabled={downloadingDoc === voucher.id}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      cursor: downloadingDoc === voucher.id ? 'wait' : 'pointer',
+                      fontSize: '18px',
+                      opacity: downloadingDoc === voucher.id ? 0.5 : 1
+                    }}
+                    title="Download MS Return Document"
+                  >
+                    {downloadingDoc === voucher.id ? '⏳' : '📄'}
+                  </button>
+                </td>
+                {/* Allegati */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => openFileModal(voucher, 'allegati')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}
+                  >
+                    <span style={{ color: voucher.file_allegati_url ? COLORS.success : '#D1D5DB' }}>📎</span>
+                  </button>
+                </td>
+                {/* Approvazione */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => openFileModal(voucher, 'approvazione')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}
+                  >
+                    <span style={{ color: voucher.file_approvazione_url ? COLORS.success : '#D1D5DB' }}>✅</span>
+                  </button>
+                </td>
+                {/* Varie */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  <button
+                    onClick={() => openFileModal(voucher, 'varie')}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '16px' }}
+                  >
+                    <span style={{ color: voucher.file_varie_url ? COLORS.success : '#D1D5DB' }}>📁</span>
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {displayedVouchers.length === 0 && (
+              <tr>
+                <td colSpan={13} style={{ ...styles.td, textAlign: 'center', color: '#9ca3af' }}>
+                  No {activeTab} Return Vouchers
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        </ResponsiveTable>
+      </div>
+
+      {/* Create Return Voucher Modal */}
+      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} title="+ New Return Voucher">
+        {/* Return Number */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={{ ...styles.label, color: COLORS.info }}>Return Number * (4 digits)</label>
+          <input
+            type="text"
+            value={returnNumber}
+            onChange={(e) => setReturnNumber(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            style={{ ...styles.input, fontSize: '18px', textAlign: 'center', letterSpacing: '4px', maxWidth: '200px' }}
+            placeholder="0000"
+            maxLength="4"
+          />
+          <p style={{ fontSize: '11px', color: '#6B7280', marginTop: '4px' }}>
+            Document will be: MS RETURN_{returnNumber || 'XXXX'}
+          </p>
+        </div>
+
+        {/* Title */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>📝 Titolo (optional)</label>
+          <input
+            type="text"
+            value={voucherTitle}
+            onChange={(e) => setVoucherTitle(e.target.value)}
+            style={styles.input}
+            placeholder="Es: Restituzione materiale linea 101..."
+            maxLength="100"
+          />
+        </div>
+
+        {/* Priority */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Priority *</label>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            {['High', 'Medium', 'Low'].map(p => (
+              <label key={p} style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                padding: '10px 16px',
+                border: `2px solid ${priority === p ? getPriorityColor(p) : '#e5e7eb'}`,
+                borderRadius: '6px',
+                cursor: 'pointer',
+                backgroundColor: priority === p ? `${getPriorityColor(p)}15` : 'white'
+              }}>
+                <input 
+                  type="radio" 
+                  name="rv_priority" 
+                  value={p} 
+                  checked={priority === p}
+                  onChange={(e) => setPriority(e.target.value)}
+                  style={{ width: '16px', height: '16px' }}
+                />
+                <span style={{ fontWeight: priority === p ? '600' : '400', color: getPriorityColor(p) }}>{p}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Material Lines */}
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>📦 Material Lines *</label>
+            {voucherLines.length < 10 && (
+              <button
+                type="button"
+                onClick={addLine}
+                style={{
+                  padding: '4px 12px',
+                  backgroundColor: COLORS.success,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600'
+                }}
+              >
+                + Add Line
+              </button>
+            )}
+          </div>
+          
+          {/* Column headers */}
+          <div style={{ display: 'grid', gridTemplateColumns: '30px 1fr 80px 80px 1fr 30px', gap: '8px', marginBottom: '8px', fontSize: '11px', color: '#6B7280', fontWeight: '600' }}>
+            <span>#</span>
+            <span>Description</span>
+            <span>Unit</span>
+            <span>Delivered</span>
+            <span>Remarks</span>
+            <span></span>
+          </div>
+          
+          {voucherLines.map((line, index) => (
+            <div key={index} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 80px 80px 1fr 30px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
+              <span style={{ 
+                backgroundColor: '#E5E7EB', 
+                color: '#374151', 
+                padding: '6px', 
+                borderRadius: '4px',
+                fontSize: '12px',
+                fontWeight: '600',
+                textAlign: 'center'
+              }}>
+                {index + 1}
+              </span>
+              <input
+                type="text"
+                value={line.description}
+                onChange={(e) => updateLine(index, 'description', e.target.value)}
+                style={{ ...styles.input, marginBottom: 0, fontSize: '12px' }}
+                placeholder="Description..."
+                maxLength="50"
+              />
+              <select
+                value={line.unit}
+                onChange={(e) => updateLine(index, 'unit', e.target.value)}
+                style={{ ...styles.select, marginBottom: 0, fontSize: '12px', padding: '8px' }}
+              >
+                <option value="pcs">pcs</option>
+                <option value="mts">mts</option>
+              </select>
+              <input
+                type="text"
+                value={line.delivered}
+                onChange={(e) => updateLine(index, 'delivered', e.target.value)}
+                style={{ ...styles.input, marginBottom: 0, fontSize: '12px' }}
+                placeholder="Qty"
+                maxLength="10"
+              />
+              <input
+                type="text"
+                value={line.remark}
+                onChange={(e) => updateLine(index, 'remark', e.target.value)}
+                style={{ ...styles.input, marginBottom: 0, fontSize: '12px' }}
+                placeholder="Remarks..."
+                maxLength="30"
+              />
+              {voucherLines.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeLine(index)}
+                  style={{
+                    padding: '6px',
+                    backgroundColor: COLORS.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '12px'
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Forecast Date */}
+        <div style={{ marginBottom: '24px' }}>
+          <label style={styles.label}>Forecast Date</label>
+          <input type="date" value={forecastDate} onChange={(e) => setForecastDate(e.target.value)} style={styles.input} />
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
+          <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
+          <button onClick={createVoucher} style={{ ...styles.button, ...styles.buttonPrimary }}>
+            Create Return Voucher
+          </button>
+        </div>
+      </Modal>
+
+      {/* Approval Modal */}
+      <Modal isOpen={showApprovalModal} onClose={() => setShowApprovalModal(false)} title="✅ Client Approval">
+        {selectedVoucherForApproval && (
+          <div>
+            <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#F5F3FF', borderRadius: '8px' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: COLORS.purple }}>
+                ↩️ Return Voucher - MS RETURN_{selectedVoucherForApproval.return_number}
+              </h4>
+              {selectedVoucherForApproval.title && (
+                <p style={{ margin: '0 0 8px 0', color: '#6B7280' }}>
+                  <strong>Titolo:</strong> {selectedVoucherForApproval.title}
+                </p>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
+                📅 Client Approval Date *
+              </label>
+              <input
+                type="date"
+                value={approvalDate}
+                onChange={(e) => setApprovalDate(e.target.value)}
+                style={{ ...styles.input, fontSize: '16px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowApprovalModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
+                Cancel
+              </button>
+              <button
+                onClick={approveVoucher}
+                disabled={savingApproval || !approvalDate}
+                style={{
+                  ...styles.button,
+                  backgroundColor: savingApproval ? '#9CA3AF' : COLORS.success,
+                  color: 'white',
+                  opacity: !approvalDate ? 0.5 : 1
+                }}
+              >
+                {savingApproval ? '⏳ Saving...' : '✓ Approve & Move to Open'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* File Upload Modal */}
+      <Modal isOpen={showFileModal} onClose={() => setShowFileModal(false)} title={`${getFileTypeLabel(selectedFileType)} - MS RETURN_${selectedVoucherForFile?.return_number || ''}`}>
+        {selectedVoucherForFile && (
+          <div>
+            {getCurrentFileUrl() && (
+              <div style={{ marginBottom: '24px', padding: '16px', backgroundColor: '#DEF7EC', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <span style={{ fontSize: '24px' }}>📄</span>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontWeight: '600', color: '#166534', margin: 0 }}>{getCurrentFileName()}</p>
+                  </div>
+                </div>
+                <a
+                  href={getCurrentFileUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'block',
+                    padding: '10px',
+                    backgroundColor: COLORS.info,
+                    color: 'white',
+                    textDecoration: 'none',
+                    borderRadius: '6px',
+                    textAlign: 'center',
+                    fontWeight: '500'
+                  }}
+                >
+                  👁️ Preview / Download
+                </a>
+              </div>
+            )}
+
+            <div
+              onDragOver={(e) => { e.preventDefault(); setFileDragOver(true); }}
+              onDragLeave={(e) => { e.preventDefault(); setFileDragOver(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setFileDragOver(false);
+                const file = e.dataTransfer.files[0];
+                if (file) setUploadFile(file);
+              }}
+              onClick={() => document.getElementById('rv-doc-input').click()}
+              style={{
+                border: `2px dashed ${fileDragOver ? COLORS.info : '#D1D5DB'}`,
+                borderRadius: '12px',
+                padding: '32px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                backgroundColor: fileDragOver ? '#EFF6FF' : '#F9FAFB'
+              }}
+            >
+              <input
+                id="rv-doc-input"
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) setUploadFile(file);
+                }}
+                style={{ display: 'none' }}
+              />
+              {uploadFile ? (
+                <div>
+                  <span style={{ fontSize: '40px' }}>📄</span>
+                  <p style={{ fontWeight: '600', color: COLORS.info, marginTop: '12px' }}>{uploadFile.name}</p>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setUploadFile(null); }}
+                    style={{ marginTop: '12px', padding: '6px 16px', backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                  >
+                    ✕ Remove
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <span style={{ fontSize: '40px' }}>📁</span>
+                  <p style={{ fontWeight: '600', color: '#374151', marginTop: '12px' }}>Drag & drop or click to browse</p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button onClick={() => setShowFileModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>
+                Cancel
+              </button>
+              <button
+                onClick={uploadDocument}
+                disabled={uploadingDocument || !uploadFile}
+                style={{
+                  ...styles.button,
+                  backgroundColor: uploadingDocument ? '#9CA3AF' : COLORS.success,
+                  color: 'white',
+                  opacity: !uploadFile ? 0.5 : 1
+                }}
+              >
+                {uploadingDocument ? '⏳ Uploading...' : '📤 Upload'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+// ============================================================
 // LOG PAGE - V28.2 with IB linked to requests
 // ============================================================
 function LogPage({ user }) {
@@ -18229,6 +19111,7 @@ export default function App() {
       case 'dashboard': return <Dashboard user={user} setActivePage={setCurrentPage} />;
       case 'requests': return <RequestsPage user={user} />;
       case 'mir': return <MIRPage user={user} />;
+      case 'returnVoucher': return <ReturnVoucherPage user={user} />;  // V32.9
       case 'materialIn': return <MaterialInPage user={user} />;
       case 'siteIn': return <SiteInPage user={user} />;
       case 'whSite': return <WHSitePage user={user} />;
