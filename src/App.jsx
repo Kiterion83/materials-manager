@@ -3076,7 +3076,7 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
           {(!collapsed || isMobile) && <span style={{ fontSize: '14px' }}>Logout</span>}
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
