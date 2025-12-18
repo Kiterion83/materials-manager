@@ -14855,6 +14855,12 @@ function MIRPage({ user }) {
   const [selectedMirForNotes, setSelectedMirForNotes] = useState(null);
   const [newMirNote, setNewMirNote] = useState('');
   const [savingNote, setSavingNote] = useState(false);
+  
+  // V32.9: Client Approval for Mechanical MIRs
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [selectedMirForApproval, setSelectedMirForApproval] = useState(null);
+  const [approvalDate, setApprovalDate] = useState('');
+  const [savingApproval, setSavingApproval] = useState(false);
 
   useEffect(() => { loadMirs(); }, []);
 
@@ -15023,6 +15029,41 @@ function MIRPage({ user }) {
       console.error('Delete MIR exception:', err);
       alert('Error deleting MIR: ' + err.message);
     }
+  };
+
+  // V32.9: Client Approval functions for Mechanical MIRs
+  const openApprovalModal = (mir) => {
+    setSelectedMirForApproval(mir);
+    setApprovalDate(new Date().toISOString().split('T')[0]); // Default to today
+    setShowApprovalModal(true);
+  };
+
+  const approveByClient = async () => {
+    if (!approvalDate || !selectedMirForApproval) {
+      alert('Please select an approval date');
+      return;
+    }
+    
+    setSavingApproval(true);
+    try {
+      const { error } = await supabase
+        .from('mirs')
+        .update({ 
+          client_approval_date: approvalDate,
+          client_approved_at: new Date().toISOString()
+        })
+        .eq('id', selectedMirForApproval.id);
+      
+      if (error) throw error;
+      
+      setShowApprovalModal(false);
+      setSelectedMirForApproval(null);
+      loadMirs();
+    } catch (err) {
+      console.error('Approval error:', err);
+      alert('Error approving MIR: ' + err.message);
+    }
+    setSavingApproval(false);
   };
 
   // V32.7: MIR Notes functions
@@ -15268,7 +15309,16 @@ function MIRPage({ user }) {
   const canModify = canModifyPage(user, 'mir');
 
   // Filter MIRs by tab and search
-  const openMirs = mirs.filter(m => m.status === 'Open');
+  // V32.9: Mechanical MIRs without approval date go to "Under Approval"
+  const underApprovalMirs = mirs.filter(m => 
+    m.status === 'Open' && 
+    m.mir_type === 'Mechanical' && 
+    !m.client_approval_date
+  );
+  const openMirs = mirs.filter(m => 
+    m.status === 'Open' && 
+    (m.mir_type === 'Piping' || (m.mir_type === 'Mechanical' && m.client_approval_date))
+  );
   const closedMirs = mirs.filter(m => m.status === 'Closed');
   
   const filterMirs = (mirList) => {
@@ -15278,12 +15328,16 @@ function MIRPage({ user }) {
       const mirNum = String(m.mir_number || '').toLowerCase();
       const rkNum = String(m.rk_number || '').toLowerCase();
       const cat = String(m.category || '').toLowerCase();
-      const desc = String(m.description || '').toLowerCase();
+      const desc = String(m.title || m.description || '').toLowerCase();
       return mirNum.includes(term) || rkNum.includes(term) || cat.includes(term) || desc.includes(term);
     });
   };
 
-  const displayedMirs = activeTab === 'open' ? filterMirs(openMirs) : filterMirs(closedMirs);
+  const displayedMirs = activeTab === 'open' 
+    ? filterMirs(openMirs) 
+    : activeTab === 'approval'
+    ? filterMirs(underApprovalMirs)
+    : filterMirs(closedMirs);
 
   const getPriorityColor = (p) => {
     if (p === 'High') return '#DC2626';
@@ -15306,6 +15360,16 @@ function MIRPage({ user }) {
             }}
           >
             📂 Open MIRs ({openMirs.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('approval')}
+            style={{ 
+              ...styles.button, 
+              backgroundColor: activeTab === 'approval' ? COLORS.warning : '#e5e7eb',
+              color: activeTab === 'approval' ? 'white' : '#374151'
+            }}
+          >
+            ⏳ Under Approval ({underApprovalMirs.length})
           </button>
           <button 
             onClick={() => setActiveTab('closed')}
@@ -15371,7 +15435,7 @@ function MIRPage({ user }) {
       <div style={styles.card}>
         <div style={styles.cardHeader}>
           <h3 style={{ fontWeight: '600' }}>
-            {activeTab === 'open' ? '📂 Open' : '✅ Closed'} Material Issue Reports ({displayedMirs.length})
+            {activeTab === 'open' ? '📂 Open' : activeTab === 'approval' ? '⏳ Under Approval' : '✅ Closed'} Material Issue Reports ({displayedMirs.length})
           </h3>
         </div>
         <table style={styles.table}>
@@ -15387,7 +15451,9 @@ function MIRPage({ user }) {
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>⚠️</th>
               <th style={styles.th}>Status</th>
               <th style={styles.th}>Created</th>
+              {activeTab === 'open' && <th style={styles.th}>Approved</th>}
               {activeTab === 'open' && <th style={styles.th}>Actions</th>}
+              {activeTab === 'approval' && <th style={styles.th}>Actions</th>}
               {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
               {activeTab === 'closed' && <th style={styles.th}>Actions</th>}
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
@@ -15433,6 +15499,13 @@ function MIRPage({ user }) {
                 <td style={styles.td}>{new Date(mir.created_at).toLocaleDateString()}</td>
                 {activeTab === 'open' && (
                   <td style={styles.td}>
+                    {mir.mir_type === 'Mechanical' && mir.client_approval_date 
+                      ? new Date(mir.client_approval_date).toLocaleDateString() 
+                      : mir.mir_type === 'Piping' ? '-' : '-'}
+                  </td>
+                )}
+                {activeTab === 'open' && (
+                  <td style={styles.td}>
                     <ActionDropdown
                       actions={[
                         { id: 'close', icon: '✓', label: 'Close' },
@@ -15442,6 +15515,25 @@ function MIRPage({ user }) {
                       disabled={!canModify}
                       componentId={mir.id}
                     />
+                  </td>
+                )}
+                {activeTab === 'approval' && (
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => openApprovalModal(mir)}
+                      disabled={!canModify}
+                      style={{
+                        ...styles.button,
+                        backgroundColor: COLORS.success,
+                        color: 'white',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        opacity: !canModify ? 0.5 : 1,
+                        cursor: !canModify ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      ✓ Approve
+                    </button>
                   </td>
                 )}
                 {activeTab === 'closed' && (
@@ -15913,6 +16005,87 @@ function MIRPage({ user }) {
               )}
             </div>
           </>
+        )}
+      </Modal>
+
+      {/* V32.9: Client Approval Modal for Mechanical MIRs */}
+      <Modal isOpen={showApprovalModal} onClose={() => setShowApprovalModal(false)} title="✅ Client Approval">
+        {selectedMirForApproval && (
+          <div>
+            <div style={{ 
+              marginBottom: '24px', 
+              padding: '16px', 
+              backgroundColor: '#F5F3FF', 
+              borderRadius: '8px',
+              border: '1px solid #DDD6FE'
+            }}>
+              <h4 style={{ margin: '0 0 12px 0', color: COLORS.purple }}>
+                ⚙️ Mechanical MIR - RK {selectedMirForApproval.rk_number}
+              </h4>
+              {selectedMirForApproval.title && (
+                <p style={{ margin: '0 0 8px 0', color: '#6B7280' }}>
+                  <strong>Titolo:</strong> {selectedMirForApproval.title}
+                </p>
+              )}
+              <p style={{ margin: 0, color: '#6B7280', fontSize: '13px' }}>
+                Created: {new Date(selectedMirForApproval.created_at).toLocaleDateString()}
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#374151' }}>
+                📅 Client Approval Date *
+              </label>
+              <input
+                type="date"
+                value={approvalDate}
+                onChange={(e) => setApprovalDate(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px solid #DDD6FE',
+                  borderRadius: '8px',
+                  fontSize: '16px'
+                }}
+              />
+              <p style={{ fontSize: '12px', color: '#9CA3AF', marginTop: '8px' }}>
+                Enter the date when the client approved this material request
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowApprovalModal(false)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#E5E7EB',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={approveByClient}
+                disabled={savingApproval || !approvalDate}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: savingApproval ? '#9CA3AF' : COLORS.success,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: savingApproval || !approvalDate ? 'not-allowed' : 'pointer',
+                  fontWeight: '600',
+                  opacity: !approvalDate ? 0.5 : 1
+                }}
+              >
+                {savingApproval ? '⏳ Saving...' : '✓ Approve & Move to Open'}
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>
