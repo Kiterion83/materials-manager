@@ -15264,6 +15264,7 @@ function MIRPage({ user }) {
               <th style={styles.th}>Created</th>
               {activeTab === 'open' && <th style={styles.th}>Actions</th>}
               {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
+              {activeTab === 'closed' && <th style={styles.th}>Actions</th>}
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Attachment">📎</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>ℹ️</th>
@@ -15321,6 +15322,25 @@ function MIRPage({ user }) {
                 {activeTab === 'closed' && (
                   <td style={styles.td}>
                     {mir.closed_at ? new Date(mir.closed_at).toLocaleDateString() : '-'}
+                  </td>
+                )}
+                {activeTab === 'closed' && (
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => deleteMir(mir)}
+                      disabled={!canModify}
+                      style={{
+                        ...styles.button,
+                        backgroundColor: COLORS.primary,
+                        color: 'white',
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        opacity: !canModify ? 0.5 : 1,
+                        cursor: !canModify ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      🗑️ Delete
+                    </button>
                   </td>
                 )}
                 {/* V31.0: RK Document Download */}
