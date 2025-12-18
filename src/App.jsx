@@ -867,18 +867,26 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress, 
   try {
     if (onProgress) onProgress('Loading PDF library...');
     
-    // Load jsPDF
-    if (typeof jspdf === 'undefined' && typeof jsPDF === 'undefined') {
+    // Load jsPDF if not already loaded
+    if (!window.jspdf) {
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        script.onload = resolve;
+        script.onload = () => {
+          // Small delay to ensure library is fully initialized
+          setTimeout(resolve, 100);
+        };
         script.onerror = reject;
         document.head.appendChild(script);
       });
     }
     
     if (onProgress) onProgress('Generating PDF...');
+    
+    // Wait a bit more if needed
+    if (!window.jspdf) {
+      await new Promise(r => setTimeout(r, 200));
+    }
     
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('portrait', 'mm', 'a4');
@@ -16477,34 +16485,31 @@ function MIRPage({ user }) {
 // ============================================================
 const MS_RETURN_TEMPLATE_URL = 'https://eoxjnbghmoybmtspxzms.supabase.co/storage/v1/object/public/documents/templates/MS_Return_Voucher_Template.docx';
 
-// Generate MS Return Voucher Document
+// Generate MS Return Voucher Document as PDF
 async function generateReturnVoucherDocument(returnNumber, lines, onProgress) {
   try {
     if (onProgress) onProgress('Loading PDF library...');
     
-    // Load jsPDF
-    if (typeof jspdf === 'undefined' && typeof jsPDF === 'undefined') {
+    // Load jsPDF if not already loaded
+    if (!window.jspdf) {
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
-    
-    // Load autoTable plugin for tables
-    if (typeof jspdf === 'undefined' || !jspdf.jsPDF.API.autoTable) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js';
-        script.onload = resolve;
+        script.onload = () => {
+          // Small delay to ensure library is fully initialized
+          setTimeout(resolve, 100);
+        };
         script.onerror = reject;
         document.head.appendChild(script);
       });
     }
     
     if (onProgress) onProgress('Generating PDF...');
+    
+    // Wait a bit more if needed
+    if (!window.jspdf) {
+      await new Promise(r => setTimeout(r, 200));
+    }
     
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF('landscape', 'mm', 'a4');
@@ -17221,8 +17226,6 @@ function ReturnVoucherPage({ user }) {
               >
                 <option value="pcs">pcs</option>
                 <option value="mts">mts</option>
-                <option value="box">box</option>
-                <option value="case">case</option>
                 <option value="box">box</option>
                 <option value="case">case</option>
               </select>
