@@ -1,6 +1,13 @@
 // ============================================================
-// MATERIALS MANAGER V32.8 - APP.JSX COMPLETE
+// MATERIALS MANAGER V32.9 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V32.9 Changes:
+//   - RESPONSIVE: Full mobile/tablet optimization (iPhone, Samsung, iPad)
+//   - RESPONSIVE: Collapsible sidebar with hamburger menu on mobile
+//   - RESPONSIVE: Touch-friendly buttons (larger tap targets)
+//   - RESPONSIVE: Horizontally scrollable tables on small screens
+//   - RESPONSIVE: Optimized modals for mobile devices
+//   - RESPONSIVE: Adaptive font sizes and spacing
 // V32.8 Changes:
 //   - Internal Materials: Fixed .catch() error on request creation
 //   - MIR: Added Notes (📝) feature with modal for adding/viewing notes
@@ -174,7 +181,7 @@
 //   - P121 filter: ISO search limited to P121 project
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 // ============================================================
@@ -187,7 +194,449 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.6';
+const APP_VERSION = 'V32.9';
+
+// ============================================================
+// V32.9 RESPONSIVE HOOK
+// ============================================================
+const useResponsive = () => {
+  const [screenSize, setScreenSize] = useState({
+    isMobile: false,    // < 640px (phones)
+    isTablet: false,    // 640px - 1024px (tablets)
+    isDesktop: true,    // > 1024px
+    width: typeof window !== 'undefined' ? window.innerWidth : 1200
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      setScreenSize({
+        isMobile: width < 640,
+        isTablet: width >= 640 && width < 1024,
+        isDesktop: width >= 1024,
+        width
+      });
+    };
+
+    handleResize(); // Initial check
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return screenSize;
+};
+
+// ============================================================
+// V32.9 RESPONSIVE CSS INJECTION
+// ============================================================
+const injectResponsiveCSS = () => {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('responsive-styles')) return;
+  
+  const style = document.createElement('style');
+  style.id = 'responsive-styles';
+  style.textContent = `
+    /* ============================================================
+       V32.9 RESPONSIVE STYLES - MOBILE & TABLET OPTIMIZED
+       iPhone, Samsung, iPad, Android Tablets
+       ============================================================ */
+    
+    /* === BASE RESET === */
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    html, body {
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    /* === TOUCH TARGETS - iOS requires 44px minimum === */
+    @media (max-width: 1024px) {
+      button, .action-btn, .nav-item, input[type="checkbox"], input[type="radio"] {
+        min-height: 44px !important;
+      }
+      
+      /* Prevent iOS zoom on input focus */
+      input, select, textarea {
+        font-size: 16px !important;
+      }
+      
+      /* Better spacing for touch */
+      input, select {
+        padding: 12px !important;
+      }
+    }
+    
+    /* === MOBILE PHONES (< 640px) - iPhone SE to iPhone 15 Pro Max === */
+    @media (max-width: 640px) {
+      /* Larger touch targets */
+      button, .action-btn {
+        min-height: 48px !important;
+        min-width: 44px !important;
+        padding: 12px 16px !important;
+      }
+      
+      /* Compact table cells */
+      th, td {
+        padding: 8px 6px !important;
+        font-size: 11px !important;
+      }
+      
+      /* Hide less important columns on mobile */
+      .hide-mobile {
+        display: none !important;
+      }
+      
+      /* Stack forms vertically */
+      .form-row {
+        flex-direction: column !important;
+        gap: 12px !important;
+      }
+      
+      /* Full width inputs */
+      .form-row input, .form-row select {
+        width: 100% !important;
+        min-width: unset !important;
+      }
+      
+      /* Smaller headers */
+      h2 {
+        font-size: 18px !important;
+      }
+      
+      h3 {
+        font-size: 16px !important;
+      }
+      
+      /* Compact cards */
+      .card-header {
+        padding: 12px !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+        align-items: flex-start !important;
+      }
+      
+      /* Modal adjustments */
+      .modal-content {
+        width: 95vw !important;
+        max-width: none !important;
+        margin: 8px !important;
+        max-height: 90vh !important;
+        border-radius: 12px !important;
+      }
+      
+      /* Dashboard cards - 2 per row instead of 4 */
+      .dashboard-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+      }
+      
+      /* Stat boxes smaller */
+      .stat-box {
+        padding: 12px !important;
+      }
+      
+      .stat-box h3 {
+        font-size: 14px !important;
+      }
+      
+      .stat-box p {
+        font-size: 20px !important;
+      }
+      
+      /* Action dropdown wider on mobile */
+      .action-dropdown-menu {
+        min-width: 180px !important;
+      }
+      
+      /* Badge counts smaller */
+      .badge-count {
+        font-size: 10px !important;
+        min-width: 18px !important;
+        height: 18px !important;
+      }
+    }
+    
+    /* === TABLETS (640px - 1024px) - iPad Mini to iPad Pro === */
+    @media (min-width: 641px) and (max-width: 1024px) {
+      /* Medium touch targets */
+      button, .action-btn {
+        min-height: 44px !important;
+      }
+      
+      /* Table cells medium size */
+      th, td {
+        padding: 10px 8px !important;
+        font-size: 12px !important;
+      }
+      
+      /* Partially hide columns */
+      .hide-tablet {
+        display: none !important;
+      }
+      
+      /* Modal slightly narrower */
+      .modal-content {
+        width: 90vw !important;
+        max-width: 600px !important;
+      }
+      
+      /* Dashboard grid 3 columns */
+      .dashboard-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+      }
+    }
+    
+    /* === TABLE SCROLL CONTAINER === */
+    .table-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      position: relative;
+    }
+    
+    /* Scroll indicator */
+    .table-scroll::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 30px;
+      background: linear-gradient(to right, transparent, rgba(0,0,0,0.05));
+      pointer-events: none;
+      z-index: 1;
+    }
+    
+    /* Scrollbar styling */
+    .table-scroll::-webkit-scrollbar {
+      height: 8px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-track {
+      background: #F3F4F6;
+      border-radius: 4px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 4px;
+    }
+    
+    .table-scroll::-webkit-scrollbar-thumb:hover {
+      background: #94A3B8;
+    }
+    
+    /* === MOBILE SCROLL HINT === */
+    @media (max-width: 640px) {
+      .table-scroll-hint {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 8px;
+        background: #F3F4F6;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        color: #6B7280;
+      }
+      
+      .table-scroll-hint::before {
+        content: '👆';
+      }
+    }
+    
+    @media (min-width: 641px) {
+      .table-scroll-hint {
+        display: none;
+      }
+    }
+    
+    /* === SIDEBAR MOBILE ANIMATION === */
+    .sidebar-responsive {
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s ease;
+      will-change: transform;
+    }
+    
+    /* Overlay for mobile sidebar */
+    .sidebar-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 998;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+    }
+    
+    .sidebar-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+    
+    /* === HAMBURGER BUTTON === */
+    .hamburger-btn {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+    }
+    
+    .hamburger-btn span {
+      width: 24px;
+      height: 3px;
+      background: #374151;
+      border-radius: 2px;
+      transition: all 0.3s ease;
+    }
+    
+    /* === FIXED BOTTOM ACTIONS FOR MOBILE === */
+    @media (max-width: 640px) {
+      .fixed-bottom-actions {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        padding: 12px 16px;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+        z-index: 100;
+        display: flex;
+        gap: 8px;
+      }
+      
+      /* Add padding to main content to account for fixed bottom */
+      .main-content-with-fixed-bottom {
+        padding-bottom: 80px !important;
+      }
+    }
+    
+    /* === RESPONSIVE SEARCH BOX === */
+    @media (max-width: 640px) {
+      .search-container {
+        flex-direction: column !important;
+        gap: 8px !important;
+      }
+      
+      .search-container input {
+        width: 100% !important;
+      }
+      
+      .search-container button {
+        width: 100% !important;
+      }
+    }
+    
+    /* === CARD STACK ON MOBILE === */
+    @media (max-width: 640px) {
+      .card-row {
+        flex-direction: column !important;
+      }
+      
+      .card-row > * {
+        width: 100% !important;
+      }
+    }
+    
+    /* === STATUS BADGES COMPACT === */
+    @media (max-width: 640px) {
+      .status-badge {
+        font-size: 10px !important;
+        padding: 2px 6px !important;
+      }
+    }
+    
+    /* === LABEL MODAL FULLSCREEN ON MOBILE === */
+    @media (max-width: 640px) {
+      .label-modal {
+        position: fixed !important;
+        inset: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+        max-height: none !important;
+        border-radius: 0 !important;
+      }
+    }
+    
+    /* === PRINT STYLES === */
+    @media print {
+      .mobile-only,
+      .hamburger-btn,
+      .sidebar-overlay,
+      .fixed-bottom-actions,
+      .table-scroll-hint {
+        display: none !important;
+      }
+      
+      .table-scroll {
+        overflow: visible !important;
+      }
+      
+      .no-print {
+        display: none !important;
+      }
+    }
+    
+    /* === LANDSCAPE MODE ADJUSTMENTS === */
+    @media (max-width: 900px) and (orientation: landscape) {
+      .modal-content {
+        max-height: 80vh !important;
+        overflow-y: auto !important;
+      }
+      
+      /* Reduce header height */
+      header {
+        padding: 8px 16px !important;
+      }
+    }
+    
+    /* === SAFE AREA INSETS (iPhone X and later) === */
+    @supports (padding: env(safe-area-inset-bottom)) {
+      .fixed-bottom-actions {
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+      }
+      
+      .sidebar-mobile {
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+    }
+    
+    /* === RIPPLE EFFECT FOR TOUCH FEEDBACK === */
+    .touch-ripple {
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .touch-ripple::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255,255,255,0.3);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.3s, height 0.3s;
+    }
+    
+    .touch-ripple:active::after {
+      width: 200%;
+      height: 200%;
+    }
+  `;
+  document.head.appendChild(style);
+};
 
 // ============================================================
 // CONSTANTS AND CONFIGURATION
@@ -487,7 +936,37 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress) 
   }
 }
 
+// V32.9: Responsive Table Wrapper - makes tables horizontally scrollable on mobile
+function ResponsiveTable({ children, style = {} }) {
+  return (
+    <div 
+      className="table-scroll"
+      style={{ 
+        overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+        WebkitOverflowScrolling: 'touch',
+        marginLeft: '-16px',
+        marginRight: '-16px',
+        paddingLeft: '16px',
+        paddingRight: '16px',
+        ...style
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 function SearchBox({ value, onChange, placeholder = 'Search...' }) {
+  // V32.9: Responsive search box
+  const [isMobileView, setIsMobileView] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobileView(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
   return (
     <div style={{ marginBottom: '16px' }}>
       <input
@@ -496,14 +975,56 @@ function SearchBox({ value, onChange, placeholder = 'Search...' }) {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         style={{
-          padding: '10px 16px',
+          padding: isMobileView ? '12px 16px' : '10px 16px',
           border: '1px solid #d1d5db',
           borderRadius: '8px',
-          fontSize: '14px',
-          width: '300px',
-          outline: 'none'
+          fontSize: isMobileView ? '16px' : '14px', // 16px prevents iOS zoom
+          width: isMobileView ? '100%' : '300px',
+          maxWidth: '100%',
+          outline: 'none',
+          boxSizing: 'border-box'
         }}
       />
+    </div>
+  );
+}
+
+// V32.9: Responsive Table Wrapper with scroll indicator
+function ResponsiveTableWrapper({ children, showHint = true }) {
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [hasScrolled, setHasScrolled] = useState(false);
+  const scrollRef = useRef(null);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobileView(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
+  const handleScroll = () => {
+    if (!hasScrolled) setHasScrolled(true);
+  };
+  
+  return (
+    <div>
+      {isMobileView && showHint && !hasScrolled && (
+        <div className="table-scroll-hint">
+          Swipe left/right to see more columns
+        </div>
+      )}
+      <div 
+        ref={scrollRef}
+        className="table-scroll"
+        onScroll={handleScroll}
+        style={{ 
+          overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+          WebkitOverflowScrolling: 'touch',
+          marginBottom: '8px'
+        }}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -985,6 +1506,16 @@ const styles = {
 // COMPONENTI DI UTILITÀ
 // ============================================================
 function Modal({ isOpen, onClose, title, children, wide }) {
+  // V32.9: Get responsive state
+  const [isMobileView, setIsMobileView] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobileView(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
   if (!isOpen) return null;
   return (
     <div style={{
@@ -992,22 +1523,43 @@ function Modal({ isOpen, onClose, title, children, wide }) {
       inset: 0,
       backgroundColor: 'rgba(0,0,0,0.6)',
       display: 'flex',
-      alignItems: 'center',
+      alignItems: isMobileView ? 'flex-end' : 'center',
       justifyContent: 'center',
-      zIndex: 9999
+      zIndex: 9999,
+      padding: isMobileView ? 0 : '16px'
     }} onClick={onClose}>
       <div style={{
         backgroundColor: 'white',
-        borderRadius: '12px',
-        padding: '24px',
-        maxWidth: wide ? '900px' : '500px',
-        width: '90%',
-        maxHeight: '85vh',
-        overflow: 'auto'
+        borderRadius: isMobileView ? '16px 16px 0 0' : '12px',
+        padding: isMobileView ? '16px' : '24px',
+        maxWidth: isMobileView ? '100%' : (wide ? '900px' : '500px'),
+        width: isMobileView ? '100%' : '90%',
+        maxHeight: isMobileView ? '90vh' : '85vh',
+        overflow: 'auto',
+        WebkitOverflowScrolling: 'touch'
       }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600' }}>{title}</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#6b7280' }}>×</button>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          marginBottom: '20px',
+          paddingBottom: isMobileView ? '12px' : '0',
+          borderBottom: isMobileView ? '1px solid #E5E7EB' : 'none'
+        }}>
+          <h3 style={{ fontSize: isMobileView ? '16px' : '18px', fontWeight: '600' }}>{title}</h3>
+          <button onClick={onClose} style={{ 
+            background: 'none', 
+            border: 'none', 
+            fontSize: '24px', 
+            cursor: 'pointer', 
+            color: '#6b7280',
+            padding: '8px',
+            minWidth: '44px',
+            minHeight: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>×</button>
         </div>
         {children}
       </div>
@@ -2378,7 +2930,7 @@ function LoginScreen({ onLogin }) {
 // ============================================================
 // SIDEBAR NAVIGATION
 // ============================================================
-function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, badges }) {
+function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, badges, isMobile, onCloseMobile }) {
   const menuItems = [
     { id: 'dashboard', icon: '📊', label: 'Dashboard', perm: null },
     { id: 'requests', icon: '📋', label: 'Requests', perm: 'perm_requests' },
@@ -2406,28 +2958,58 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
     return user[item.perm] && user[item.perm] !== 'none';
   });
 
+  // V32.9: Handle menu item click with mobile close
+  const handleMenuClick = (itemId) => {
+    setCurrentPage(itemId);
+    if (isMobile && onCloseMobile) {
+      onCloseMobile();
+    }
+  };
+
   return (
-    <div style={{ ...styles.sidebar, ...(collapsed ? styles.sidebarCollapsed : {}) }}>
+    <>
       <div style={styles.logo}>
+        {/* V32.9: Close button for mobile */}
+        {isMobile && (
+          <button
+            onClick={onCloseMobile}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'white',
+              fontSize: '24px',
+              cursor: 'pointer',
+              padding: '8px',
+              marginRight: '8px',
+              minWidth: '44px',
+              minHeight: '44px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            ✕
+          </button>
+        )}
         {/* V32.5: Logo clickable to expand when sidebar is collapsed */}
         <img 
           src="/streicher-logo.png" 
           alt="STREICHER" 
           style={{ 
             ...styles.logoIcon, 
-            cursor: collapsed ? 'pointer' : 'default',
+            cursor: collapsed && !isMobile ? 'pointer' : 'default',
             transition: 'transform 0.2s'
           }} 
-          onClick={() => collapsed && setCollapsed(false)}
-          title={collapsed ? 'Click to expand sidebar' : ''}
+          onClick={() => collapsed && !isMobile && setCollapsed(false)}
+          title={collapsed && !isMobile ? 'Click to expand sidebar' : ''}
         />
-        {!collapsed && (
+        {(!collapsed || isMobile) && (
           <div>
             <h1 style={{ color: 'white', fontWeight: 'bold', fontSize: '14px' }}>MAX STREICHER</h1>
             <p style={{ color: '#9ca3af', fontSize: '12px' }}>Materials Manager</p>
           </div>
         )}
-        {!collapsed && (
+        {!collapsed && !isMobile && (
           <button
             onClick={() => setCollapsed(!collapsed)}
             style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '18px' }}
@@ -2437,18 +3019,33 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
         )}
       </div>
       
+      {/* V32.9: User info on mobile */}
+      {isMobile && user && (
+        <div style={{ 
+          padding: '12px 16px', 
+          borderBottom: '1px solid #374151',
+          backgroundColor: 'rgba(255,255,255,0.05)'
+        }}>
+          <p style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>{user.full_name}</p>
+          <p style={{ color: '#9ca3af', fontSize: '12px' }}>{user.role} - Badge: {user.badge_number}</p>
+        </div>
+      )}
+      
       <nav style={styles.nav}>
         {visibleItems.map(item => (
           <div
             key={item.id}
-            onClick={() => setCurrentPage(item.id)}
+            onClick={() => handleMenuClick(item.id)}
             style={{
               ...styles.navItem,
-              ...(currentPage === item.id ? styles.navItemActive : {})
+              ...(currentPage === item.id ? styles.navItemActive : {}),
+              // V32.9: Touch-friendly padding on mobile
+              padding: isMobile ? '14px 16px' : '12px 16px',
+              minHeight: isMobile ? '48px' : 'auto'
             }}
           >
             <span style={{ fontSize: '20px' }}>{item.icon}</span>
-            {!collapsed && (
+            {(!collapsed || isMobile) && (
               <span style={{ fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 {item.label}
                 {badges[item.id] > 0 && (
@@ -2470,9 +3067,13 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
       </nav>
       
       <div style={{ padding: '16px', borderTop: '1px solid #374151' }}>
-        <div style={{ ...styles.navItem, padding: '8px 16px' }}>
+        <div style={{ 
+          ...styles.navItem, 
+          padding: isMobile ? '14px 16px' : '8px 16px',
+          minHeight: isMobile ? '48px' : 'auto'
+        }}>
           <span>🚪</span>
-          {!collapsed && <span style={{ fontSize: '14px' }}>Logout</span>}
+          {(!collapsed || isMobile) && <span style={{ fontSize: '14px' }}>Logout</span>}
         </div>
       </div>
     </div>
@@ -2587,13 +3188,36 @@ function Dashboard({ user, setActivePage }) {
     
     setLoading(false);
   };
+  
+  // V32.9: Responsive state for Dashboard
+  const [screenSize, setScreenSize] = useState({ isMobile: false, isTablet: false });
+  
+  useEffect(() => {
+    const checkScreen = () => {
+      const width = window.innerWidth;
+      setScreenSize({
+        isMobile: width < 640,
+        isTablet: width >= 640 && width < 1024
+      });
+    };
+    checkScreen();
+    window.addEventListener('resize', checkScreen);
+    return () => window.removeEventListener('resize', checkScreen);
+  }, []);
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
-  // V28.5: Clickable dashboard box style
+  // V32.9: Responsive grid columns
+  const getGridColumns = () => {
+    if (screenSize.isMobile) return 'repeat(2, 1fr)';
+    if (screenSize.isTablet) return 'repeat(3, 1fr)';
+    return 'repeat(5, 1fr)';
+  };
+
+  // V28.5: Clickable dashboard box style - V32.9 responsive
   const boxStyle = (color, clickable = true) => ({
     backgroundColor: color,
-    padding: '20px',
+    padding: screenSize.isMobile ? '12px' : '20px',
     borderRadius: '12px',
     color: 'white',
     textAlign: 'center',
@@ -2607,80 +3231,84 @@ function Dashboard({ user, setActivePage }) {
       setActivePage(pageId);
     }
   };
+  
+  // V32.9: Responsive font sizes
+  const statFontSize = screenSize.isMobile ? '24px' : '36px';
+  const labelFontSize = screenSize.isMobile ? '12px' : '14px';
 
   return (
     <div>
-      <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>📊 Request Status Overview</h2>
-      <p style={{ color: '#6b7280', fontSize: '13px', marginBottom: '16px' }}>Click on any box to navigate to that section</p>
+      <h2 style={{ fontSize: screenSize.isMobile ? '18px' : '20px', fontWeight: 'bold', marginBottom: screenSize.isMobile ? '12px' : '20px' }}>📊 Request Status Overview</h2>
+      <p style={{ color: '#6b7280', fontSize: screenSize.isMobile ? '11px' : '13px', marginBottom: '16px' }}>Click on any box to navigate to that section</p>
       
-      {/* Main Status Grid - 5 columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* Main Status Grid - V32.9 Responsive: 2 cols mobile, 3 cols tablet, 5 cols desktop */}
+      <div style={{ display: 'grid', gridTemplateColumns: getGridColumns(), gap: screenSize.isMobile ? '8px' : '16px', marginBottom: '24px' }}>
         <div 
           style={boxStyle(COLORS.secondary)} 
           onClick={() => handleBoxClick('whYard')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Yard</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.yard}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>Yard</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.yard}</p>
         </div>
         <div 
           style={boxStyle(COLORS.info)} 
           onClick={() => handleBoxClick('whSite')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>WH Site</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.site}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>WH Site</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.site}</p>
         </div>
         <div 
           style={boxStyle(COLORS.purple)} 
           onClick={() => handleBoxClick('engineering')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Engineering</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.eng}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>Engineering</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.eng}</p>
         </div>
         <div 
           style={boxStyle(COLORS.yellow)} 
           onClick={() => handleBoxClick('management')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Management</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.mng}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>Management</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.mng}</p>
         </div>
         <div 
           style={boxStyle(COLORS.pink)} 
           onClick={() => handleBoxClick('spareParts')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Spare Parts</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.spare}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>Spare Parts</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.spare}</p>
         </div>
       </div>
 
-      {/* Second Row - 5 columns */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px' }}>
+      {/* Second Row - V32.9 Responsive */}
+      <div style={{ display: 'grid', gridTemplateColumns: getGridColumns(), gap: screenSize.isMobile ? '8px' : '16px', marginBottom: '24px' }}>
         <div 
           style={boxStyle(COLORS.orange)} 
           onClick={() => handleBoxClick('orders')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Orders</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.order}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>Orders</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.order}</p>
         </div>
         <div 
           style={boxStyle(COLORS.cyan)} 
           onClick={() => handleBoxClick('siteIn')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Site IN</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.siteIn}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>Site IN</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.siteIn}</p>
         </div>
         <div 
           style={boxStyle(COLORS.success)} 
@@ -2688,8 +3316,8 @@ function Dashboard({ user, setActivePage }) {
           onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>To Collect</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.toCollect}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>To Collect</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.toCollect}</p>
         </div>
         <div 
           style={boxStyle('#8B5CF6')} 
@@ -2697,8 +3325,8 @@ function Dashboard({ user, setActivePage }) {
           onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>TestPack</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.tp}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>TestPack</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.tp}</p>
         </div>
         <div 
           style={boxStyle(COLORS.teal)} 
@@ -2706,29 +3334,29 @@ function Dashboard({ user, setActivePage }) {
           onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>HF</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.hf}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>HF</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.hf}</p>
         </div>
       </div>
 
-      {/* Third Row - MIR, Lost, Broken (Lost and Broken NOT clickable) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+      {/* Third Row - MIR, Lost, Broken (Lost and Broken NOT clickable) - V32.9 Responsive */}
+      <div style={{ display: 'grid', gridTemplateColumns: screenSize.isMobile ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: screenSize.isMobile ? '8px' : '16px' }}>
         <div 
           style={boxStyle(COLORS.primary)} 
           onClick={() => handleBoxClick('mir')}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}
+          onMouseEnter={(e) => { if (!screenSize.isMobile) { e.currentTarget.style.transform = 'scale(1.03)'; e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.15)'; }}}
           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)'; }}
         >
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>📋 MIR Open</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.mirOpen}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>📋 MIR Open</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.mirOpen}</p>
         </div>
         <div style={boxStyle('#DC2626', false)}>
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>⚠️ Lost</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.lost}</p>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>⚠️ Lost</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.lost}</p>
         </div>
-        <div style={boxStyle('#7C3AED', false)}>
-          <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🔧 Broken</p>
-          <p style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.broken}</p>
+        <div style={{...boxStyle('#7C3AED', false), ...(screenSize.isMobile ? { gridColumn: 'span 2' } : {})}}>
+          <p style={{ fontSize: labelFontSize, opacity: 0.9, marginBottom: '8px' }}>🔧 Broken</p>
+          <p style={{ fontSize: statFontSize, fontWeight: 'bold' }}>{stats.broken}</p>
         </div>
       </div>
     </div>
@@ -4937,7 +5565,7 @@ function WHSitePage({ user }) {
           <h4 style={{ fontWeight: '600', color: '#B45309', marginBottom: '12px' }}>
             🔍 Engineering Checks ({engChecks.length})
           </h4>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -5112,7 +5740,7 @@ function WHSitePage({ user }) {
             🖨️ Print
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -6323,7 +6951,7 @@ function WHYardPage({ user }) {
           <h4 style={{ fontWeight: '600', color: '#B45309', marginBottom: '12px' }}>
             🔍 Engineering Checks ({engChecks.length})
           </h4>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -6488,7 +7116,7 @@ function WHYardPage({ user }) {
             🖨️ Print
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -7215,7 +7843,7 @@ function SiteInPage({ user }) {
             🖨️ Print
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -7830,7 +8458,7 @@ function EngineeringPage({ user }) {
           )}
         </div>
         {filteredWaiting.length > 0 ? (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -7907,7 +8535,7 @@ function EngineeringPage({ user }) {
             🖨️ Print
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -8351,7 +8979,7 @@ function HFPage({ user }) {
               <h4 style={{ fontWeight: '600', marginBottom: '12px' }}>📦 Delivered HF ({hfLogList.filter(hf => 
                 !hfLogSearchTerm || hf.hf_number?.toLowerCase().includes(hfLogSearchTerm.toLowerCase())
               ).length})</h4>
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table style={styles.table}>
                   <thead>
                     <tr>
@@ -9415,7 +10043,7 @@ function TestPackPage({ user }) {
                 (!logSearchTerm || tp.test_pack_number?.toLowerCase().includes(logSearchTerm.toLowerCase())) &&
                 (!selectedLogBox || tp.status === selectedLogBox)
               ).length})</h4>
-              <div style={{ overflowX: 'auto' }}>
+              <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
                 <table style={styles.table}>
                   <thead>
                     <tr>
@@ -10295,7 +10923,7 @@ function InternalMaterialsPage({ user }) {
               )}
             </div>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -10668,7 +11296,7 @@ function InternalMaterialsPage({ user }) {
           <div style={styles.cardHeader}>
             <h3 style={{ fontWeight: '600' }}>📜 Request History</h3>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -11018,7 +11646,7 @@ function InternalMaterialsPage({ user }) {
 
           {/* Footer */}
           <div className="footer" style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #ccc', textAlign: 'center', color: '#999', fontSize: '11px' }}>
-            <p>Generated: {new Date().toLocaleString()} | Materials Manager V32.8 | MAX STREICHER S.p.A.</p>
+            <p>Generated: {new Date().toLocaleString()} | Materials Manager V32.9 | MAX STREICHER S.p.A.</p>
           </div>
         </div>
       </Modal>
@@ -11259,7 +11887,7 @@ function ToBeCollectedPage({ user }) {
       </div>
 
       <div style={styles.card}>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -13191,7 +13819,7 @@ function SparePartsPage({ user }) {
             🖨️ Print
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           {renderTable(filteredClient, 'Client')}
         </div>
       </div>
@@ -13203,7 +13831,7 @@ function SparePartsPage({ user }) {
           <div style={{ ...styles.cardHeader, backgroundColor: '#DCFCE7' }}>
             <h3 style={{ fontWeight: '600', color: '#166534' }}>✅ Received Client Spare Parts</h3>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -13769,7 +14397,7 @@ function OrdersPage({ user }) {
                 style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
               >🖨️ Print</button>
             </div>
-            <div style={{ overflowX: 'auto' }}>{renderToOrderTable(toOrderInternal)}</div>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>{renderToOrderTable(toOrderInternal)}</div>
           </div>
           {/* Client Section */}
           <div style={styles.card}>
@@ -13793,7 +14421,7 @@ function OrdersPage({ user }) {
                 style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
               >🖨️ Print</button>
             </div>
-            <div style={{ overflowX: 'auto' }}>{renderToOrderTable(toOrderClient)}</div>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>{renderToOrderTable(toOrderClient)}</div>
           </div>
         </>
       )}
@@ -13822,7 +14450,7 @@ function OrdersPage({ user }) {
                 style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
               >🖨️ Print</button>
             </div>
-            <div style={{ overflowX: 'auto' }}>{renderOrderedTable(orderedInternal)}</div>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>{renderOrderedTable(orderedInternal)}</div>
           </div>
           {/* Client Section */}
           <div style={styles.card}>
@@ -13846,7 +14474,7 @@ function OrdersPage({ user }) {
                 style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
               >🖨️ Print</button>
             </div>
-            <div style={{ overflowX: 'auto' }}>{renderOrderedTable(orderedClient)}</div>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>{renderOrderedTable(orderedClient)}</div>
           </div>
         </>
       )}
@@ -14027,7 +14655,7 @@ function ManagementPage({ user }) {
             🖨️ Print
           </button>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead>
               <tr>
@@ -15339,7 +15967,7 @@ function LogPage({ user }) {
       {activeTab === 'movements' && (
         <div style={styles.card}>
           <div style={styles.cardHeader}><h3 style={{ fontWeight: '600' }}>Movements Log ({filteredMovements.length})</h3></div>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -15399,7 +16027,7 @@ function LogPage({ user }) {
           <div style={{ ...styles.cardHeader }}>
             <h3 style={{ fontWeight: '600' }}>Request Tracker ({filteredRequests.length})</h3>
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -16148,7 +16776,7 @@ function DatabasePage({ user }) {
         <div style={styles.cardHeader}>
           <h3 style={{ fontWeight: '600' }}>Inventory Database ({inventoryData.length})</h3>
         </div>
-        <div style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto' }}>
+        <div style={{ maxHeight: '600px', overflowY: 'auto', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
           <table style={styles.table}>
             <thead style={{ position: 'sticky', top: 0 }}>
               <tr>
@@ -16417,6 +17045,29 @@ export default function App() {
   // V28.10: Notification system
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  
+  // V32.9: Responsive state
+  const { isMobile, isTablet, isDesktop, width } = useResponsive();
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  
+  // V32.9: Inject responsive CSS on mount
+  useEffect(() => {
+    injectResponsiveCSS();
+  }, []);
+  
+  // V32.9: Auto-close mobile sidebar on page change
+  useEffect(() => {
+    if (isMobile) {
+      setMobileSidebarOpen(false);
+    }
+  }, [currentPage, isMobile]);
+  
+  // V32.9: Auto-collapse sidebar on tablet
+  useEffect(() => {
+    if (isTablet && !sidebarCollapsed) {
+      setSidebarCollapsed(true);
+    }
+  }, [isTablet]);
 
   // V32.5: Set favicon and page title
   useEffect(() => {
@@ -16623,23 +17274,91 @@ export default function App() {
 
   return (
     <div style={styles.container}>
-      <Sidebar
-        currentPage={currentPage}
-        setCurrentPage={setCurrentPage}
-        user={user}
-        collapsed={sidebarCollapsed}
-        setCollapsed={setSidebarCollapsed}
-        badges={badges}
-      />
-      <div style={styles.main}>
-        <header style={styles.header}>
-          <div>
-            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>{pageTitles[currentPage]}</h2>
-            <p style={{ fontSize: '12px', color: '#6b7280' }}>
-              {user.full_name} ({user.role}) - Badge: {user.badge_number}
-            </p>
+      {/* V32.9: Mobile sidebar overlay */}
+      {isMobile && (
+        <div 
+          className={`sidebar-overlay ${mobileSidebarOpen ? 'visible' : ''}`}
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+      
+      {/* V32.9: Responsive Sidebar */}
+      <div style={{
+        ...styles.sidebar,
+        ...(sidebarCollapsed && !isMobile ? styles.sidebarCollapsed : {}),
+        // Mobile: slide in/out from left
+        ...(isMobile ? {
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: '280px',
+          transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+          zIndex: 999,
+          transition: 'transform 0.3s ease'
+        } : {})
+      }}>
+        <Sidebar
+          currentPage={currentPage}
+          setCurrentPage={setCurrentPage}
+          user={user}
+          collapsed={sidebarCollapsed && !isMobile}
+          setCollapsed={setSidebarCollapsed}
+          badges={badges}
+          isMobile={isMobile}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
+      </div>
+      
+      <div style={{
+        ...styles.main,
+        // V32.9: On mobile, main takes full width
+        marginLeft: isMobile ? 0 : undefined
+      }}>
+        <header style={{
+          ...styles.header,
+          // V32.9: Responsive header padding
+          padding: isMobile ? '12px 16px' : '16px 24px'
+        }}>
+          {/* V32.9: Hamburger menu button for mobile */}
+          {isMobile && (
+            <button
+              onClick={() => setMobileSidebarOpen(true)}
+              className="hamburger-btn"
+              style={{
+                background: 'none',
+                border: 'none',
+                fontSize: '24px',
+                cursor: 'pointer',
+                padding: '8px',
+                marginRight: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minWidth: '44px',
+                minHeight: '44px'
+              }}
+            >
+              ☰
+            </button>
+          )}
+          
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ 
+              fontSize: isMobile ? '16px' : '20px', 
+              fontWeight: '600', 
+              color: '#1f2937',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>{pageTitles[currentPage]}</h2>
+            {!isMobile && (
+              <p style={{ fontSize: '12px', color: '#6b7280' }}>
+                {user.full_name} ({user.role}) - Badge: {user.badge_number}
+              </p>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: isMobile ? '8px' : '12px', alignItems: 'center' }}>
             {/* V28.10: Notification Bell */}
             <div style={{ position: 'relative' }}>
               <button 
@@ -16648,8 +17367,13 @@ export default function App() {
                   ...styles.button, 
                   backgroundColor: notifications.length > 0 ? '#FEF3C7' : '#f3f4f6',
                   border: notifications.length > 0 ? '2px solid #F59E0B' : '1px solid #d1d5db',
-                  padding: '8px 12px',
-                  position: 'relative'
+                  padding: isMobile ? '10px' : '8px 12px',
+                  position: 'relative',
+                  minWidth: '44px',
+                  minHeight: '44px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
                 🔔
@@ -16674,15 +17398,16 @@ export default function App() {
                 )}
               </button>
               
-              {/* Notification Dropdown */}
+              {/* Notification Dropdown - V32.9: Responsive */}
               {showNotifications && (
                 <div style={{
-                  position: 'absolute',
-                  top: '100%',
-                  right: 0,
-                  marginTop: '8px',
-                  width: '350px',
-                  maxHeight: '400px',
+                  position: isMobile ? 'fixed' : 'absolute',
+                  top: isMobile ? '60px' : '100%',
+                  right: isMobile ? '8px' : 0,
+                  left: isMobile ? '8px' : 'auto',
+                  marginTop: isMobile ? 0 : '8px',
+                  width: isMobile ? 'auto' : '350px',
+                  maxHeight: isMobile ? 'calc(100vh - 80px)' : '400px',
                   overflowY: 'auto',
                   backgroundColor: 'white',
                   borderRadius: '8px',
@@ -16742,11 +17467,25 @@ export default function App() {
               )}
             </div>
             
-            <button onClick={loadBadges} style={{ ...styles.button, ...styles.buttonSecondary }}>🔄 Refresh</button>
-            <button onClick={handleLogout} style={{ ...styles.button, backgroundColor: COLORS.gray, color: 'white' }}>🚪 Logout</button>
+            {/* V32.9: Hide refresh on mobile to save space */}
+            {!isMobile && (
+              <button onClick={loadBadges} style={{ ...styles.button, ...styles.buttonSecondary }}>🔄 Refresh</button>
+            )}
+            <button onClick={handleLogout} style={{ 
+              ...styles.button, 
+              backgroundColor: COLORS.gray, 
+              color: 'white',
+              padding: isMobile ? '10px 12px' : '8px 16px',
+              minWidth: '44px',
+              minHeight: '44px'
+            }}>🚪{!isMobile && ' Logout'}</button>
           </div>
         </header>
-        <main style={styles.content}>
+        <main style={{
+          ...styles.content,
+          // V32.9: Responsive padding
+          padding: isMobile ? '12px' : isTablet ? '16px' : '24px'
+        }}>
           {renderPage()}
         </main>
       </div>
