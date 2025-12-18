@@ -8,6 +8,12 @@
 //   - RESPONSIVE: Horizontally scrollable tables on small screens
 //   - RESPONSIVE: Optimized modals for mobile devices
 //   - RESPONSIVE: Adaptive font sizes and spacing
+//   - MIR: Delete with proper error handling (requires RLS policy)
+//   - MIR: Mechanical type now supports file attachment (drag & drop)
+//   - MIR: File upload to Supabase Storage
+//   - FIX: HF/TestPack priority logic - TestPack takes priority
+//   - FIX: If request has BOTH hf_number AND test_pack_number → TestPack only
+//   - FIX: HF page excludes items that also have test_pack_number
 // V32.8 Changes:
 //   - Internal Materials: Fixed .catch() error on request creation
 //   - MIR: Added Notes (📝) feature with modal for adding/viewing notes
@@ -3139,18 +3145,21 @@ function Dashboard({ user, setActivePage }) {
     }
     
     // V29.0: Count unique hf_numbers with pending items (same as sidebar badge)
+    // V32.9: Exclude items that also have test_pack_number (TestPack takes priority)
     const { data: hfData } = await supabase
       .from('requests')
-      .select('hf_number')
-      .not('hf_number', 'is', null);
+      .select('hf_number, test_pack_number')
+      .not('hf_number', 'is', null)
+      .is('test_pack_number', null);
     let hfCount = 0;
     if (hfData) {
       const uniqueHFs = [...new Set(hfData.map(r => r.hf_number).filter(Boolean))];
       for (const hfNum of uniqueHFs) {
         const { data: comps } = await supabase
           .from('request_components')
-          .select('id, requests!inner(hf_number)')
+          .select('id, requests!inner(hf_number, test_pack_number)')
           .eq('requests.hf_number', hfNum)
+          .is('requests.test_pack_number', null)
           .in('status', ['HF', 'Eng']);
         if (comps && comps.length > 0) hfCount++;
       }
@@ -8656,11 +8665,13 @@ function HFPage({ user }) {
       // - HF: Components ready in HF queue
       // - Eng: Components still in Engineering (for monitoring)
       // V32.4: Exclude TestPack requests - HF page is only for Piping/Erection
+      // V32.9: ALSO exclude items with test_pack_number (TestPack takes priority)
       const { data } = await supabase
         .from('request_components')
-        .select(`*, requests (request_number, sub_number, request_type, hf_number, requester_user_id)`)
+        .select(`*, requests (request_number, sub_number, request_type, hf_number, test_pack_number, requester_user_id)`)
         .not('requests.hf_number', 'is', null)
         .neq('requests.request_type', 'TestPack')
+        .is('requests.test_pack_number', null)
         .in('status', ['HF', 'Eng']);
       
       if (data) {
@@ -8714,10 +8725,12 @@ function HFPage({ user }) {
 
         // V30.0: Calculate enhanced HF Log stats
         // V32.5: Exclude TestPack requests from HF Log (they have their own TestPack page)
+        // V32.9: Also exclude items with test_pack_number (TestPack takes priority)
         const { data: allHFRequests } = await supabase
           .from('requests')
-          .select('id, hf_number, created_by_name, request_type')
+          .select('id, hf_number, test_pack_number, created_by_name, request_type')
           .not('hf_number', 'is', null)
+          .is('test_pack_number', null)
           .neq('request_type', 'TestPack');
         
         if (allHFRequests) {
@@ -14738,6 +14751,11 @@ function MIRPage({ user }) {
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
   
+  // V32.9: File upload for Mechanical MIR
+  const [mirFile, setMirFile] = useState(null);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  
   // V32.7: MIR Notes feature
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [selectedMirForNotes, setSelectedMirForNotes] = useState(null);
@@ -14777,20 +14795,64 @@ function MIRPage({ user }) {
       return;
     }
 
-    await supabase.from('mirs').insert({
-      mir_type: mirType,
-      mir_number: mirType === 'Piping' ? mirNumber : null,
-      rk_number: rkNumber,
-      category: mirType === 'Piping' ? category : null,
-      forecast_date: forecastDate || null,
-      priority: priority,
-      description: mirDescription || null,
-      created_by: user.id,
-      status: 'Open'
-    });
+    setUploadingFile(true);
+    
+    try {
+      let fileUrl = null;
+      let fileName = null;
+      
+      // V32.9: Upload file if present (for Mechanical MIRs)
+      if (mirFile) {
+        const fileExt = mirFile.name.split('.').pop();
+        const filePath = `mir-attachments/RK_${rkNumber}_${Date.now()}.${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(filePath, mirFile);
+        
+        if (uploadError) {
+          console.error('File upload error:', uploadError);
+          // Don't block MIR creation if upload fails, just warn
+          alert('Warning: File upload failed. MIR will be created without attachment.');
+        } else {
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('documents')
+            .getPublicUrl(filePath);
+          
+          fileUrl = urlData?.publicUrl || null;
+          fileName = mirFile.name;
+        }
+      }
 
-    setShowCreateModal(false);
-    loadMirs();
+      const { error } = await supabase.from('mirs').insert({
+        mir_type: mirType,
+        mir_number: mirType === 'Piping' ? mirNumber : null,
+        rk_number: rkNumber,
+        category: mirType === 'Piping' ? category : null,
+        forecast_date: forecastDate || null,
+        priority: priority,
+        description: mirDescription || null,
+        created_by: user.id,
+        status: 'Open',
+        file_url: fileUrl,
+        file_name: fileName
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Reset form
+      setMirFile(null);
+      setShowCreateModal(false);
+      loadMirs();
+    } catch (err) {
+      console.error('Create MIR error:', err);
+      alert('Error creating MIR: ' + err.message);
+    }
+    
+    setUploadingFile(false);
   };
 
   // V27: Close MIR
@@ -14810,9 +14872,18 @@ function MIRPage({ user }) {
   const deleteMir = async (mir) => {
     if (!window.confirm(`Delete MIR ${mir.mir_number || mir.rk_number}? This cannot be undone.`)) return;
     
-    await supabase.from('mirs').delete().eq('id', mir.id);
-    
-    loadMirs();
+    try {
+      const { error } = await supabase.from('mirs').delete().eq('id', mir.id);
+      if (error) {
+        console.error('Delete MIR error:', error);
+        alert('Error deleting MIR: ' + error.message);
+        return;
+      }
+      loadMirs();
+    } catch (err) {
+      console.error('Delete MIR exception:', err);
+      alert('Error deleting MIR: ' + err.message);
+    }
   };
 
   // V32.7: MIR Notes functions
@@ -15170,6 +15241,7 @@ function MIRPage({ user }) {
               {activeTab === 'open' && <th style={styles.th}>Actions</th>}
               {activeTab === 'closed' && <th style={styles.th}>Closed</th>}
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📄</th>
+              <th style={{ ...styles.th, textAlign: 'center', width: '50px' }} title="Attachment">📎</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>ℹ️</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>📝</th>
             </tr>
@@ -15244,6 +15316,26 @@ function MIRPage({ user }) {
                   >
                     {downloadingRK === mir.id ? '⏳' : '📄'}
                   </button>
+                </td>
+                {/* V32.9: File Attachment */}
+                <td style={{ ...styles.td, textAlign: 'center' }}>
+                  {mir.file_url ? (
+                    <a
+                      href={mir.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={`Download: ${mir.file_name || 'Attachment'}`}
+                      style={{
+                        color: COLORS.success,
+                        textDecoration: 'none',
+                        fontSize: '16px'
+                      }}
+                    >
+                      📎
+                    </a>
+                  ) : (
+                    <span style={{ color: '#D1D5DB', fontSize: '16px' }} title="No attachment">📎</span>
+                  )}
                 </td>
                 {/* V31.0: RK Download Info */}
                 <td style={{ ...styles.td, textAlign: 'center' }}>
@@ -15339,6 +15431,74 @@ function MIRPage({ user }) {
             <div style={{ marginBottom: '16px' }}>
               <label style={{ ...styles.label, color: COLORS.primary }}>RK Number * (4 digits)</label>
               <input type="text" value={rkNumber} onChange={(e) => setRkNumber(e.target.value.replace(/\D/g, '').slice(0, 4))} style={{ ...styles.input, fontSize: '18px', textAlign: 'center', letterSpacing: '4px', maxWidth: '200px' }} placeholder="0000" maxLength="4" />
+              
+              {/* V32.9: File Upload with Drag & Drop */}
+              <div style={{ marginTop: '16px' }}>
+                <label style={{ ...styles.label, color: COLORS.purple }}>📎 Attach Document (optional)</label>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    const file = e.dataTransfer.files[0];
+                    if (file) setMirFile(file);
+                  }}
+                  onClick={() => document.getElementById('mir-file-input').click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? COLORS.purple : '#D1D5DB'}`,
+                    borderRadius: '8px',
+                    padding: '24px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    backgroundColor: dragOver ? '#F5F3FF' : '#F9FAFB',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <input
+                    id="mir-file-input"
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) setMirFile(file);
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  {mirFile ? (
+                    <div>
+                      <span style={{ fontSize: '32px' }}>📄</span>
+                      <p style={{ fontWeight: '600', color: COLORS.purple, marginTop: '8px' }}>{mirFile.name}</p>
+                      <p style={{ fontSize: '12px', color: '#6B7280' }}>{(mirFile.size / 1024).toFixed(1)} KB</p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setMirFile(null); }}
+                        style={{
+                          marginTop: '8px',
+                          padding: '4px 12px',
+                          backgroundColor: COLORS.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <span style={{ fontSize: '32px' }}>📁</span>
+                      <p style={{ fontWeight: '500', color: '#374151', marginTop: '8px' }}>
+                        Drag & drop a file here
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#9CA3AF' }}>
+                        or click to browse (PDF, Word, Excel, Images)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -15402,7 +15562,18 @@ function MIRPage({ user }) {
         {/* Buttons */}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', paddingTop: '16px', borderTop: '1px solid #e5e7eb' }}>
           <button onClick={() => setShowCreateModal(false)} style={{ ...styles.button, ...styles.buttonSecondary }}>Cancel</button>
-          <button onClick={createMir} style={{ ...styles.button, ...styles.buttonPrimary }}>Create MIR</button>
+          <button 
+            onClick={createMir} 
+            disabled={uploadingFile}
+            style={{ 
+              ...styles.button, 
+              ...styles.buttonPrimary,
+              opacity: uploadingFile ? 0.7 : 1,
+              cursor: uploadingFile ? 'wait' : 'pointer'
+            }}
+          >
+            {uploadingFile ? '⏳ Uploading...' : 'Create MIR'}
+          </button>
         </div>
       </Modal>
 
@@ -17157,10 +17328,12 @@ export default function App() {
     const { data: spareData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Spare');
     const { data: mngData } = await supabase.from('request_components').select('id', { count: 'exact' }).eq('status', 'Mng');
     // V29.0: HF badge counts unique HF numbers (not components)
+    // V32.9: Exclude items that also have test_pack_number (TestPack takes priority)
     const { data: hfData } = await supabase
       .from('requests')
-      .select('hf_number')
-      .not('hf_number', 'is', null);
+      .select('hf_number, test_pack_number')
+      .not('hf_number', 'is', null)
+      .is('test_pack_number', null);
     // Get unique HF numbers that have pending components
     let hfCount = 0;
     if (hfData) {
@@ -17168,8 +17341,9 @@ export default function App() {
       for (const hfNum of uniqueHFs) {
         const { data: comps } = await supabase
           .from('request_components')
-          .select('id, requests!inner(hf_number)')
+          .select('id, requests!inner(hf_number, test_pack_number)')
           .eq('requests.hf_number', hfNum)
+          .is('requests.test_pack_number', null)
           .in('status', ['HF', 'Eng']);
         if (comps && comps.length > 0) hfCount++;
       }
