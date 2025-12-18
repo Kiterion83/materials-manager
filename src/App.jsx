@@ -14841,6 +14841,7 @@ function MIRPage({ user }) {
   const [descLine3, setDescLine3] = useState('');
   const [descLine4, setDescLine4] = useState('');
   const [descLine5, setDescLine5] = useState('');
+  const [mirTitle, setMirTitle] = useState(''); // V32.9: Optional MIR title/description
   const [activeTab, setActiveTab] = useState('open');
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -14876,6 +14877,7 @@ function MIRPage({ user }) {
     setDescLine3('');
     setDescLine4('');
     setDescLine5('');
+    setMirTitle('');
     setMirFile(null);
     setShowCreateModal(true);
   };
@@ -14930,6 +14932,7 @@ function MIRPage({ user }) {
         category: mirType === 'Piping' ? category : null,
         forecast_date: forecastDate || null,
         priority: priority,
+        title: mirTitle || null, // V32.9: Optional MIR title
         // V32.9: Multiple description lines
         desc_line_1: mirType === 'Mechanical' ? descLine1 : null, // Only for Mechanical
         desc_line_2: descLine2 || null,
@@ -14951,6 +14954,7 @@ function MIRPage({ user }) {
 
       // Reset form
       setMirFile(null);
+      setMirTitle('');
       setDescLine1('');
       setDescLine2('');
       setDescLine3('');
@@ -15339,14 +15343,14 @@ function MIRPage({ user }) {
                 <h1>📋 Material Issue Reports - ${activeTab === 'open' ? 'Open' : 'Closed'}</h1>
                 <p>Printed: ${new Date().toLocaleString()} | Total: ${displayedMirs.length}</p>
                 <table>
-                  <tr><th>Priority</th><th>Type</th><th>MIR #</th><th>RK #</th><th>Category</th><th>Description</th><th>Forecast</th><th>Status</th></tr>
+                  <tr><th>Priority</th><th>Type</th><th>MIR #</th><th>RK #</th><th>Category</th><th>Titolo</th><th>Forecast</th><th>Status</th></tr>
                   ${displayedMirs.map(mir => `<tr>
                     <td class="${mir.priority === 'High' ? 'high' : mir.priority === 'Low' ? 'low' : ''}">${mir.priority}</td>
                     <td>${mir.mir_type}</td>
                     <td>${mir.mir_number || '-'}</td>
                     <td>${mir.rk_number}</td>
                     <td>${mir.category || '-'}</td>
-                    <td>${mir.description || '-'}</td>
+                    <td>${mir.title || '-'}</td>
                     <td>${mir.forecast_date ? new Date(mir.forecast_date).toLocaleDateString() : '-'}</td>
                     <td>${mir.status}</td>
                   </tr>`).join('')}
@@ -15378,7 +15382,7 @@ function MIRPage({ user }) {
               <th style={styles.th}>MIR #</th>
               <th style={styles.th}>RK #</th>
               <th style={styles.th}>Category</th>
-              <th style={styles.th}>Description</th>
+              <th style={styles.th}>Titolo</th>
               <th style={styles.th}>Forecast</th>
               <th style={{ ...styles.th, textAlign: 'center', width: '50px' }}>⚠️</th>
               <th style={styles.th}>Status</th>
@@ -15411,7 +15415,7 @@ function MIRPage({ user }) {
                 <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>{mir.mir_number || '-'}</td>
                 <td style={{ ...styles.td, fontFamily: 'monospace', color: COLORS.info }}>{mir.rk_number || '-'}</td>
                 <td style={styles.td}>{mir.category || '-'}</td>
-                <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mir.description || ''}>{mir.description || '-'}</td>
+                <td style={{ ...styles.td, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mir.title || ''}>{mir.title || '-'}</td>
                 <td style={styles.td}>{mir.forecast_date ? new Date(mir.forecast_date).toLocaleDateString() : '-'}</td>
                 <td style={{ ...styles.td, textAlign: 'center' }}>
                   {mir.forecast_date && isOverdue(mir.forecast_date) && (
@@ -15666,6 +15670,22 @@ function MIRPage({ user }) {
               </div>
             </div>
           )}
+        </div>
+
+        {/* Step 3: MIR Title/Description (optional) */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>📝 Descrizione MIR (optional)</label>
+          <input
+            type="text"
+            value={mirTitle}
+            onChange={(e) => setMirTitle(e.target.value)}
+            style={styles.input}
+            placeholder="Es: Materiale per linea 101, Urgente per shutdown..."
+            maxLength="100"
+          />
+          <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '4px' }}>
+            Titolo identificativo per questo MIR/RK (max 100 caratteri)
+          </p>
         </div>
 
         {/* Category (only for Piping) */}
