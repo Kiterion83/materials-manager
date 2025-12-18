@@ -865,35 +865,40 @@ function replaceInWordXml(xml, searchText, replaceText) {
 
 async function generateRKDocument(mirNumber, rkNumber, description, onProgress, descLines = {}) {
   try {
-    if (onProgress) onProgress('Loading PDF library...');
+    if (onProgress) onProgress('Loading template...');
     
-    // Load jsPDF if not already loaded
-    if (!window.jspdf) {
+    // Load JSZip dynamically if not available
+    if (typeof JSZip === 'undefined') {
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        script.onload = () => {
-          // Small delay to ensure library is fully initialized
-          setTimeout(resolve, 100);
-        };
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        script.onload = resolve;
         script.onerror = reject;
         document.head.appendChild(script);
       });
     }
     
-    if (onProgress) onProgress('Generating PDF...');
-    
-    // Wait a bit more if needed
-    if (!window.jspdf) {
-      await new Promise(r => setTimeout(r, 200));
+    // Fetch template
+    const response = await fetch(RK_TEMPLATE_URL);
+    if (!response.ok) {
+      alert(`Template not found!\n\nPlease upload RK_0020_TEMPLATE.docx to:\n1. The public folder of your project, OR\n2. Supabase Storage and update RK_TEMPLATE_URL`);
+      return null;
     }
+    const templateBlob = await response.blob();
     
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('portrait', 'mm', 'a4');
+    if (onProgress) onProgress('Processing document...');
     
-    // Get current date
+    // Load ZIP
+    const zip = await JSZip.loadAsync(templateBlob);
+    
+    // Get document.xml
+    let docXml = await zip.file('word/document.xml').async('string');
+    
+    // Get current date parts
     const today = new Date();
-    const dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = String(today.getFullYear());
     
     // Build line 1 content based on MIR type
     let line1Content;
@@ -903,94 +908,45 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress, 
       line1Content = descLines.line1 || '';
     }
     
-    // Get all lines
-    const lines = [
-      line1Content,
-      descLines.line2 || '',
-      descLines.line3 || '',
-      descLines.line4 || '',
-      descLines.line5 || '',
-      descLines.line6 || '',
-      descLines.line7 || '',
-      descLines.line8 || '',
-      descLines.line9 || '',
-      descLines.line10 || ''
-    ];
+    // Get all lines (up to 10)
+    const lineNames = ['line1', 'line2', 'line3', 'line4', 'line5', 'line6', 'line7', 'line8', 'line9', 'line10'];
+    const placeholderNames = ['LINEONE', 'LINETWO', 'LINETHREE', 'LINEFOUR', 'LINEFIVE', 'LINESIX', 'LINESEVEN', 'LINEEIGHT', 'LINENINE', 'LINETEN'];
     
-    // Header
-    doc.setFillColor(200, 200, 200);
-    doc.rect(10, 10, 190, 12, 'F');
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('RDCG - Rotterdam Capacity Growth', 105, 18, { align: 'center' });
-    
-    // Document title and info
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Material Requisition', 15, 30);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`RK0020_${rkNumber}`, 15, 38);
-    doc.text(`Date: ${dateStr}`, 150, 38);
-    
-    // Table header
-    const tableStartY = 48;
-    doc.setFillColor(180, 180, 180);
-    doc.rect(10, tableStartY, 190, 10, 'F');
-    
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Item', 20, tableStartY + 7);
-    doc.text('Description', 60, tableStartY + 7);
-    
-    // Draw vertical line for columns
-    doc.setDrawColor(100, 100, 100);
-    doc.line(35, tableStartY, 35, tableStartY + 10 + (10 * 10));
-    
-    // Table rows
-    let y = tableStartY + 10;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    
-    for (let i = 0; i < 10; i++) {
-      // Row border
-      doc.setDrawColor(180, 180, 180);
-      doc.rect(10, y, 190, 10);
-      
-      // Vertical line
-      doc.line(35, y, 35, y + 10);
-      
-      // Item number
-      doc.text(`${i + 1}`, 20, y + 7);
-      
-      // Description
-      const lineText = lines[i] || '';
-      doc.text(lineText.substring(0, 80), 40, y + 7); // Limit text length
-      
-      y += 10;
+    // Replace description lines
+    docXml = docXml.replace(/LINEONE/g, line1Content);
+    for (let i = 1; i < 10; i++) {
+      const lineContent = descLines[lineNames[i]] || '';
+      docXml = docXml.replace(new RegExp(placeholderNames[i], 'g'), lineContent);
     }
     
-    // Footer section
-    y += 15;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Requested by:', 15, y);
-    doc.text('Approved by:', 110, y);
+    // Replace RK number
+    docXml = docXml.replace(/RKNUMBER/g, rkNumber);
+    docXml = replaceInWordXml(docXml, 'RK_NUMBER', rkNumber);
     
-    y += 15;
-    doc.setFont('helvetica', 'normal');
-    doc.text('Date: ___/___/______', 15, y);
-    doc.text('Date: ___/___/______', 110, y);
+    // Replace dates
+    docXml = docXml.replace(/\bDD\b/g, day);
+    docXml = docXml.replace(/\bMM\b/g, month);
+    docXml = docXml.replace(/\bYYYY\b/g, year);
+    docXml = docXml.replace(/XX\/XX\/XXXX/g, `${day}/${month}/${year}`);
     
-    y += 8;
-    doc.text('Signature: _____________________', 15, y);
-    doc.text('Signature: _____________________', 110, y);
+    // Save modified document.xml
+    zip.file('word/document.xml', docXml);
     
-    // Save PDF
-    const fileName = mirNumber ? `RK0020_${rkNumber}_MIR${mirNumber}.pdf` : `RK0020_${rkNumber}.pdf`;
-    doc.save(fileName);
+    if (onProgress) onProgress('Generating file...');
+    
+    // Generate new DOCX
+    const newDocxBlob = await zip.generateAsync({ type: 'blob' });
+    
+    // Download DOCX file
+    const url = URL.createObjectURL(newDocxBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fileName = mirNumber ? `RK0020_${rkNumber}_MIR${mirNumber}.docx` : `RK0020_${rkNumber}.docx`;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     
     return true;
   } catch (error) {
@@ -16485,154 +16441,89 @@ function MIRPage({ user }) {
 // ============================================================
 const MS_RETURN_TEMPLATE_URL = 'https://eoxjnbghmoybmtspxzms.supabase.co/storage/v1/object/public/documents/templates/MS_Return_Voucher_Template.docx';
 
-// Generate MS Return Voucher Document as PDF
+// Generate MS Return Voucher Document (Word format - user can save as PDF)
 async function generateReturnVoucherDocument(returnNumber, lines, onProgress) {
   try {
-    if (onProgress) onProgress('Loading PDF library...');
+    if (onProgress) onProgress('Loading template...');
     
-    // Load jsPDF if not already loaded
-    if (!window.jspdf) {
+    // Load JSZip
+    if (typeof JSZip === 'undefined') {
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
-        script.onload = () => {
-          // Small delay to ensure library is fully initialized
-          setTimeout(resolve, 100);
-        };
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        script.onload = resolve;
         script.onerror = reject;
         document.head.appendChild(script);
       });
     }
     
-    if (onProgress) onProgress('Generating PDF...');
-    
-    // Wait a bit more if needed
-    if (!window.jspdf) {
-      await new Promise(r => setTimeout(r, 200));
+    // Fetch template
+    const response = await fetch(MS_RETURN_TEMPLATE_URL);
+    if (!response.ok) {
+      alert('Template not found! Please upload MS_Return_Voucher_Template.docx to Supabase Storage.');
+      return null;
     }
+    const templateBlob = await response.blob();
     
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF('landscape', 'mm', 'a4');
+    if (onProgress) onProgress('Processing document...');
+    
+    // Load ZIP
+    const zip = await JSZip.loadAsync(templateBlob);
+    let docXml = await zip.file('word/document.xml').async('string');
     
     // Get current date
     const today = new Date();
-    const dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const year = String(today.getFullYear());
     
-    // Header
-    doc.setFillColor(128, 128, 128);
-    doc.rect(10, 10, 277, 12, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('RDCG - Rotterdam Capacity Growth', 148, 18, { align: 'center' });
+    // Placeholder names for 10 lines
+    const placeholders = [
+      { desc: 'DESCONE', unit: 'UNITONE', delivered: 'DELIVEREDONE', remark: 'REMARKONE' },
+      { desc: 'DESCTWO', unit: 'UNITTWO', delivered: 'DELIVEREDTWO', remark: 'REMARKTWO' },
+      { desc: 'DESCTHREE', unit: 'UNITTHREE', delivered: 'DELIVEREDTHREE', remark: 'REMARKTHREE' },
+      { desc: 'DESCFOUR', unit: 'UNITFOUR', delivered: 'DELIVEREDFOUR', remark: 'REMARKFOUR' },
+      { desc: 'DESCFIVE', unit: 'UNITFIVE', delivered: 'DELIVEREDFIVE', remark: 'REMARKFIVE' },
+      { desc: 'DESCSIX', unit: 'UNITSIX', delivered: 'DELIVEREDSIX', remark: 'REMARKSIX' },
+      { desc: 'DESCSEVEN', unit: 'UNITSEVEN', delivered: 'DELIVEREDSEVEN', remark: 'REMARKSEVEN' },
+      { desc: 'DESCEIGHT', unit: 'UNITEIGHT', delivered: 'DELIVEREDEIGHT', remark: 'REMARKEIGHT' },
+      { desc: 'DESCNINE', unit: 'UNITNINE', delivered: 'DELIVEREDNINE', remark: 'REMARKNINE' },
+      { desc: 'DESCTEN', unit: 'UNITTEN', delivered: 'DELIVEREDTEN', remark: 'REMARKTEN' }
+    ];
     
-    // Title row
-    doc.setTextColor(0, 0, 0);
-    doc.setFillColor(220, 220, 220);
-    doc.rect(10, 24, 140, 10, 'F');
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('MATERIAL RETURN / RETURN VOUCHER', 15, 30);
-    
-    doc.setFont('helvetica', 'normal');
-    doc.text(`CC Name: MAX STREICHER N°:`, 155, 30);
-    doc.text(`Date: ${dateStr}`, 230, 30);
-    
-    // Sub header
-    doc.setFillColor(240, 240, 240);
-    doc.rect(10, 36, 140, 8, 'F');
-    doc.setFontSize(9);
-    doc.text('Area/Unit:                    Destination: AREA 03', 15, 41);
-    doc.text('Material Extra Take Off    YES ☐    NO ☒', 155, 41);
-    
-    // Table header
-    const tableStartY = 46;
-    doc.setFillColor(180, 180, 180);
-    doc.rect(10, tableStartY, 277, 14, 'F');
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Item', 15, tableStartY + 5);
-    doc.text('MATERIAL REQUEST / DELIVERY', 50, tableStartY + 5);
-    doc.text('Description', 50, tableStartY + 10);
-    doc.text('Material Quantity', 160, tableStartY + 5);
-    doc.text('Unit', 145, tableStartY + 10);
-    doc.text('Requested', 170, tableStartY + 10);
-    doc.text('Delivered', 200, tableStartY + 10);
-    doc.text('Remarks', 240, tableStartY + 5);
-    
-    // Table rows
-    let y = tableStartY + 16;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    
-    for (let i = 0; i < 10; i++) {
+    // Replace placeholders for each line
+    for (let i = 0; i < placeholders.length; i++) {
       const line = lines[i] || { description: '', unit: '', delivered: '', remark: '' };
-      
-      // Row border
-      doc.setDrawColor(180, 180, 180);
-      doc.rect(10, y, 277, 8);
-      
-      // Item number
-      doc.text(`${i + 1}.`, 15, y + 5);
-      
-      // Description
-      doc.text(line.description || '', 35, y + 5);
-      
-      // Unit
-      doc.text(line.unit || '', 147, y + 5);
-      
-      // Delivered
-      doc.text(line.delivered || '', 205, y + 5);
-      
-      // Remarks
-      doc.text(line.remark || '', 232, y + 5);
-      
-      y += 8;
+      const ph = placeholders[i];
+      docXml = docXml.replace(new RegExp(ph.desc, 'g'), line.description || '');
+      docXml = docXml.replace(new RegExp(ph.unit, 'g'), line.unit || '');
+      docXml = docXml.replace(new RegExp(ph.delivered, 'g'), line.delivered || '');
+      docXml = docXml.replace(new RegExp(ph.remark, 'g'), line.remark || '');
     }
     
-    // Footer section
-    y += 5;
-    doc.setFillColor(200, 200, 200);
-    doc.rect(10, y, 140, 8, 'F');
-    doc.setFont('helvetica', 'bold');
-    doc.text('MATERIAL WITHDRAWAL (by SPMAT)', 15, y + 5);
-    doc.text('Description', 15, y + 12);
+    // Replace return number
+    docXml = docXml.replace(/MSRETURNNUM/g, `MS RETURN_${returnNumber}`);
     
-    doc.rect(155, y, 132, 8, 'F');
-    doc.text('Remarks', 200, y + 5);
+    // Replace date
+    docXml = docXml.replace(/DD\/MM\/YYYY/g, `${day}/${month}/${year}`);
+    docXml = docXml.replace(/xx\/xx\/xxxx/gi, `${day}/${month}/${year}`);
     
-    // MS RETURN number
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`MS RETURN_${returnNumber}`, 200, y + 20);
+    zip.file('word/document.xml', docXml);
     
-    // Signature section
-    y += 30;
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('SECTION A – Material Request', 50, y);
-    doc.text('SECTION B – Material Issue', 200, y);
+    if (onProgress) onProgress('Generating file...');
     
-    y += 8;
-    doc.setFont('helvetica', 'normal');
-    doc.text('Construction Contractor for Material Return', 15, y);
-    doc.text('Contractor Material Manager Authorized', 155, y);
+    // Generate new DOCX
+    const newDocxBlob = await zip.generateAsync({ type: 'blob' });
     
-    y += 6;
-    doc.text('Date: ___/___/______    _____________________', 15, y);
-    doc.text('Date: ___/___/______    _____________________', 155, y);
-    
-    y += 10;
-    doc.text('Contractor Area Discipline Superv. for Material Return Approval', 15, y);
-    doc.text('Contractor WH Supervisor for Material Acceptance', 155, y);
-    
-    y += 6;
-    doc.text('Date: ___/___/______    _____________________', 15, y);
-    doc.text('Date: ___/___/______    _____________________', 155, y);
-    
-    // Save PDF
-    doc.save(`MS_Return_${returnNumber}.pdf`);
+    // Download DOCX file
+    const url = URL.createObjectURL(newDocxBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MS_Return_${returnNumber}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     
     return true;
   } catch (error) {
