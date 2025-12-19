@@ -11993,7 +11993,7 @@ function ToBeCollectedPage({ user }) {
   useEffect(() => { loadComponents(); loadUsers(); loadInventory(); }, []);
 
   const loadInventory = async () => {
-    const { data } = await supabase.from('inventory').select('ident_code, description, site_qty');
+    const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom');
     if (data) setInventory(data);
   };
 
@@ -12489,25 +12489,26 @@ function ToBeCollectedPage({ user }) {
       />
 
       {/* V33: Bulk Record OUT Modal */}
-      <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="📤 Bulk Record OUT">
-        <div style={{ marginBottom: '12px' }}>
-          <p style={{ color: '#6b7280', fontSize: '13px' }}>
+      <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="📤 Bulk Record OUT" wide>
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ color: '#6b7280', fontSize: '14px' }}>
             Register multiple material OUTs at once. This will deduct from WH Site inventory.
           </p>
         </div>
 
-        <div style={{ maxHeight: '400px', overflowY: 'auto', marginBottom: '16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+        <div style={{ maxHeight: '450px', overflowY: 'auto', overflowX: 'auto', marginBottom: '16px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '900px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f3f4f6' }}>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Date</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>ISO Number</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>HF (opt)</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Ident Code *</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left', minWidth: '200px' }}>Description</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Qty *</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Received By *</th>
-                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>🗑️</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Date</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>ISO Number</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>HF (opt)</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Ident Code *</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '220px' }}>Description</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>UOM</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Qty *</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Received By *</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>🗑️</th>
               </tr>
             </thead>
             <tbody>
@@ -12515,33 +12516,33 @@ function ToBeCollectedPage({ user }) {
                 const invItem = getInventoryItem(row.ident_code);
                 return (
                   <tr key={index} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                    <td style={{ padding: '4px' }}>
+                    <td style={{ padding: '6px' }}>
                       <input
                         type="date"
                         value={row.date}
                         onChange={(e) => updateBulkRow(index, 'date', e.target.value)}
-                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '120px' }}
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '130px' }}
                       />
                     </td>
-                    <td style={{ padding: '4px' }}>
+                    <td style={{ padding: '6px' }}>
                       <input
                         type="text"
                         value={row.iso_number}
                         onChange={(e) => updateBulkRow(index, 'iso_number', e.target.value)}
                         placeholder="ISO..."
-                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '100px' }}
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '110px' }}
                       />
                     </td>
-                    <td style={{ padding: '4px' }}>
+                    <td style={{ padding: '6px' }}>
                       <input
                         type="text"
                         value={row.hf_number}
                         onChange={(e) => updateBulkRow(index, 'hf_number', e.target.value)}
                         placeholder="HF..."
-                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '80px' }}
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '90px' }}
                       />
                     </td>
-                    <td style={{ padding: '4px' }}>
+                    <td style={{ padding: '6px' }}>
                       <input
                         type="text"
                         value={row.ident_code}
@@ -12549,40 +12550,43 @@ function ToBeCollectedPage({ user }) {
                         placeholder="Ident code..."
                         style={{ 
                           ...styles.input, 
-                          padding: '4px', 
-                          fontSize: '11px', 
-                          width: '100px',
+                          padding: '6px', 
+                          fontSize: '13px', 
+                          width: '110px',
                           borderColor: row.ident_code && !invItem ? COLORS.danger : '#e5e7eb'
                         }}
                       />
                     </td>
-                    <td style={{ padding: '4px', fontSize: '11px', color: invItem ? '#374151' : '#9ca3af' }}>
-                      {invItem ? (invItem.description?.substring(0, 40) + (invItem.description?.length > 40 ? '...' : '')) : (row.ident_code ? '⚠️ Not found' : '-')}
+                    <td style={{ padding: '6px', fontSize: '12px', color: invItem ? '#374151' : '#9ca3af' }}>
+                      {invItem ? (invItem.description?.substring(0, 45) + (invItem.description?.length > 45 ? '...' : '')) : (row.ident_code ? '⚠️ Not found' : '-')}
                     </td>
-                    <td style={{ padding: '4px' }}>
+                    <td style={{ padding: '6px', fontSize: '13px', textAlign: 'center', fontWeight: '500', color: COLORS.info }}>
+                      {invItem?.uom || '-'}
+                    </td>
+                    <td style={{ padding: '6px' }}>
                       <input
                         type="number"
                         value={row.qty}
                         onChange={(e) => updateBulkRow(index, 'qty', e.target.value)}
                         placeholder="Qty"
                         min="1"
-                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '60px' }}
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '70px' }}
                       />
                     </td>
-                    <td style={{ padding: '4px' }}>
+                    <td style={{ padding: '6px' }}>
                       <input
                         type="text"
                         value={row.received_by}
                         onChange={(e) => updateBulkRow(index, 'received_by', e.target.value)}
                         placeholder="Name..."
-                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '120px' }}
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '140px' }}
                       />
                     </td>
-                    <td style={{ padding: '4px', textAlign: 'center' }}>
+                    <td style={{ padding: '6px', textAlign: 'center' }}>
                       {bulkRows.length > 1 && (
                         <button
                           onClick={() => removeBulkRow(index)}
-                          style={{ ...styles.button, padding: '2px 6px', backgroundColor: COLORS.danger, color: 'white', fontSize: '10px' }}
+                          style={{ ...styles.button, padding: '4px 8px', backgroundColor: COLORS.danger, color: 'white', fontSize: '12px' }}
                         >
                           ✕
                         </button>
@@ -12598,7 +12602,7 @@ function ToBeCollectedPage({ user }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
             onClick={addBulkRow}
-            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '8px 16px' }}
           >
             + Add Row
           </button>
@@ -12606,14 +12610,14 @@ function ToBeCollectedPage({ user }) {
           <div style={{ display: 'flex', gap: '12px' }}>
             <button 
               onClick={() => setShowBulkModal(false)} 
-              style={{ ...styles.button, ...styles.buttonSecondary }}
+              style={{ ...styles.button, ...styles.buttonSecondary, padding: '8px 16px' }}
               disabled={bulkProcessing}
             >
               Cancel
             </button>
             <button 
               onClick={processBulkRecordOut} 
-              style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+              style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', padding: '8px 16px' }}
               disabled={bulkProcessing}
             >
               {bulkProcessing ? '⏳ Processing...' : `✅ Process ${bulkRows.filter(r => r.ident_code && r.qty && r.received_by).length} Record(s) OUT`}
