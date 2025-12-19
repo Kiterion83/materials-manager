@@ -12000,13 +12000,15 @@ function ToBeCollectedPage({ user }) {
     if (data) setInventory(data);
   };
 
-  // V33: Load ISO numbers for autocomplete
+  // V33: Load ISO numbers for autocomplete (only P121* ISOs)
   const loadIsoNumbers = async () => {
     const { data } = await supabase
       .from('project_materials')
       .select('iso_number')
+      .like('iso_number', 'P121%')  // Only P121 project ISOs
       .not('iso_number', 'is', null)
-      .order('iso_number');
+      .order('iso_number')
+      .limit(10000);  // Increase limit to get all
     if (data) {
       const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
       setIsoNumbers(unique);
@@ -12580,30 +12582,30 @@ function ToBeCollectedPage({ user }) {
                         }}
                         onFocus={() => setActiveIsoIndex(index)}
                         onBlur={() => setTimeout(() => setActiveIsoIndex(null), 200)}
-                        placeholder="Type ISO..."
+                        placeholder="Type or click..."
                         autoComplete="off"
-                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '140px' }}
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '160px' }}
                       />
-                      {activeIsoIndex === index && row.iso_number && row.iso_number.length >= 1 && (
+                      {activeIsoIndex === index && (
                         (() => {
-                          const filteredIsos = isoNumbers.filter(iso => 
-                            iso.toLowerCase().includes(row.iso_number.toLowerCase())
-                          );
+                          const filteredIsos = row.iso_number 
+                            ? isoNumbers.filter(iso => iso.toLowerCase().includes(row.iso_number.toLowerCase()))
+                            : isoNumbers;  // Show all if empty
                           return filteredIsos.length > 0 ? (
                         <div style={{
                           position: 'absolute',
                           top: '100%',
                           left: '6px',
-                          right: '6px',
+                          width: '220px',
                           backgroundColor: 'white',
                           border: '1px solid #e5e7eb',
                           borderRadius: '4px',
-                          maxHeight: '180px',
+                          maxHeight: '200px',
                           overflowY: 'auto',
                           zIndex: 1000,
                           boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                         }}>
-                          {filteredIsos.slice(0, 15).map((iso, i) => (
+                          {filteredIsos.slice(0, 20).map((iso, i) => (
                             <div
                               key={i}
                               onMouseDown={() => {
@@ -12611,10 +12613,13 @@ function ToBeCollectedPage({ user }) {
                                 setActiveIsoIndex(null);
                               }}
                               style={{
-                                padding: '6px 8px',
+                                padding: '8px 10px',
                                 cursor: 'pointer',
                                 fontSize: '12px',
-                                borderBottom: '1px solid #f3f4f6'
+                                borderBottom: '1px solid #f3f4f6',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
                               }}
                               onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                               onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
