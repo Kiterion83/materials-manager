@@ -11990,6 +11990,7 @@ function ToBeCollectedPage({ user }) {
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [inventory, setInventory] = useState([]);
   const [isoNumbers, setIsoNumbers] = useState([]);  // V33: ISO autocomplete
+  const [activeIsoIndex, setActiveIsoIndex] = useState(null);  // V33: Which row has ISO dropdown open
 
   useEffect(() => { loadComponents(); loadUsers(); loadInventory(); loadIsoNumbers(); }, []);
 
@@ -12538,15 +12539,59 @@ function ToBeCollectedPage({ user }) {
                         style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '130px' }}
                       />
                     </td>
-                    <td style={{ padding: '6px' }}>
+                    <td style={{ padding: '6px', position: 'relative' }}>
                       <input
                         type="text"
                         value={row.iso_number}
-                        onChange={(e) => updateBulkRow(index, 'iso_number', e.target.value)}
-                        placeholder="Type to search ISO..."
-                        list="iso-numbers-list"
+                        onChange={(e) => {
+                          updateBulkRow(index, 'iso_number', e.target.value);
+                          setActiveIsoIndex(index);
+                        }}
+                        onFocus={() => setActiveIsoIndex(index)}
+                        onBlur={() => setTimeout(() => setActiveIsoIndex(null), 150)}
+                        placeholder="Type ISO..."
+                        autoComplete="off"
                         style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '140px' }}
                       />
+                      {activeIsoIndex === index && row.iso_number && isoNumbers.filter(iso => 
+                        iso.toLowerCase().includes(row.iso_number.toLowerCase())
+                      ).length > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: '6px',
+                          right: '6px',
+                          backgroundColor: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '4px',
+                          maxHeight: '150px',
+                          overflowY: 'auto',
+                          zIndex: 1000,
+                          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                        }}>
+                          {isoNumbers.filter(iso => 
+                            iso.toLowerCase().includes(row.iso_number.toLowerCase())
+                          ).slice(0, 10).map((iso, i) => (
+                            <div
+                              key={i}
+                              onMouseDown={() => {
+                                updateBulkRow(index, 'iso_number', iso);
+                                setActiveIsoIndex(null);
+                              }}
+                              style={{
+                                padding: '6px 8px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                borderBottom: '1px solid #f3f4f6'
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                            >
+                              {iso}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '6px' }}>
                       <input
@@ -12613,13 +12658,6 @@ function ToBeCollectedPage({ user }) {
             </tbody>
           </table>
         </div>
-
-        {/* V33: Datalist for ISO autocomplete */}
-        <datalist id="iso-numbers-list">
-          {isoNumbers.map((iso, i) => (
-            <option key={i} value={iso} />
-          ))}
-        </datalist>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
