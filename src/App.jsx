@@ -11989,12 +11989,26 @@ function ToBeCollectedPage({ user }) {
   const [bulkRows, setBulkRows] = useState([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [inventory, setInventory] = useState([]);
+  const [isoNumbers, setIsoNumbers] = useState([]);  // V33: ISO autocomplete
 
-  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); }, []);
+  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); loadIsoNumbers(); }, []);
 
   const loadInventory = async () => {
     const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom');
     if (data) setInventory(data);
+  };
+
+  // V33: Load ISO numbers for autocomplete
+  const loadIsoNumbers = async () => {
+    const { data } = await supabase
+      .from('project_materials')
+      .select('iso_number')
+      .not('iso_number', 'is', null)
+      .order('iso_number');
+    if (data) {
+      const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
+      setIsoNumbers(unique);
+    }
   };
 
   const loadComponents = async () => {
@@ -12529,8 +12543,9 @@ function ToBeCollectedPage({ user }) {
                         type="text"
                         value={row.iso_number}
                         onChange={(e) => updateBulkRow(index, 'iso_number', e.target.value)}
-                        placeholder="ISO..."
-                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '110px' }}
+                        placeholder="Type to search ISO..."
+                        list="iso-numbers-list"
+                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '140px' }}
                       />
                     </td>
                     <td style={{ padding: '6px' }}>
@@ -12598,6 +12613,13 @@ function ToBeCollectedPage({ user }) {
             </tbody>
           </table>
         </div>
+
+        {/* V33: Datalist for ISO autocomplete */}
+        <datalist id="iso-numbers-list">
+          {isoNumbers.map((iso, i) => (
+            <option key={i} value={iso} />
+          ))}
+        </datalist>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
