@@ -7,6 +7,10 @@
 //   - COLLECTOR MODAL: "No results" message when search has no matches
 //   - RETURN VOUCHER: Added Delete button to ALL tabs (Under Approval, Open, Closed)
 //   - RETURN VOUCHER: Open tab now uses direct buttons instead of dropdown
+//   - INVENTORY: Added internal_code column (ident_code + tag_number)
+//   - INVENTORY: Added tag_number column
+//   - DATABASE: Add New Item now requires Tag Number and auto-generates Internal Code
+//   - DATABASE: Preview of Internal Code shown before saving
 // V32.9 Changes:
 //   - RESPONSIVE: Full mobile/tablet optimization (iPhone, Samsung, iPad)
 //   - RESPONSIVE: Collapsible sidebar with hamburger menu on mobile
@@ -18485,7 +18489,7 @@ function DatabasePage({ user }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [balanceData, setBalanceData] = useState({ yard_qty: '', site_qty: '', lost_qty: '', broken_qty: '', collected_ten_wh: '' });
-  const [newItem, setNewItem] = useState({ iso_number: '', ident_code: '', description: '' });
+  const [newItem, setNewItem] = useState({ iso_number: '', ident_code: '', tag_number: '', description: '' });
   
   // V28.3: Filter states
   const [isoFilter, setIsoFilter] = useState('');
@@ -18755,11 +18759,20 @@ function DatabasePage({ user }) {
       alert('Ident Code is required');
       return;
     }
+    if (!newItem.tag_number) {
+      alert('Tag Number is required');
+      return;
+    }
+
+    // V33: Generate internal_code = ident_code + tag_number
+    const internal_code = newItem.ident_code + newItem.tag_number;
 
     // V32.3: Add to inventory with all fields including quantities
     const { error } = await supabase.from('inventory').insert({
+      internal_code: internal_code,  // V33: New unique key
       iso_number: newItem.iso_number || null,
       ident_code: newItem.ident_code,
+      tag_number: newItem.tag_number,  // V33: New field
       description: newItem.description || null,
       yard_qty: newItem.yard_qty || 0,
       site_qty: newItem.site_qty || 0,
@@ -18771,7 +18784,7 @@ function DatabasePage({ user }) {
 
     if (error) {
       if (error.code === '23505') {
-        alert('This Ident Code already exists');
+        alert('This Internal Code (Ident + Tag) already exists');
       } else {
         alert('Error: ' + error.message);
       }
@@ -18788,12 +18801,12 @@ function DatabasePage({ user }) {
         from_location: 'NEW',
         to_location: 'BALANCE',
         performed_by: user.full_name,
-        note: `New item added: Y=${newItem.yard_qty || 0}, S=${newItem.site_qty || 0}`
+        note: `New item added: Y=${newItem.yard_qty || 0}, S=${newItem.site_qty || 0}, Tag=${newItem.tag_number}`
       });
     }
 
     setShowAddModal(false);
-    setNewItem({ iso_number: '', ident_code: '', description: '', site_qty: 0, yard_qty: 0, lost_qty: 0, broken_qty: 0 });
+    setNewItem({ iso_number: '', ident_code: '', tag_number: '', description: '', site_qty: 0, yard_qty: 0, lost_qty: 0, broken_qty: 0 });
     loadInventory();
   };
 
@@ -19097,9 +19110,35 @@ function DatabasePage({ user }) {
             value={newItem.ident_code}
             onChange={(e) => setNewItem({ ...newItem, ident_code: e.target.value.toUpperCase() })}
             style={styles.input}
-            placeholder="e.g., BOLT-M16-100"
+            placeholder="e.g., C000YD"
           />
         </div>
+        {/* V33: Tag Number field */}
+        <div style={{ marginBottom: '16px' }}>
+          <label style={styles.label}>Tag Number *</label>
+          <input
+            type="text"
+            value={newItem.tag_number || ''}
+            onChange={(e) => setNewItem({ ...newItem, tag_number: e.target.value.toUpperCase() })}
+            style={styles.input}
+            placeholder="e.g., 21-FT-242"
+          />
+        </div>
+        {/* V33: Preview of generated Internal Code */}
+        {newItem.ident_code && newItem.tag_number && (
+          <div style={{ 
+            marginBottom: '16px', 
+            padding: '12px', 
+            backgroundColor: '#DBEAFE', 
+            borderRadius: '8px',
+            border: '1px solid #93C5FD'
+          }}>
+            <label style={{ fontSize: '12px', color: COLORS.info, fontWeight: '600' }}>Internal Code (auto-generated)</label>
+            <div style={{ fontSize: '16px', fontFamily: 'monospace', fontWeight: '600', marginTop: '4px' }}>
+              {newItem.ident_code}{newItem.tag_number}
+            </div>
+          </div>
+        )}
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Description</label>
           <input
