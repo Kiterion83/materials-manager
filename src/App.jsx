@@ -1,6 +1,12 @@
 // ============================================================
-// MATERIALS MANAGER V32.9 - APP.JSX COMPLETE
+// MATERIALS MANAGER V33 - APP.JSX COMPLETE
 // MAX STREICHER Edition - Full Features - ALL ENGLISH
+// V33 Changes:
+//   - COLLECTOR MODAL: Added search box to filter users by name
+//   - COLLECTOR MODAL: Removed badge number display (cleaner UI)
+//   - COLLECTOR MODAL: "No results" message when search has no matches
+//   - RETURN VOUCHER: Added Delete button to ALL tabs (Under Approval, Open, Closed)
+//   - RETURN VOUCHER: Open tab now uses direct buttons instead of dropdown
 // V32.9 Changes:
 //   - RESPONSIVE: Full mobile/tablet optimization (iPhone, Samsung, iPad)
 //   - RESPONSIVE: Collapsible sidebar with hamburger menu on mobile
@@ -9254,6 +9260,7 @@ function TestPackPage({ user }) {
   const [pendingDelivery, setPendingDelivery] = useState(null); // { type: 'all'|'subcat', tpNum, request, subCat }
   const [selectedCollectorId, setSelectedCollectorId] = useState('');
   const [allUsers, setAllUsers] = useState([]);
+  const [collectorSearchTerm, setCollectorSearchTerm] = useState(''); // V33: Search in collector modal
 
   useEffect(() => { loadComponents(); loadUsers(); }, []);
   
@@ -10496,14 +10503,31 @@ function TestPackPage({ user }) {
       </>
       )}
 
-      {/* V32.9: Collector Selection Modal for Delivery */}
-      <Modal isOpen={showCollectorModal} onClose={() => { setShowCollectorModal(false); setPendingDelivery(null); }} title="🔔 Select Collector for Notification">
+      {/* V32.9: Collector Selection Modal for Delivery - V33: Added search */}
+      <Modal isOpen={showCollectorModal} onClose={() => { setShowCollectorModal(false); setPendingDelivery(null); setCollectorSearchTerm(''); }} title="🔔 Select Collector for Notification">
         <div style={{ marginBottom: '16px' }}>
           <p style={{ marginBottom: '12px', color: '#6b7280' }}>
             Select who should be notified that the material is ready for collection:
           </p>
+          
+          {/* V33: Search input */}
+          <input
+            type="text"
+            value={collectorSearchTerm}
+            onChange={(e) => setCollectorSearchTerm(e.target.value)}
+            placeholder="🔍 Search by name..."
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              border: '1px solid #d1d5db',
+              borderRadius: '6px',
+              marginBottom: '12px',
+              fontSize: '14px'
+            }}
+          />
+          
           <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
-            {/* No notification option */}
+            {/* No notification option - always visible */}
             <div
               onClick={() => setSelectedCollectorId('')}
               style={{
@@ -10522,8 +10546,10 @@ function TestPackPage({ user }) {
                 <div style={{ fontSize: '12px', color: '#9ca3af' }}>Deliver without sending notification</div>
               </div>
             </div>
-            {/* User list */}
-            {allUsers.map(u => (
+            {/* User list - V33: Filtered by search, no badge shown */}
+            {allUsers
+              .filter(u => !collectorSearchTerm || u.full_name.toLowerCase().includes(collectorSearchTerm.toLowerCase()))
+              .map(u => (
               <div
                 key={u.id}
                 onClick={() => setSelectedCollectorId(u.id)}
@@ -10540,15 +10566,18 @@ function TestPackPage({ user }) {
                 onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedCollectorId === u.id ? '#DBEAFE' : 'white'}
               >
                 <span style={{ fontSize: '18px' }}>👤</span>
-                <div>
-                  <div style={{ fontWeight: selectedCollectorId === u.id ? '600' : '400' }}>{u.full_name}</div>
-                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>Badge: {u.badge_number}</div>
-                </div>
+                <div style={{ fontWeight: selectedCollectorId === u.id ? '600' : '400' }}>{u.full_name}</div>
                 {selectedCollectorId === u.id && (
                   <span style={{ marginLeft: 'auto', color: COLORS.info }}>✓</span>
                 )}
               </div>
             ))}
+            {/* V33: No results message */}
+            {collectorSearchTerm && allUsers.filter(u => u.full_name.toLowerCase().includes(collectorSearchTerm.toLowerCase())).length === 0 && (
+              <div style={{ padding: '16px', textAlign: 'center', color: '#9ca3af' }}>
+                No users found for "{collectorSearchTerm}"
+              </div>
+            )}
           </div>
         </div>
         
@@ -10569,7 +10598,7 @@ function TestPackPage({ user }) {
         
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button 
-            onClick={() => { setShowCollectorModal(false); setPendingDelivery(null); }} 
+            onClick={() => { setShowCollectorModal(false); setPendingDelivery(null); setCollectorSearchTerm(''); }} 
             style={{ ...styles.button, ...styles.buttonSecondary }}
           >
             Cancel
@@ -17210,6 +17239,24 @@ function ReturnVoucherPage({ user }) {
                       >
                         ✓ Approve
                       </button>
+                      {/* V33: Added delete button to Under Approval tab */}
+                      <button
+                        onClick={() => deleteVoucher(voucher)}
+                        disabled={!canModify}
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Delete Return Voucher"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   ) : activeTab === 'open' ? (
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
@@ -17230,18 +17277,41 @@ function ReturnVoucherPage({ user }) {
                       >
                         ✏️
                       </button>
-                      <ActionDropdown
-                        actions={[
-                          { id: 'close', icon: '✓', label: 'Close' },
-                          { id: 'delete', icon: '🗑️', label: 'Delete' }
-                        ]}
-                        onExecute={(action) => {
-                          if (action === 'close') closeVoucher(voucher);
-                          if (action === 'delete') deleteVoucher(voucher);
-                        }}
+                      {/* V33: Direct buttons instead of dropdown */}
+                      <button
+                        onClick={() => closeVoucher(voucher)}
                         disabled={!canModify}
-                        componentId={voucher.id}
-                      />
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.success,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Close Return Voucher"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={() => deleteVoucher(voucher)}
+                        disabled={!canModify}
+                        style={{
+                          padding: '4px 8px',
+                          backgroundColor: COLORS.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: canModify ? 'pointer' : 'not-allowed',
+                          fontSize: '12px',
+                          opacity: !canModify ? 0.5 : 1
+                        }}
+                        title="Delete Return Voucher"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   ) : (
                     <button
