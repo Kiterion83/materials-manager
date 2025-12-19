@@ -17,6 +17,7 @@
 //   - ROLES: Updated canModifyPage() to support new roles and permission values
 //   - REQUESTS: ISO Number is now optional for Piping requests
 //   - WH SITE: Added "Close (Supply)" action for replenishment materials
+//   - TO COLLECT: Added "Bulk Record OUT" feature for mass material deduction
 // V32.9 Changes:
 //   - RESPONSIVE: Full mobile/tablet optimization (iPhone, Samsung, iPad)
 //   - RESPONSIVE: Collapsible sidebar with hamburger menu on mobile
@@ -11983,8 +11984,18 @@ function ToBeCollectedPage({ user }) {
   // V29.0: Label print modal
   const [showLabelModal, setShowLabelModal] = useState(false);
   const [selectedForLabel, setSelectedForLabel] = useState(null);
+  // V33: Bulk Record OUT modal
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkRows, setBulkRows] = useState([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [inventory, setInventory] = useState([]);
 
-  useEffect(() => { loadComponents(); loadUsers(); }, []);
+  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); }, []);
+
+  const loadInventory = async () => {
+    const { data } = await supabase.from('inventory').select('ident_code, description, site_qty');
+    if (data) setInventory(data);
+  };
 
   const loadComponents = async () => {
     setLoading(true);
@@ -12144,6 +12155,107 @@ function ToBeCollectedPage({ user }) {
     setShowHistory(true);
   };
 
+  // V33: Bulk Record OUT functions
+  const addBulkRow = () => {
+    setBulkRows([...bulkRows, { date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
+  };
+
+  const removeBulkRow = (index) => {
+    if (bulkRows.length > 1) {
+      setBulkRows(bulkRows.filter((_, i) => i !== index));
+    }
+  };
+
+  const updateBulkRow = (index, field, value) => {
+    const updated = [...bulkRows];
+    updated[index][field] = value;
+    setBulkRows(updated);
+  };
+
+  const getInventoryItem = (identCode) => {
+    return inventory.find(i => i.ident_code?.toLowerCase() === identCode?.toLowerCase());
+  };
+
+  const openBulkModal = () => {
+    setBulkRows([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
+    setShowBulkModal(true);
+  };
+
+  const processBulkRecordOut = async () => {
+    // Validate rows
+    const validRows = bulkRows.filter(row => row.ident_code && row.qty && row.received_by);
+    if (validRows.length === 0) {
+      alert('Please fill at least one row with Ident Code, Qty and Received By');
+      return;
+    }
+
+    // Check if all ident_codes exist in inventory
+    const invalidIdents = validRows.filter(row => !getInventoryItem(row.ident_code));
+    if (invalidIdents.length > 0) {
+      alert(`Invalid Ident Codes: ${invalidIdents.map(r => r.ident_code).join(', ')}`);
+      return;
+    }
+
+    if (!confirm(`Process ${validRows.length} record(s) OUT from WH Site inventory?`)) {
+      return;
+    }
+
+    setBulkProcessing(true);
+    let successCount = 0;
+    let errors = [];
+
+    for (const row of validRows) {
+      try {
+        const qty = parseInt(row.qty);
+        if (isNaN(qty) || qty <= 0) {
+          errors.push(`${row.ident_code}: Invalid quantity`);
+          continue;
+        }
+
+        const invItem = getInventoryItem(row.ident_code);
+        
+        // Decrement site inventory
+        await supabase.rpc('decrement_site_qty', { 
+          p_ident_code: invItem.ident_code, 
+          p_qty: qty 
+        });
+
+        // Increment record_out
+        await supabase.rpc('increment_record_out', { 
+          p_ident_code: invItem.ident_code, 
+          p_qty: qty 
+        });
+
+        // Log movement
+        await supabase.from('movements').insert({
+          ident_code: invItem.ident_code,
+          movement_type: 'OUT',
+          quantity: qty,
+          from_location: 'SITE',
+          to_location: 'DELIVERED',
+          performed_by: user.full_name,
+          note: `Bulk OUT - Received by: ${row.received_by}${row.iso_number ? ` | ISO: ${row.iso_number}` : ''}${row.hf_number ? ` | HF: ${row.hf_number}` : ''} | Date: ${row.date}`
+        });
+
+        successCount++;
+      } catch (error) {
+        errors.push(`${row.ident_code}: ${error.message}`);
+      }
+    }
+
+    setBulkProcessing(false);
+    
+    if (errors.length > 0) {
+      alert(`Completed with errors:\n✅ Success: ${successCount}\n❌ Errors:\n${errors.join('\n')}`);
+    } else {
+      alert(`✅ Successfully processed ${successCount} record(s) OUT`);
+    }
+
+    setShowBulkModal(false);
+    loadInventory();
+    loadComponents();
+  };
+
   const canModify = canModifyPage(user, 'to_be_collected');
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
@@ -12157,46 +12269,57 @@ function ToBeCollectedPage({ user }) {
             Material ready for pickup - Enter collector name when collecting
           </p>
         </div>
-        {components.length > 0 && (
-          <button
-            onClick={() => {
-              const printWindow = window.open('', '_blank');
-              printWindow.document.write(`
-                <html><head><title>To Collect</title>
-                <style>
-                  body { font-family: Arial, sans-serif; padding: 20px; }
-                  h1 { color: #16A34A; }
-                  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-                  th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
-                  th { background-color: #D1FAE5; }
-                </style></head><body>
-                <h1>✅ To Collect</h1>
-                <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
-                <table>
-                  <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
-                  ${components.map(comp => `<tr>
-                    <td>${abbrevCategory(comp.requests?.request_type)}</td>
-                    <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
-                    <td>${comp.requests?.iso_number || '-'}</td>
-                    <td>${abbrevSpool(comp.requests?.full_spool_number)}</td>
-                    <td>${comp.requests?.hf_number || '-'}</td>
-                    <td>${displayTPNumber(comp.requests?.test_pack_number)}</td>
-                    <td>${displayRequestNumber(comp.requests)}</td>
-                    <td>${comp.ident_code}</td>
-                    <td>${comp.description || '-'}</td>
-                    <td>${comp.quantity}</td>
-                  </tr>`).join('')}
-                </table>
-                </body></html>
-              `);
-              printWindow.document.close();
-              printWindow.print();
-            }}
-            style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
-          >
-            🖨️ Print
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {/* V33: Bulk Record OUT button */}
+          {canModify && (
+            <button
+              onClick={openBulkModal}
+              style={{ ...styles.button, backgroundColor: COLORS.orange, color: 'white' }}
+            >
+              📤 Bulk Record OUT
+            </button>
+          )}
+          {components.length > 0 && (
+            <button
+              onClick={() => {
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                  <html><head><title>To Collect</title>
+                  <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; }
+                    h1 { color: #16A34A; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; font-size: 10px; }
+                    th { background-color: #D1FAE5; }
+                  </style></head><body>
+                  <h1>✅ To Collect</h1>
+                  <p>Printed: ${new Date().toLocaleString()} | Total: ${components.length}</p>
+                  <table>
+                    <tr><th>Cat</th><th>Sub</th><th>ISO</th><th>Spool</th><th>HF</th><th>TP</th><th>Request</th><th>Code</th><th>Description</th><th>Qty</th></tr>
+                    ${components.map(comp => `<tr>
+                      <td>${abbrevCategory(comp.requests?.request_type)}</td>
+                      <td>${abbrevSubCategory(comp.sub_category || comp.requests?.sub_category)}</td>
+                      <td>${comp.requests?.iso_number || '-'}</td>
+                      <td>${abbrevSpool(comp.requests?.full_spool_number)}</td>
+                      <td>${comp.requests?.hf_number || '-'}</td>
+                      <td>${displayTPNumber(comp.requests?.test_pack_number)}</td>
+                      <td>${displayRequestNumber(comp.requests)}</td>
+                      <td>${comp.ident_code}</td>
+                      <td>${comp.description || '-'}</td>
+                      <td>${comp.quantity}</td>
+                    </tr>`).join('')}
+                  </table>
+                  </body></html>
+                `);
+                printWindow.document.close();
+                printWindow.print();
+              }}
+              style={{ ...styles.button, backgroundColor: COLORS.purple, color: 'white' }}
+            >
+              🖨️ Print
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={styles.card}>
@@ -12364,6 +12487,140 @@ function ToBeCollectedPage({ user }) {
         onClose={() => { setShowLabelModal(false); setSelectedForLabel(null); }}
         component={selectedForLabel}
       />
+
+      {/* V33: Bulk Record OUT Modal */}
+      <Modal isOpen={showBulkModal} onClose={() => setShowBulkModal(false)} title="📤 Bulk Record OUT">
+        <div style={{ marginBottom: '12px' }}>
+          <p style={{ color: '#6b7280', fontSize: '13px' }}>
+            Register multiple material OUTs at once. This will deduct from WH Site inventory.
+          </p>
+        </div>
+
+        <div style={{ maxHeight: '400px', overflowY: 'auto', marginBottom: '16px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <thead>
+              <tr style={{ backgroundColor: '#f3f4f6' }}>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Date</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>ISO Number</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>HF (opt)</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Ident Code *</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left', minWidth: '200px' }}>Description</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Qty *</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'left' }}>Received By *</th>
+                <th style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', textAlign: 'center' }}>🗑️</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bulkRows.map((row, index) => {
+                const invItem = getInventoryItem(row.ident_code);
+                return (
+                  <tr key={index} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: '4px' }}>
+                      <input
+                        type="date"
+                        value={row.date}
+                        onChange={(e) => updateBulkRow(index, 'date', e.target.value)}
+                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '120px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px' }}>
+                      <input
+                        type="text"
+                        value={row.iso_number}
+                        onChange={(e) => updateBulkRow(index, 'iso_number', e.target.value)}
+                        placeholder="ISO..."
+                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '100px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px' }}>
+                      <input
+                        type="text"
+                        value={row.hf_number}
+                        onChange={(e) => updateBulkRow(index, 'hf_number', e.target.value)}
+                        placeholder="HF..."
+                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '80px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px' }}>
+                      <input
+                        type="text"
+                        value={row.ident_code}
+                        onChange={(e) => updateBulkRow(index, 'ident_code', e.target.value)}
+                        placeholder="Ident code..."
+                        style={{ 
+                          ...styles.input, 
+                          padding: '4px', 
+                          fontSize: '11px', 
+                          width: '100px',
+                          borderColor: row.ident_code && !invItem ? COLORS.danger : '#e5e7eb'
+                        }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px', fontSize: '11px', color: invItem ? '#374151' : '#9ca3af' }}>
+                      {invItem ? (invItem.description?.substring(0, 40) + (invItem.description?.length > 40 ? '...' : '')) : (row.ident_code ? '⚠️ Not found' : '-')}
+                    </td>
+                    <td style={{ padding: '4px' }}>
+                      <input
+                        type="number"
+                        value={row.qty}
+                        onChange={(e) => updateBulkRow(index, 'qty', e.target.value)}
+                        placeholder="Qty"
+                        min="1"
+                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '60px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px' }}>
+                      <input
+                        type="text"
+                        value={row.received_by}
+                        onChange={(e) => updateBulkRow(index, 'received_by', e.target.value)}
+                        placeholder="Name..."
+                        style={{ ...styles.input, padding: '4px', fontSize: '11px', width: '120px' }}
+                      />
+                    </td>
+                    <td style={{ padding: '4px', textAlign: 'center' }}>
+                      {bulkRows.length > 1 && (
+                        <button
+                          onClick={() => removeBulkRow(index)}
+                          style={{ ...styles.button, padding: '2px 6px', backgroundColor: COLORS.danger, color: 'white', fontSize: '10px' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            onClick={addBulkRow}
+            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+          >
+            + Add Row
+          </button>
+          
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button 
+              onClick={() => setShowBulkModal(false)} 
+              style={{ ...styles.button, ...styles.buttonSecondary }}
+              disabled={bulkProcessing}
+            >
+              Cancel
+            </button>
+            <button 
+              onClick={processBulkRecordOut} 
+              style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+              disabled={bulkProcessing}
+            >
+              {bulkProcessing ? '⏳ Processing...' : `✅ Process ${bulkRows.filter(r => r.ident_code && r.qty && r.received_by).length} Record(s) OUT`}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
