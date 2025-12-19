@@ -15,6 +15,8 @@
 //   - PERMISSIONS: 'view' allows seeing page but buttons are disabled
 //   - ROLES: New roles - WH Yard Storekeeper Plus, WH Site Storekeeper Plus, Data Entry
 //   - ROLES: Updated canModifyPage() to support new roles and permission values
+//   - REQUESTS: ISO Number is now optional for Piping requests
+//   - WH SITE: Added "Close (Supply)" action for replenishment materials
 // V32.9 Changes:
 //   - RESPONSIVE: Full mobile/tablet optimization (iPhone, Samsung, iPad)
 //   - RESPONSIVE: Collapsible sidebar with hamburger menu on mobile
@@ -4004,7 +4006,8 @@ function RequestsPage({ user }) {
     try {
       // Validations
       if (requestType === 'Piping') {
-        if (!isoNumber) throw new Error('ISO Number required');
+        // V33: ISO Number is now optional
+        // if (!isoNumber) throw new Error('ISO Number required');
         // V32.6: Full Spool Number is now optional
         // if (!spoolNumber) throw new Error('Full Spool Number required');
         if (subCategory === 'Erection' && !hfNumber) throw new Error('HF Number required for Erection');
@@ -4249,7 +4252,7 @@ function RequestsPage({ user }) {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                 <div>
-                  <label style={styles.label}>ISO Number * <span style={{ fontSize: '11px', color: '#9ca3af' }}>(type 4+ chars)</span></label>
+                  <label style={styles.label}>ISO Number <span style={{ fontSize: '11px', color: '#9ca3af' }}>(optional - type 4+ chars)</span></label>
                   <AsyncSearchInput
                     value={isoNumber}
                     onChange={handleIsoChange}
@@ -5140,6 +5143,35 @@ function WHSitePage({ user }) {
             await logHistory(component.id, 'Cancelled', 'WH_Site', 'Cancelled', note);
           }
           break;
+        case 'close':
+          // V33: Close for supply/replenishment - mark as Done and decrement inventory
+          if (confirm('Close this request as supply/replenishment? This will mark it as Done and decrement inventory.')) {
+            // Decrement site inventory
+            await supabase.rpc('decrement_site_qty', { 
+              p_ident_code: component.ident_code, 
+              p_qty: component.quantity 
+            });
+            
+            // Update component status to Done
+            await supabase.from('request_components')
+              .update({ status: 'Done', current_location: 'DELIVERED' })
+              .eq('id', component.id);
+            
+            // Log movement
+            await supabase.from('movements').insert({
+              ident_code: component.ident_code,
+              movement_type: 'OUT',
+              quantity: component.quantity,
+              from_location: 'SITE',
+              to_location: 'SUPPLY',
+              performed_by: user.full_name,
+              request_number: component.requests?.request_number,
+              note: 'Supply/replenishment - closed without collection'
+            });
+            
+            await logHistory(component.id, 'Closed as Supply', 'WH_Site', 'Done', 'Material sent for supply/replenishment');
+          }
+          break;
         case 'ack':
           await supabase.from('request_components')
             .update({ has_eng_check: false, eng_check_message: null, eng_check_sent_to: null })
@@ -5924,6 +5956,8 @@ function WHSitePage({ user }) {
                         if (hasSiteQty && isTP) {
                           actions.push({ id: 'tp', icon: '📋', label: hasEnoughSite ? 'To TestPack (Complete)' : 'To TestPack (Partial)' });
                         }
+                        // V33: Close - for supply/replenishment materials (no collection needed)
+                        actions.push({ id: 'close', icon: '✅', label: 'Close (Supply)' });
                         // Delete always available
                         actions.push({ id: 'delete', icon: '🗑️', label: 'Delete' });
                         return actions;
