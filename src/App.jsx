@@ -11993,7 +11993,7 @@ function ToBeCollectedPage({ user }) {
   const [activeIsoIndex, setActiveIsoIndex] = useState(null);  // V33: Which row has ISO dropdown open
   const [activeReceiverIndex, setActiveReceiverIndex] = useState(null);  // V33: Which row has Receiver dropdown open
 
-  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); loadIsoNumbers(); }, []);
+  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); }, []);
 
   const loadInventory = async () => {
     const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom, tag_number');
@@ -12002,28 +12002,24 @@ function ToBeCollectedPage({ user }) {
 
   // V33: Load ALL ISO numbers for autocomplete
   const loadIsoNumbers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('project_materials')
-        .select('iso_number')
-        .not('iso_number', 'is', null)
-        .order('iso_number')
-        .limit(50000);  // Get all
-      
-      if (error) {
-        console.error('Error loading ISO numbers:', error);
-        return;
-      }
-      
-      if (data && data.length > 0) {
-        const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
-        console.log('Loaded', unique.length, 'unique ISO numbers. First 5:', unique.slice(0, 5));
-        setIsoNumbers(unique);
-      } else {
-        console.log('No ISO numbers found in project_materials');
-      }
-    } catch (err) {
-      console.error('Exception loading ISO numbers:', err);
+    // Not used anymore - we search on-demand
+  };
+
+  // V33: Search ISO on-demand (like Requests page)
+  const searchBulkIso = async (searchTerm, index) => {
+    if (searchTerm.length < 4) {
+      return;
+    }
+    const { data } = await supabase
+      .from('project_materials')
+      .select('iso_number')
+      .like('iso_number', 'P121%')  // Only P121 project
+      .ilike('iso_number', `%${searchTerm}%`)
+      .order('iso_number')
+      .limit(50);
+    if (data) {
+      const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
+      setIsoNumbers(unique);
     }
   };
 
@@ -12589,16 +12585,23 @@ function ToBeCollectedPage({ user }) {
                         type="text"
                         value={row.iso_number}
                         onChange={(e) => {
-                          updateBulkRow(index, 'iso_number', e.target.value);
+                          const val = e.target.value;
+                          updateBulkRow(index, 'iso_number', val);
                           setActiveIsoIndex(index);
+                          // Search when 4+ chars typed
+                          if (val.length >= 4) {
+                            searchBulkIso(val, index);
+                          } else {
+                            setIsoNumbers([]);
+                          }
                         }}
                         onFocus={() => setActiveIsoIndex(index)}
                         onBlur={() => setTimeout(() => setActiveIsoIndex(null), 250)}
-                        placeholder="Type or click..."
+                        placeholder="Type 4+ chars..."
                         autoComplete="off"
                         style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '160px' }}
                       />
-                      {activeIsoIndex === index && (
+                      {activeIsoIndex === index && row.iso_number && row.iso_number.length >= 4 && (
                         <div style={{
                           position: 'absolute',
                           top: '100%',
@@ -12614,18 +12617,16 @@ function ToBeCollectedPage({ user }) {
                         }}>
                           {isoNumbers.length === 0 ? (
                             <div style={{ padding: '10px', color: '#9ca3af', fontSize: '12px', textAlign: 'center' }}>
-                              No ISO numbers found
+                              No P121 ISO found
                             </div>
                           ) : (
-                            (row.iso_number 
-                              ? isoNumbers.filter(iso => iso.toLowerCase().includes(row.iso_number.toLowerCase()))
-                              : isoNumbers
-                            ).slice(0, 30).map((iso, i) => (
+                            isoNumbers.slice(0, 30).map((iso, i) => (
                               <div
                                 key={i}
                                 onMouseDown={() => {
                                   updateBulkRow(index, 'iso_number', iso);
                                   setActiveIsoIndex(null);
+                                  setIsoNumbers([]);
                                 }}
                                 style={{
                                   padding: '8px 10px',
