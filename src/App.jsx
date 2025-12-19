@@ -217,7 +217,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // ============================================================
 // APP VERSION - CENTRALIZED
 // ============================================================
-const APP_VERSION = 'V32.9';
+const APP_VERSION = 'V33';
 
 // ============================================================
 // V32.9 RESPONSIVE HOOK
@@ -12207,7 +12207,23 @@ function ToBeCollectedPage({ user }) {
     // Check if all ident_codes exist in inventory
     const invalidIdents = validRows.filter(row => !getInventoryItem(row.ident_code));
     if (invalidIdents.length > 0) {
-      alert(`Invalid Ident Codes: ${invalidIdents.map(r => r.ident_code).join(', ')}`);
+      alert(`❌ Invalid Ident Codes (not found in inventory):\n${invalidIdents.map(r => r.ident_code).join('\n')}`);
+      return;
+    }
+
+    // V33: Check if quantities don't exceed available site_qty
+    const insufficientQty = validRows.filter(row => {
+      const invItem = getInventoryItem(row.ident_code);
+      const availableQty = invItem?.site_qty || 0;
+      return parseInt(row.qty) > availableQty;
+    });
+
+    if (insufficientQty.length > 0) {
+      const details = insufficientQty.map(row => {
+        const invItem = getInventoryItem(row.ident_code);
+        return `• ${row.ident_code}: Requested ${row.qty}, Available ${invItem?.site_qty || 0}`;
+      }).join('\n');
+      alert(`❌ Insufficient quantity in WH Site!\n\n${details}\n\nPlease adjust quantities.`);
       return;
     }
 
@@ -12228,6 +12244,18 @@ function ToBeCollectedPage({ user }) {
         }
 
         const invItem = getInventoryItem(row.ident_code);
+        
+        // Double-check available qty (in case of race condition)
+        const { data: currentInv } = await supabase
+          .from('inventory')
+          .select('site_qty')
+          .eq('ident_code', invItem.ident_code)
+          .single();
+        
+        if (!currentInv || currentInv.site_qty < qty) {
+          errors.push(`${row.ident_code}: Insufficient qty (available: ${currentInv?.site_qty || 0})`);
+          continue;
+        }
         
         // Decrement site inventory
         await supabase.rpc('decrement_site_qty', { 
@@ -12521,6 +12549,7 @@ function ToBeCollectedPage({ user }) {
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Ident Code *</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '220px' }}>Description</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>UOM</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600', backgroundColor: '#DBEAFE' }}>Available</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Qty *</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Received By *</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>🗑️</th>
@@ -12623,6 +12652,16 @@ function ToBeCollectedPage({ user }) {
                     <td style={{ padding: '6px', fontSize: '13px', textAlign: 'center', fontWeight: '500', color: COLORS.info }}>
                       {invItem?.uom || '-'}
                     </td>
+                    <td style={{ 
+                      padding: '6px', 
+                      fontSize: '13px', 
+                      textAlign: 'center', 
+                      fontWeight: '600',
+                      backgroundColor: '#EFF6FF',
+                      color: invItem ? (parseInt(row.qty) > (invItem.site_qty || 0) ? COLORS.danger : COLORS.success) : '#9ca3af'
+                    }}>
+                      {invItem ? (invItem.site_qty || 0) : '-'}
+                    </td>
                     <td style={{ padding: '6px' }}>
                       <input
                         type="number"
@@ -12630,7 +12669,14 @@ function ToBeCollectedPage({ user }) {
                         onChange={(e) => updateBulkRow(index, 'qty', e.target.value)}
                         placeholder="Qty"
                         min="1"
-                        style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '70px' }}
+                        style={{ 
+                          ...styles.input, 
+                          padding: '6px', 
+                          fontSize: '13px', 
+                          width: '70px',
+                          borderColor: invItem && parseInt(row.qty) > (invItem.site_qty || 0) ? COLORS.danger : '#e5e7eb',
+                          backgroundColor: invItem && parseInt(row.qty) > (invItem.site_qty || 0) ? '#FEE2E2' : 'white'
+                        }}
                       />
                     </td>
                     <td style={{ padding: '6px' }}>
