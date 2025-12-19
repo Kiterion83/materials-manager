@@ -789,22 +789,16 @@ function displayRequestNumberFull(request) {
   return `${base}-${comp}-${wh}-${yard}`;
 }
 
-// V32.3: Show mother request number only (XXXXX-00-00-00)
+// V32.9: Show mother request number only (XXXXX)
 function displayMotherNumber(request) {
   const base = String(request?.request_number || 0).padStart(5, '0');
-  return `${base}-00-00-00`;
+  return base;
 }
 
-// V32.3: Get full child number for tooltip
+// V32.9: Get child number - same as base for display
 function getChildNumber(request) {
-  if (request?.request_number_full) {
-    return request.request_number_full;
-  }
   const base = String(request?.request_number || 0).padStart(5, '0');
-  const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
-  const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
-  const yard = String(request?.level_yard_split ?? 0).padStart(2, '0');
-  return `${base}-${comp}-${wh}-${yard}`;
+  return base;
 }
 
 // Short display version (just base-component for tables)
@@ -4091,12 +4085,12 @@ function RequestsPage({ user }) {
             to_status: status,
             performed_by_user_id: user.id,
             performed_by_name: user.full_name,
-            note: `Request ${String(reqNumber).padStart(5, '0')}-00-00-00 created and sent to ${destination.toUpperCase()}`
+            note: `Request ${String(reqNumber).padStart(5, '0')} created and sent to ${destination.toUpperCase()}`
           });
         }
       }
 
-      setMessage({ type: 'success', text: `Request ${String(reqNumber).padStart(5, '0')}-00-00-00 created successfully!` });
+      setMessage({ type: 'success', text: `Request ${String(reqNumber).padStart(5, '0')} created successfully!` });
       
       // Reset form
       setIsoNumber('');
@@ -4136,7 +4130,7 @@ function RequestsPage({ user }) {
           borderRadius: '6px',
           fontSize: '14px'
         }}>
-          Preview: <strong>{String(nextNumber).padStart(5, '0')}-00-00-00</strong>
+          Preview: <strong>{String(nextNumber).padStart(5, '0')}</strong>
         </div>
       </div>
 
@@ -7073,9 +7067,7 @@ function WHYardPage({ user }) {
                             // V30.0: Removed To HF - material must go through Site IN first
                             // V30.0: Removed To TestPack - material must go through Site IN first
                             // Flow: Yard → Site IN → WH Site → HF/TP
-                            
-                            // V30.0: To Site IN always available - sends request to Site IN for transfer
-                            actions.push({ id: 'check_to_site', icon: '🏭', label: 'To Site IN' });
+                            // V32.9: Removed redundant "To Site IN" - "Found (All)" already sends to Site IN
                             
                             // Not Found always available
                             actions.push({ id: 'check_notfound', icon: '✗', label: 'Not Found → Eng' });
@@ -9257,8 +9249,19 @@ function TestPackPage({ user }) {
   const [selectedLogBox, setSelectedLogBox] = useState(null);
   // V32.9: Search term for Materials tab
   const [materialsSearchTerm, setMaterialsSearchTerm] = useState('');
+  // V32.9: Collector selection modal for delivery
+  const [showCollectorModal, setShowCollectorModal] = useState(false);
+  const [pendingDelivery, setPendingDelivery] = useState(null); // { type: 'all'|'subcat', tpNum, request, subCat }
+  const [selectedCollectorId, setSelectedCollectorId] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
 
-  useEffect(() => { loadComponents(); }, []);
+  useEffect(() => { loadComponents(); loadUsers(); }, []);
+  
+  // V32.9: Load users for collector selection
+  const loadUsers = async () => {
+    const { data } = await supabase.from('users').select('id, full_name, badge_number').order('full_name');
+    if (data) setAllUsers(data);
+  };
 
   const loadComponents = async () => {
     setLoading(true);
@@ -9513,9 +9516,9 @@ function TestPackPage({ user }) {
   };
 
   // Deliver a single sub-category
-  const handleDeliverSubCategory = async (tpNum, request, subCat, destination) => {
-    // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
-    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
+  // V32.9: Removed toSite option, added collectorId for notification
+  const handleDeliverSubCategory = async (tpNum, request, subCat, collectorId) => {
+    const newStatus = 'ToCollect';
     
     // Get all sub-categories for this request
     const allSubCats = Object.values(request.subCategories);
@@ -9640,9 +9643,7 @@ function TestPackPage({ user }) {
         .eq('id', comp.id);
       
       await logHistory(comp.id, 
-        isSpool 
-          ? (destination === 'toSite' ? 'TP Spool - To Site IN' : 'TP Spool - To Collect')
-          : (destination === 'toSite' ? 'TP SubCat - To Site IN' : 'TP SubCat - To Collect'),
+        isSpool ? 'TP Spool - To Collect' : 'TP SubCat - To Collect',
         isSpool ? 'TP_Spool_Sent' : 'TP', newStatus, 
         `TestPack ${tpNum} - ${subCat.name} completed`
       );
@@ -9653,10 +9654,23 @@ function TestPackPage({ user }) {
         movement_type: isSpool ? 'SPOOL_DELIVERED' : 'OUT',
         quantity: comp.quantity,
         from_location: 'TP',
-        to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
+        to_location: 'TO_COLLECT',
         performed_by: user.full_name,
         note: `TP ${tpNum} - ${subCat.name}`
       });
+    }
+    
+    // V32.9: Send notification to selected collector
+    if (collectorId) {
+      const collectorUser = allUsers.find(u => u.id === collectorId);
+      await supabase.from('notifications').insert({
+        user_id: collectorId,
+        type: 'collect',
+        title: `📋 TestPack ${tpNum} - ${subCat.name} Ready`,
+        message: `Material for TestPack ${tpNum} (${subCat.name}) is ready for collection`,
+        created_at: new Date().toISOString()
+      });
+      console.log(`Notification sent to ${collectorUser?.full_name} for TP ${tpNum} - ${subCat.name}`);
     }
     
     // V29.0: Update completed requests counters based on actual component states
@@ -9682,9 +9696,9 @@ function TestPackPage({ user }) {
   };
 
   // Deliver all ready items in a request
-  const handleDeliverAll = async (tpNum, request, destination) => {
-    // V28.11: To Site = Trans (Site IN), Deliver = ToCollect
-    const newStatus = destination === 'toSite' ? 'Trans' : 'ToCollect';
+  // V32.9: Added collectorId parameter for notification
+  const handleDeliverAll = async (tpNum, request, collectorId) => {
+    const newStatus = 'ToCollect';
     
     for (const subCat of Object.values(request.subCategories)) {
       for (const comp of subCat.components) {
@@ -9725,7 +9739,7 @@ function TestPackPage({ user }) {
           .eq('id', comp.id);
         
         await logHistory(comp.id, 
-          destination === 'toSite' ? 'TP Complete - To Site IN' : 'TP Complete - To Collect',
+          'TP Complete - To Collect',
           isSpool ? 'TP_Spool_Sent' : 'TP', newStatus, 
           `TestPack ${tpNum} completed`
         );
@@ -9736,15 +9750,43 @@ function TestPackPage({ user }) {
           movement_type: isSpool ? 'SPOOL_DELIVERED' : 'OUT',
           quantity: comp.quantity,
           from_location: 'TP',
-          to_location: destination === 'toSite' ? 'SITE_IN' : 'TO_COLLECT',
+          to_location: 'TO_COLLECT',
           performed_by: user.full_name,
           note: `TP ${tpNum}`
         });
       }
     }
     
+    // V32.9: Send notification to selected collector
+    if (collectorId) {
+      const collectorUser = allUsers.find(u => u.id === collectorId);
+      await supabase.from('notifications').insert({
+        user_id: collectorId,
+        type: 'collect',
+        title: `📋 TestPack ${tpNum} Ready`,
+        message: `Material for TestPack ${tpNum} is ready for collection`,
+        created_at: new Date().toISOString()
+      });
+      console.log(`Notification sent to ${collectorUser?.full_name} for TP ${tpNum}`);
+    }
+    
     // V30.0: Counters will be recalculated on loadComponents
     loadComponents();
+  };
+
+  // V32.9: Confirm delivery with selected collector
+  const confirmDelivery = async () => {
+    if (!pendingDelivery) return;
+    
+    if (pendingDelivery.type === 'all') {
+      await handleDeliverAll(pendingDelivery.tpNum, pendingDelivery.request, selectedCollectorId || null);
+    } else if (pendingDelivery.type === 'subcat') {
+      await handleDeliverSubCategory(pendingDelivery.tpNum, pendingDelivery.request, pendingDelivery.subCat, selectedCollectorId || null);
+    }
+    
+    setShowCollectorModal(false);
+    setPendingDelivery(null);
+    setSelectedCollectorId('');
   };
 
   // V28.9: Handle component-level actions
@@ -10258,22 +10300,17 @@ function TestPackPage({ user }) {
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       {allReady ? (
-                        <>
-                          <button
-                            onClick={() => handleDeliverAll(tp.test_pack_number, request, 'toSite')}
-                            disabled={!canModify}
-                            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontSize: '12px' }}
-                          >
-                            🚚 All to Site
-                          </button>
-                          <button
-                            onClick={() => handleDeliverAll(tp.test_pack_number, request, 'delivered')}
-                            disabled={!canModify}
-                            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', fontSize: '12px' }}
-                          >
-                            ✅ Deliver All
-                          </button>
-                        </>
+                        <button
+                          onClick={() => {
+                            setPendingDelivery({ type: 'all', tpNum: tp.test_pack_number, request });
+                            setSelectedCollectorId('');
+                            setShowCollectorModal(true);
+                          }}
+                          disabled={!canModify}
+                          style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', fontSize: '12px' }}
+                        >
+                          ✅ Deliver All
+                        </button>
                       ) : (
                         <span style={{ 
                           padding: '6px 12px', 
@@ -10341,22 +10378,17 @@ function TestPackPage({ user }) {
                               </span>
                             </div>
                             {subReady && (
-                              <div style={{ display: 'flex', gap: '6px' }}>
-                                <button
-                                  onClick={() => handleDeliverSubCategory(tp.test_pack_number, request, subCat, 'toSite')}
-                                  disabled={!canModify}
-                                  style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', fontSize: '11px', padding: '4px 8px' }}
-                                >
-                                  🚚 To Site
-                                </button>
-                                <button
-                                  onClick={() => handleDeliverSubCategory(tp.test_pack_number, request, subCat, 'delivered')}
-                                  disabled={!canModify}
-                                  style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', fontSize: '11px', padding: '4px 8px' }}
-                                >
-                                  ✅ Deliver
-                                </button>
-                              </div>
+                              <button
+                                onClick={() => {
+                                  setPendingDelivery({ type: 'subcat', tpNum: tp.test_pack_number, request, subCat });
+                                  setSelectedCollectorId('');
+                                  setShowCollectorModal(true);
+                                }}
+                                disabled={!canModify}
+                                style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white', fontSize: '11px', padding: '4px 8px' }}
+                              >
+                                ✅ Deliver
+                              </button>
                             )}
                           </div>
                           
@@ -10463,6 +10495,93 @@ function TestPackPage({ user }) {
       )}
       </>
       )}
+
+      {/* V32.9: Collector Selection Modal for Delivery */}
+      <Modal isOpen={showCollectorModal} onClose={() => { setShowCollectorModal(false); setPendingDelivery(null); }} title="🔔 Select Collector for Notification">
+        <div style={{ marginBottom: '16px' }}>
+          <p style={{ marginBottom: '12px', color: '#6b7280' }}>
+            Select who should be notified that the material is ready for collection:
+          </p>
+          <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px' }}>
+            {/* No notification option */}
+            <div
+              onClick={() => setSelectedCollectorId('')}
+              style={{
+                padding: '12px 16px',
+                cursor: 'pointer',
+                backgroundColor: selectedCollectorId === '' ? '#FEF3C7' : 'white',
+                borderBottom: '1px solid #e5e7eb',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px'
+              }}
+            >
+              <span style={{ fontSize: '18px' }}>🚫</span>
+              <div>
+                <div style={{ fontWeight: selectedCollectorId === '' ? '600' : '400' }}>No Notification</div>
+                <div style={{ fontSize: '12px', color: '#9ca3af' }}>Deliver without sending notification</div>
+              </div>
+            </div>
+            {/* User list */}
+            {allUsers.map(u => (
+              <div
+                key={u.id}
+                onClick={() => setSelectedCollectorId(u.id)}
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  backgroundColor: selectedCollectorId === u.id ? '#DBEAFE' : 'white',
+                  borderBottom: '1px solid #f3f4f6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = selectedCollectorId === u.id ? '#DBEAFE' : '#f9fafb'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = selectedCollectorId === u.id ? '#DBEAFE' : 'white'}
+              >
+                <span style={{ fontSize: '18px' }}>👤</span>
+                <div>
+                  <div style={{ fontWeight: selectedCollectorId === u.id ? '600' : '400' }}>{u.full_name}</div>
+                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>Badge: {u.badge_number}</div>
+                </div>
+                {selectedCollectorId === u.id && (
+                  <span style={{ marginLeft: 'auto', color: COLORS.info }}>✓</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        {selectedCollectorId && (
+          <div style={{ 
+            padding: '12px', 
+            backgroundColor: '#DBEAFE', 
+            borderRadius: '8px', 
+            marginBottom: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <span>🔔</span>
+            <span>Notification will be sent to: <strong>{allUsers.find(u => u.id === selectedCollectorId)?.full_name}</strong></span>
+          </div>
+        )}
+        
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button 
+            onClick={() => { setShowCollectorModal(false); setPendingDelivery(null); }} 
+            style={{ ...styles.button, ...styles.buttonSecondary }}
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={confirmDelivery} 
+            style={{ ...styles.button, backgroundColor: COLORS.success, color: 'white' }}
+          >
+            {selectedCollectorId ? '✅ Deliver & Notify' : '✅ Deliver (No Notification)'}
+          </button>
+        </div>
+      </Modal>
 
       <HistoryPopup isOpen={showHistory} onClose={() => setShowHistory(false)} componentId={historyComponentId} user={user} />
     </div>
