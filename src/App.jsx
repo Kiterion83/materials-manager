@@ -11,6 +11,10 @@
 //   - INVENTORY: Added tag_number column
 //   - DATABASE: Add New Item now requires Tag Number and auto-generates Internal Code
 //   - DATABASE: Preview of Internal Code shown before saving
+//   - PERMISSIONS: New permission system with 'true', 'view', 'false' values
+//   - PERMISSIONS: 'view' allows seeing page but buttons are disabled
+//   - ROLES: New roles - WH Yard Storekeeper Plus, WH Site Storekeeper Plus, Data Entry
+//   - ROLES: Updated canModifyPage() to support new roles and permission values
 // V32.9 Changes:
 //   - RESPONSIVE: Full mobile/tablet optimization (iPhone, Samsung, iPad)
 //   - RESPONSIVE: Collapsible sidebar with hamburger menu on mobile
@@ -731,10 +735,55 @@ function canModifyPage(user, page) {
   if (!user) return false;
   const role = user.role?.toLowerCase();
   
-  // Admin, Engineering and Management can modify everything
-  if (role === 'admin' || role === 'engineering' || role === 'management') return true;
+  // Admin can modify everything
+  if (role === 'admin') return true;
   
-  // Role-specific permissions
+  // V33: Check individual permissions first (supports 'true', 'view', 'false')
+  // Permission value 'true' or true = can modify
+  // Permission value 'view' = can view but not modify
+  // Permission value 'false' or false or null = no access
+  const permMap = {
+    'requests': user.perm_requests,
+    'wh_site': user.perm_wh_site,
+    'wh_yard': user.perm_wh_yard,
+    'engineering': user.perm_engineering,
+    'site_in': user.perm_site_in,
+    'to_be_collected': user.perm_wh_site,  // Uses WH Site permission
+    'hf': user.perm_hf || user.perm_wh_site,  // HF or WH Site
+    'testpack': user.perm_testpack || user.perm_wh_site,  // TestPack or WH Site
+    'internal_materials': user.perm_internal_materials,
+    'orders': user.perm_orders,
+    'management': user.perm_management,
+    'spare_parts': user.perm_spare_parts,
+    'mir': user.perm_mir,
+    'return_voucher': user.perm_return_voucher || user.perm_mir,
+    'material_in': user.perm_material_in,
+    'movements': user.perm_movements,
+    'database': user.perm_database
+  };
+  
+  const perm = permMap[page];
+  
+  // Check if permission allows modification
+  if (perm === true || perm === 'true') return true;
+  if (perm === 'view') return false;  // Can view but not modify
+  
+  // V33: Role-based fallback for backward compatibility
+  // Engineering and Management roles have full access
+  if (role === 'engineering' || role === 'management') return true;
+  
+  // New roles: WH Yard/Site Storekeeper Plus
+  if (role === 'wh yard storekeeper plus') {
+    return page === 'wh_yard' || page === 'requests';
+  }
+  if (role === 'wh site storekeeper plus') {
+    return page === 'wh_site' || page === 'requests' || page === 'testpack' || page === 'hf' || page === 'to_be_collected';
+  }
+  if (role === 'data entry') {
+    return page === 'requests' || page === 'mir' || page === 'return_voucher' || page === 'material_in' || page === 'internal_materials';
+  }
+  
+  // Legacy role-specific permissions
   switch(page) {
     case 'requests':
       return role === 'foreman';
@@ -744,13 +793,11 @@ function canModifyPage(user, page) {
       return role === 'wh_site';
     case 'wh_yard':
       return role === 'wh_yard';
-    // V28.10: Both WH Site and WH Yard can access HF and TestPack
     case 'hf':
     case 'testpack':
       return role === 'wh_site' || role === 'wh_yard';
-    // V32.6: Internal Materials - Engineering only
     case 'internal_materials':
-      return false; // Only admin/engineering/management (handled above)
+      return false;
     case 'orders':
       return role === 'buyer';
     default:
@@ -2965,7 +3012,7 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
     { id: 'dashboard', icon: '📊', label: 'Dashboard', perm: null },
     { id: 'requests', icon: '📋', label: 'Requests', perm: 'perm_requests' },
     { id: 'mir', icon: '📦', label: 'MIR', perm: 'perm_mir' },
-    { id: 'returnVoucher', icon: '↩️', label: 'Return Voucher', perm: 'perm_mir' },  // V32.9
+    { id: 'returnVoucher', icon: '↩️', label: 'Return Voucher', perm: 'perm_return_voucher' },  // V33: Own permission
     { id: 'materialIn', icon: '📥', label: 'Material In', perm: 'perm_material_in' },
     { id: 'siteIn', icon: '🏗️', label: 'Site IN', perm: 'perm_site_in' },
     { id: 'whSite', icon: '🏭', label: 'WH Site', perm: 'perm_wh_site' },
@@ -2984,9 +3031,13 @@ function Sidebar({ currentPage, setCurrentPage, user, collapsed, setCollapsed, b
   ];
 
   const visibleItems = menuItems.filter(item => {
-    if (!item.perm) return true;
-    if (user.role === 'admin') return true;
-    return user[item.perm] && user[item.perm] !== 'none';
+    if (!item.perm) return true;  // Dashboard sempre visibile
+    if (user.role?.toLowerCase() === 'admin') return true;  // Admin vede tutto
+    
+    const permValue = user[item.perm];
+    // V33: 'true', true, or 'view' = visible
+    // 'false', false, 'none', null, undefined = hidden
+    return permValue === true || permValue === 'true' || permValue === 'view';
   });
 
   // V32.9: Handle menu item click with mobile close
