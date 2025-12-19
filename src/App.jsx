@@ -12000,38 +12000,27 @@ function ToBeCollectedPage({ user }) {
     if (data) setInventory(data);
   };
 
-  // V33: Load ISO numbers for autocomplete (only P121* ISOs)
+  // V33: Load ALL ISO numbers for autocomplete
   const loadIsoNumbers = async () => {
     try {
-      // Use textSearch pattern for P121
       const { data, error } = await supabase
         .from('project_materials')
         .select('iso_number')
-        .filter('iso_number', 'ilike', 'P121%')
+        .not('iso_number', 'is', null)
         .order('iso_number')
-        .limit(10000);
+        .limit(50000);  // Get all
       
       if (error) {
         console.error('Error loading ISO numbers:', error);
-        // Fallback: try without filter
-        const { data: fallbackData } = await supabase
-          .from('project_materials')
-          .select('iso_number')
-          .order('iso_number')
-          .limit(5000);
-        if (fallbackData) {
-          const filtered = fallbackData
-            .map(d => d.iso_number)
-            .filter(iso => iso && iso.toUpperCase().startsWith('P121'));
-          const unique = [...new Set(filtered)];
-          setIsoNumbers(unique);
-        }
         return;
       }
       
       if (data && data.length > 0) {
         const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
+        console.log('Loaded', unique.length, 'unique ISO numbers. First 5:', unique.slice(0, 5));
         setIsoNumbers(unique);
+      } else {
+        console.log('No ISO numbers found in project_materials');
       }
     } catch (err) {
       console.error('Exception loading ISO numbers:', err);
