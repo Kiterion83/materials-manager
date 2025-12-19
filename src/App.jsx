@@ -11986,16 +11986,17 @@ function ToBeCollectedPage({ user }) {
   const [selectedForLabel, setSelectedForLabel] = useState(null);
   // V33: Bulk Record OUT modal
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const [bulkRows, setBulkRows] = useState([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
+  const [bulkRows, setBulkRows] = useState([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '', tag_number: '' }]);
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [inventory, setInventory] = useState([]);
   const [isoNumbers, setIsoNumbers] = useState([]);  // V33: ISO autocomplete
   const [activeIsoIndex, setActiveIsoIndex] = useState(null);  // V33: Which row has ISO dropdown open
+  const [activeReceiverIndex, setActiveReceiverIndex] = useState(null);  // V33: Which row has Receiver dropdown open
 
   useEffect(() => { loadComponents(); loadUsers(); loadInventory(); loadIsoNumbers(); }, []);
 
   const loadInventory = async () => {
-    const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom');
+    const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom, tag_number');
     if (data) setInventory(data);
   };
 
@@ -12172,7 +12173,7 @@ function ToBeCollectedPage({ user }) {
 
   // V33: Bulk Record OUT functions
   const addBulkRow = () => {
-    setBulkRows([...bulkRows, { date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
+    setBulkRows([...bulkRows, { date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '', tag_number: '' }]);
   };
 
   const removeBulkRow = (index) => {
@@ -12192,7 +12193,7 @@ function ToBeCollectedPage({ user }) {
   };
 
   const openBulkModal = () => {
-    setBulkRows([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '' }]);
+    setBulkRows([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '', tag_number: '' }]);
     setShowBulkModal(true);
   };
 
@@ -12540,14 +12541,15 @@ function ToBeCollectedPage({ user }) {
         </div>
 
         <div style={{ maxHeight: '450px', overflowY: 'auto', overflowX: 'auto', marginBottom: '16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '900px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f3f4f6' }}>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Date</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>ISO Number</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>HF (opt)</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Ident Code *</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '220px' }}>Description</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '200px' }}>Description</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Tag Number</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>UOM</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600', backgroundColor: '#DBEAFE' }}>Available</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Qty *</th>
@@ -12577,14 +12579,17 @@ function ToBeCollectedPage({ user }) {
                           setActiveIsoIndex(index);
                         }}
                         onFocus={() => setActiveIsoIndex(index)}
-                        onBlur={() => setTimeout(() => setActiveIsoIndex(null), 150)}
+                        onBlur={() => setTimeout(() => setActiveIsoIndex(null), 200)}
                         placeholder="Type ISO..."
                         autoComplete="off"
                         style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '140px' }}
                       />
-                      {activeIsoIndex === index && row.iso_number && isoNumbers.filter(iso => 
-                        iso.toLowerCase().includes(row.iso_number.toLowerCase())
-                      ).length > 0 && (
+                      {activeIsoIndex === index && row.iso_number && row.iso_number.length >= 1 && (
+                        (() => {
+                          const filteredIsos = isoNumbers.filter(iso => 
+                            iso.toLowerCase().includes(row.iso_number.toLowerCase())
+                          );
+                          return filteredIsos.length > 0 ? (
                         <div style={{
                           position: 'absolute',
                           top: '100%',
@@ -12593,14 +12598,12 @@ function ToBeCollectedPage({ user }) {
                           backgroundColor: 'white',
                           border: '1px solid #e5e7eb',
                           borderRadius: '4px',
-                          maxHeight: '150px',
+                          maxHeight: '180px',
                           overflowY: 'auto',
                           zIndex: 1000,
                           boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                         }}>
-                          {isoNumbers.filter(iso => 
-                            iso.toLowerCase().includes(row.iso_number.toLowerCase())
-                          ).slice(0, 10).map((iso, i) => (
+                          {filteredIsos.slice(0, 15).map((iso, i) => (
                             <div
                               key={i}
                               onMouseDown={() => {
@@ -12620,6 +12623,8 @@ function ToBeCollectedPage({ user }) {
                             </div>
                           ))}
                         </div>
+                          ) : null;
+                        })()
                       )}
                     </td>
                     <td style={{ padding: '6px' }}>
@@ -12647,7 +12652,10 @@ function ToBeCollectedPage({ user }) {
                       />
                     </td>
                     <td style={{ padding: '6px', fontSize: '12px', color: invItem ? '#374151' : '#9ca3af' }}>
-                      {invItem ? (invItem.description?.substring(0, 45) + (invItem.description?.length > 45 ? '...' : '')) : (row.ident_code ? '⚠️ Not found' : '-')}
+                      {invItem ? (invItem.description?.substring(0, 40) + (invItem.description?.length > 40 ? '...' : '')) : (row.ident_code ? '⚠️ Not found' : '-')}
+                    </td>
+                    <td style={{ padding: '6px', fontSize: '12px', color: invItem ? '#374151' : '#9ca3af', fontFamily: 'monospace' }}>
+                      {invItem?.tag_number || '-'}
                     </td>
                     <td style={{ padding: '6px', fontSize: '13px', textAlign: 'center', fontWeight: '500', color: COLORS.info }}>
                       {invItem?.uom || '-'}
@@ -12679,14 +12687,62 @@ function ToBeCollectedPage({ user }) {
                         }}
                       />
                     </td>
-                    <td style={{ padding: '6px' }}>
+                    <td style={{ padding: '6px', position: 'relative' }}>
                       <input
                         type="text"
                         value={row.received_by}
-                        onChange={(e) => updateBulkRow(index, 'received_by', e.target.value)}
-                        placeholder="Name..."
+                        onChange={(e) => {
+                          updateBulkRow(index, 'received_by', e.target.value);
+                          setActiveReceiverIndex(index);
+                        }}
+                        onFocus={() => setActiveReceiverIndex(index)}
+                        onBlur={() => setTimeout(() => setActiveReceiverIndex(null), 200)}
+                        placeholder="Type name..."
+                        autoComplete="off"
                         style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '140px' }}
                       />
+                      {activeReceiverIndex === index && row.received_by && row.received_by.length >= 1 && (
+                        (() => {
+                          const filteredUsers = allUsers.filter(u => 
+                            u.full_name.toLowerCase().includes(row.received_by.toLowerCase())
+                          );
+                          return filteredUsers.length > 0 ? (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: '6px',
+                          right: '6px',
+                          backgroundColor: 'white',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '4px',
+                          maxHeight: '150px',
+                          overflowY: 'auto',
+                          zIndex: 1000,
+                          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                        }}>
+                          {filteredUsers.slice(0, 10).map((u, i) => (
+                            <div
+                              key={i}
+                              onMouseDown={() => {
+                                updateBulkRow(index, 'received_by', u.full_name);
+                                setActiveReceiverIndex(null);
+                              }}
+                              style={{
+                                padding: '6px 8px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                borderBottom: '1px solid #f3f4f6'
+                              }}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                              onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                            >
+                              {u.full_name}
+                            </div>
+                          ))}
+                        </div>
+                          ) : null;
+                        })()
+                      )}
                     </td>
                     <td style={{ padding: '6px', textAlign: 'center' }}>
                       {bulkRows.length > 1 && (
