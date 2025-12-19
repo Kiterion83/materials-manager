@@ -12002,16 +12002,39 @@ function ToBeCollectedPage({ user }) {
 
   // V33: Load ISO numbers for autocomplete (only P121* ISOs)
   const loadIsoNumbers = async () => {
-    const { data } = await supabase
-      .from('project_materials')
-      .select('iso_number')
-      .like('iso_number', 'P121%')  // Only P121 project ISOs
-      .not('iso_number', 'is', null)
-      .order('iso_number')
-      .limit(10000);  // Increase limit to get all
-    if (data) {
-      const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
-      setIsoNumbers(unique);
+    try {
+      // Use textSearch pattern for P121
+      const { data, error } = await supabase
+        .from('project_materials')
+        .select('iso_number')
+        .filter('iso_number', 'ilike', 'P121%')
+        .order('iso_number')
+        .limit(10000);
+      
+      if (error) {
+        console.error('Error loading ISO numbers:', error);
+        // Fallback: try without filter
+        const { data: fallbackData } = await supabase
+          .from('project_materials')
+          .select('iso_number')
+          .order('iso_number')
+          .limit(5000);
+        if (fallbackData) {
+          const filtered = fallbackData
+            .map(d => d.iso_number)
+            .filter(iso => iso && iso.toUpperCase().startsWith('P121'));
+          const unique = [...new Set(filtered)];
+          setIsoNumbers(unique);
+        }
+        return;
+      }
+      
+      if (data && data.length > 0) {
+        const unique = [...new Set(data.map(d => d.iso_number).filter(Boolean))];
+        setIsoNumbers(unique);
+      }
+    } catch (err) {
+      console.error('Exception loading ISO numbers:', err);
     }
   };
 
@@ -12542,8 +12565,8 @@ function ToBeCollectedPage({ user }) {
           </p>
         </div>
 
-        <div style={{ maxHeight: '450px', overflowY: 'auto', overflowX: 'auto', marginBottom: '16px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px' }}>
+        <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'auto', marginBottom: '30px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px', marginBottom: '20px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f3f4f6' }}>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Date</th>
@@ -12581,17 +12604,12 @@ function ToBeCollectedPage({ user }) {
                           setActiveIsoIndex(index);
                         }}
                         onFocus={() => setActiveIsoIndex(index)}
-                        onBlur={() => setTimeout(() => setActiveIsoIndex(null), 200)}
+                        onBlur={() => setTimeout(() => setActiveIsoIndex(null), 250)}
                         placeholder="Type or click..."
                         autoComplete="off"
                         style={{ ...styles.input, padding: '6px', fontSize: '13px', width: '160px' }}
                       />
                       {activeIsoIndex === index && (
-                        (() => {
-                          const filteredIsos = row.iso_number 
-                            ? isoNumbers.filter(iso => iso.toLowerCase().includes(row.iso_number.toLowerCase()))
-                            : isoNumbers;  // Show all if empty
-                          return filteredIsos.length > 0 ? (
                         <div style={{
                           position: 'absolute',
                           top: '100%',
@@ -12602,34 +12620,41 @@ function ToBeCollectedPage({ user }) {
                           borderRadius: '4px',
                           maxHeight: '200px',
                           overflowY: 'auto',
-                          zIndex: 1000,
-                          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                          zIndex: 9999,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
                         }}>
-                          {filteredIsos.slice(0, 20).map((iso, i) => (
-                            <div
-                              key={i}
-                              onMouseDown={() => {
-                                updateBulkRow(index, 'iso_number', iso);
-                                setActiveIsoIndex(null);
-                              }}
-                              style={{
-                                padding: '8px 10px',
-                                cursor: 'pointer',
-                                fontSize: '12px',
-                                borderBottom: '1px solid #f3f4f6',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                              }}
-                              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
-                              onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
-                            >
-                              {iso}
+                          {isoNumbers.length === 0 ? (
+                            <div style={{ padding: '10px', color: '#9ca3af', fontSize: '12px', textAlign: 'center' }}>
+                              No ISO numbers found
                             </div>
-                          ))}
+                          ) : (
+                            (row.iso_number 
+                              ? isoNumbers.filter(iso => iso.toLowerCase().includes(row.iso_number.toLowerCase()))
+                              : isoNumbers
+                            ).slice(0, 30).map((iso, i) => (
+                              <div
+                                key={i}
+                                onMouseDown={() => {
+                                  updateBulkRow(index, 'iso_number', iso);
+                                  setActiveIsoIndex(null);
+                                }}
+                                style={{
+                                  padding: '8px 10px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px',
+                                  borderBottom: '1px solid #f3f4f6',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                                onMouseEnter={(e) => e.target.style.backgroundColor = '#EFF6FF'}
+                                onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+                              >
+                                {iso}
+                              </div>
+                            ))
+                          )}
                         </div>
-                          ) : null;
-                        })()
                       )}
                     </td>
                     <td style={{ padding: '6px' }}>
@@ -12766,7 +12791,7 @@ function ToBeCollectedPage({ user }) {
           </table>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
           <button
             onClick={addBulkRow}
             style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '8px 16px' }}
