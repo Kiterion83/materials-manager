@@ -772,11 +772,16 @@ function formatRequestNumber(base, component = 0, whSplit = 0, yardSplit = 0) {
 
 // Get display version of request number (ALWAYS shows 4-level format)
 function displayRequestNumber(request, showFull = true) {
-  // If request_number_full exists, use it
+  // V32.9: Show only base 5-digit request number (XXXXX)
+  const base = String(request?.request_number || 0).padStart(5, '0');
+  return base;
+}
+
+// V32.9: Full request number for tooltips/details (XXXXX-XX-XX-XX)
+function displayRequestNumberFull(request) {
   if (request?.request_number_full) {
     return request.request_number_full;
   }
-  // Always generate 4-level format
   const base = String(request?.request_number || 0).padStart(5, '0');
   const comp = String(request?.level_component ?? request?.sub_number ?? 0).padStart(2, '0');
   const wh = String(request?.level_wh_split ?? 0).padStart(2, '0');
@@ -5671,13 +5676,16 @@ function WHSitePage({ user }) {
                             actions.push({ id: 'check_partial', icon: '✂️', label: 'Partial' });
                           }
                           
-                          // To HF only if site_qty > 0 AND has hf_number
-                          if (hasSiteQty && (check.requests?.hf_number || check.previous_status === 'HF')) {
+                          // V28.11: To TestPack only if FULL qty available (site_qty >= requested)
+                          const isTestPackItem = check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP';
+                          
+                          // To HF only if site_qty > 0 AND has hf_number AND NOT a TestPack item
+                          // V32.9: TestPack takes priority over HF
+                          if (hasSiteQty && (check.requests?.hf_number || check.previous_status === 'HF') && !isTestPackItem) {
                             actions.push({ id: 'check_to_hf', icon: '🔩', label: 'To HF' });
                           }
                           
-                          // V28.11: To TestPack only if FULL qty available (site_qty >= requested)
-                          const isTestPackItem = check.requests?.test_pack_number || check.requests?.request_type === 'TestPack' || check.previous_status === 'TP';
+                          // To TestPack if it's a TestPack item
                           if (isTestPackItem) {
                             // Only show To TestPack if full qty available
                             if (inv.site >= check.quantity) {
@@ -5853,7 +5861,8 @@ function WHSitePage({ user }) {
                         // Engineering always available
                         actions.push({ id: 'eng', icon: '⚙️', label: 'To Engineering' });
                         // V32.3: HF available if has hf_number and has some qty
-                        if (hasSiteQty && isHF) {
+                        // V32.9: BUT NOT if it's also a TestPack item (TP takes priority)
+                        if (hasSiteQty && isHF && !isTP) {
                           actions.push({ id: 'hf', icon: '🔩', label: hasEnoughSite ? 'To HF (Complete)' : 'To HF (Partial)' });
                         }
                         // V32.3: TestPack available if has test_pack_number and has some qty (to freeze material)
@@ -8593,7 +8602,7 @@ function EngineeringPage({ user }) {
         </div>
       </div>
 
-      {/* Check Modal - con opzione Both */}
+      {/* Check Modal - V32.9: Removed Both option */}
       <Modal isOpen={showCheckModal} onClose={() => setShowCheckModal(false)} title="Send Check Request">
         <div style={{ marginBottom: '16px' }}>
           <label style={styles.label}>Send to</label>
@@ -8605,10 +8614,6 @@ function EngineeringPage({ user }) {
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
               <input type="radio" name="checkDest" value="Yard" checked={checkDestination === 'Yard'} onChange={(e) => setCheckDestination(e.target.value)} />
               WH Yard
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', color: COLORS.teal, fontWeight: '600' }}>
-              <input type="radio" name="checkDest" value="Both" checked={checkDestination === 'Both'} onChange={(e) => setCheckDestination(e.target.value)} />
-              🔄 BOTH
             </label>
           </div>
         </div>
@@ -9250,6 +9255,8 @@ function TestPackPage({ user }) {
   const [tpLogList, setTpLogList] = useState([]);
   // V32.4: Selected box filter for TestPack Log
   const [selectedLogBox, setSelectedLogBox] = useState(null);
+  // V32.9: Search term for Materials tab
+  const [materialsSearchTerm, setMaterialsSearchTerm] = useState('');
 
   useEffect(() => { loadComponents(); }, []);
 
@@ -9404,6 +9411,11 @@ function TestPackPage({ user }) {
             if (deliveredCount > 0 || doneCount > 0) {
               // Get unique sub-categories
               const subCats = [...new Set(allComponents.map(c => c.sub_category).filter(Boolean))];
+              // V32.9: Get items that are to collect (for tooltip)
+              const toCollectItems = allComponents
+                .filter(c => c.status === 'ToCollect')
+                .map(c => c.ident_code || c.description || 'Unknown')
+                .slice(0, 10); // Limit to 10 items for tooltip
               logList.push({
                 test_pack_number: tpNum,
                 status,
@@ -9412,7 +9424,9 @@ function TestPackPage({ user }) {
                 in_progress: inProgressCount,
                 done: doneCount,
                 to_collect: toCollectCount,
+                to_collect_items: toCollectItems, // V32.9: For tooltip
                 sub_categories: subCats.length,
+                sub_categories_names: subCats.join(', '), // V32.9: Names for tooltip
                 created_by_name: requests[0]?.created_by_name || '-'
               });
             }
@@ -10096,11 +10110,14 @@ function TestPackPage({ user }) {
                         <tr key={tp.test_pack_number}>
                           <td style={{ ...styles.td, fontWeight: '600', fontFamily: 'monospace' }}>{tp.test_pack_number}</td>
                           <td style={styles.td}>
-                            <span style={{
+                            <span 
+                              title={tp.to_collect > 0 ? `To Collect (${tp.to_collect}):\n${tp.to_collect_items?.join('\n') || 'No items'}\n\nSub-categories: ${tp.sub_categories_names || '-'}` : `Sub-categories: ${tp.sub_categories_names || '-'}`}
+                              style={{
                               padding: '4px 8px',
                               borderRadius: '4px',
                               fontSize: '11px',
                               fontWeight: '600',
+                              cursor: 'help',
                               backgroundColor: tp.status.includes('full') 
                                 ? (tp.status === 'fullCollected' ? '#FEF3C7' : '#D1FAE5')
                                 : '#FEF3C7',
@@ -10162,7 +10179,36 @@ function TestPackPage({ user }) {
           No TestPack components
         </div>
       ) : (
-        tpList.map(tp => (
+        <>
+          {/* V32.9: Search box for TestPack Materials */}
+          <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              placeholder="🔍 Search TestPack number..."
+              value={materialsSearchTerm}
+              onChange={(e) => setMaterialsSearchTerm(e.target.value)}
+              style={{
+                ...styles.input,
+                maxWidth: '300px',
+                padding: '10px 16px'
+              }}
+            />
+            {materialsSearchTerm && (
+              <button
+                onClick={() => setMaterialsSearchTerm('')}
+                style={{ ...styles.button, backgroundColor: '#6B7280', color: 'white', fontSize: '12px', padding: '8px 12px' }}
+              >
+                ✕ Clear
+              </button>
+            )}
+            <span style={{ color: '#6b7280', fontSize: '14px' }}>
+              Showing {tpList.filter(tp => !materialsSearchTerm || tp.test_pack_number?.toLowerCase().includes(materialsSearchTerm.toLowerCase())).length} of {tpList.length} TestPacks
+            </span>
+          </div>
+          
+        {tpList
+          .filter(tp => !materialsSearchTerm || tp.test_pack_number?.toLowerCase().includes(materialsSearchTerm.toLowerCase()))
+          .map(tp => (
           <div key={tp.test_pack_number} style={{ marginBottom: '24px' }}>
             {/* TestPack Header */}
             <div style={{
@@ -10412,7 +10458,8 @@ function TestPackPage({ user }) {
               );
             })}
           </div>
-        ))
+        ))}
+        </>
       )}
       </>
       )}
