@@ -12550,9 +12550,9 @@ function ToBeCollectedPage({ user }) {
           </p>
         </div>
 
-        <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'auto', marginBottom: '30px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1200px', marginBottom: '20px' }}>
-            <thead>
+        <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'auto', marginBottom: '30px', position: 'relative', paddingBottom: '220px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1200px' }}>
+            <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f3f4f6', zIndex: 10 }}>
               <tr style={{ backgroundColor: '#f3f4f6' }}>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '120px' }}>Date</th>
                 <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '170px' }}>ISO Number</th>
@@ -12604,17 +12604,17 @@ function ToBeCollectedPage({ user }) {
                       {activeIsoIndex === index && row.iso_number && row.iso_number.length >= 4 && (
                         <div style={{
                           position: 'absolute',
-                          bottom: '100%',
+                          top: '100%',
                           left: '6px',
                           width: '220px',
                           backgroundColor: 'white',
-                          border: '1px solid #e5e7eb',
+                          border: '1px solid #d1d5db',
                           borderRadius: '4px',
                           maxHeight: '200px',
                           overflowY: 'auto',
-                          zIndex: 9999,
-                          boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
-                          marginBottom: '4px'
+                          zIndex: 99999,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                          marginTop: '2px'
                         }}>
                           {isoNumbers.length === 0 ? (
                             <div style={{ padding: '10px', color: '#9ca3af', fontSize: '12px', textAlign: 'center' }}>
@@ -12730,17 +12730,17 @@ function ToBeCollectedPage({ user }) {
                           return filteredUsers.length > 0 ? (
                         <div style={{
                           position: 'absolute',
-                          bottom: '100%',
+                          top: '100%',
                           left: '6px',
                           right: '6px',
                           backgroundColor: 'white',
-                          border: '1px solid #e5e7eb',
+                          border: '1px solid #d1d5db',
                           borderRadius: '4px',
                           maxHeight: '150px',
                           overflowY: 'auto',
-                          zIndex: 9999,
-                          boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
-                          marginBottom: '4px'
+                          zIndex: 99999,
+                          boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+                          marginTop: '2px'
                         }}>
                           {filteredUsers.slice(0, 10).map((u, i) => (
                             <div
@@ -20267,15 +20267,24 @@ export default function App() {
             
             {/* V32.9: Hide refresh on mobile to save space */}
             {!isMobile && (
-              <button onClick={loadBadges} style={{ ...styles.button, ...styles.buttonSecondary }}>🔄 Refresh</button>
+              <button onClick={loadBadges} style={{ 
+                ...styles.button, 
+                ...styles.buttonSecondary,
+                minHeight: '44px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>🔄 Refresh</button>
             )}
             <button onClick={handleLogout} style={{ 
               ...styles.button, 
               backgroundColor: COLORS.gray, 
               color: 'white',
               padding: isMobile ? '10px 12px' : '8px 16px',
-              minWidth: '44px',
-              minHeight: '44px'
+              minHeight: '44px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}>🚪{!isMobile && ' Logout'}</button>
           </div>
         </header>
