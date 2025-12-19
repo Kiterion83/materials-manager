@@ -12551,20 +12551,20 @@ function ToBeCollectedPage({ user }) {
         </div>
 
         <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'auto', marginBottom: '30px' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1100px', marginBottom: '20px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1200px', marginBottom: '20px' }}>
             <thead>
               <tr style={{ backgroundColor: '#f3f4f6' }}>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Date</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>ISO Number</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>HF (opt)</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Ident Code *</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '200px' }}>Description</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Tag Number</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>UOM</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600', backgroundColor: '#DBEAFE' }}>Available</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Qty *</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600' }}>Received By *</th>
-                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600' }}>🗑️</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '120px' }}>Date</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '170px' }}>ISO Number</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '80px' }}>HF (opt)</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '120px' }}>Ident Code *</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '180px' }}>Description</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '90px', whiteSpace: 'nowrap' }}>Tag Number</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600', minWidth: '50px' }}>UOM</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600', backgroundColor: '#DBEAFE', minWidth: '70px' }}>Available</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '60px' }}>Qty *</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'left', fontWeight: '600', minWidth: '140px' }}>Received By *</th>
+                <th style={{ padding: '10px 8px', borderBottom: '2px solid #e5e7eb', textAlign: 'center', fontWeight: '600', minWidth: '40px' }}>🗑️</th>
               </tr>
             </thead>
             <tbody>
@@ -12604,7 +12604,7 @@ function ToBeCollectedPage({ user }) {
                       {activeIsoIndex === index && row.iso_number && row.iso_number.length >= 4 && (
                         <div style={{
                           position: 'absolute',
-                          top: '100%',
+                          bottom: '100%',
                           left: '6px',
                           width: '220px',
                           backgroundColor: 'white',
@@ -12613,7 +12613,8 @@ function ToBeCollectedPage({ user }) {
                           maxHeight: '200px',
                           overflowY: 'auto',
                           zIndex: 9999,
-                          boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                          boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                          marginBottom: '4px'
                         }}>
                           {isoNumbers.length === 0 ? (
                             <div style={{ padding: '10px', color: '#9ca3af', fontSize: '12px', textAlign: 'center' }}>
@@ -12729,7 +12730,7 @@ function ToBeCollectedPage({ user }) {
                           return filteredUsers.length > 0 ? (
                         <div style={{
                           position: 'absolute',
-                          top: '100%',
+                          bottom: '100%',
                           left: '6px',
                           right: '6px',
                           backgroundColor: 'white',
@@ -12737,8 +12738,9 @@ function ToBeCollectedPage({ user }) {
                           borderRadius: '4px',
                           maxHeight: '150px',
                           overflowY: 'auto',
-                          zIndex: 1000,
-                          boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                          zIndex: 9999,
+                          boxShadow: '0 -4px 12px rgba(0,0,0,0.15)',
+                          marginBottom: '4px'
                         }}>
                           {filteredUsers.slice(0, 10).map((u, i) => (
                             <div
