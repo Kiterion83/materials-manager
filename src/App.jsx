@@ -978,15 +978,61 @@ async function generateRKDocument(mirNumber, rkNumber, description, onProgress, 
       docXml = docXml.replace(new RegExp(placeholderNames[i], 'g'), lineContent);
     }
     
-    // Replace RK number
-    docXml = docXml.replace(/RKNUMBER/g, rkNumber);
-    docXml = replaceInWordXml(docXml, 'RK_NUMBER', rkNumber);
+    // V33: IMPORTANT - Replace dates FIRST, before replacing standalone XXXX
+    const dateFormatted = `${day}/${month}/${year}`;
+    const dateFormattedShort = `${day}/${month}/${year.slice(-2)}`;
     
-    // Replace dates
+    // Replace simple date placeholders
     docXml = docXml.replace(/\bDD\b/g, day);
     docXml = docXml.replace(/\bMM\b/g, month);
     docXml = docXml.replace(/\bYYYY\b/g, year);
-    docXml = docXml.replace(/XX\/XX\/XXXX/g, `${day}/${month}/${year}`);
+    
+    // V33: Replace complete date patterns (before standalone XXXX replacement)
+    docXml = docXml.replace(/XX\/XX\/XXXX/g, dateFormatted);
+    docXml = replaceInWordXml(docXml, 'XX/XX/XXXX', dateFormatted);
+    
+    // Simpler fallback patterns
+    docXml = docXml.replace(/XX\/XX\/XX(?!X)/g, dateFormattedShort);
+    docXml = docXml.replace(/__\/__\/__/g, dateFormattedShort);
+    docXml = docXml.replace(/______\/______\/______/g, dateFormatted);
+    
+    // V33: Replace RK number AFTER dates
+    docXml = docXml.replace(/RKNUMBER/g, rkNumber);
+    docXml = replaceInWordXml(docXml, 'RK_NUMBER', rkNumber);
+    
+    // V33: Replace XXXX for RK0020_XXXX - handle split XML elements
+    // Pattern: <w:t>RK0020_</w:t></w:r>...<w:r>...<w:t>XXXX</w:t>
+    docXml = docXml.replace(
+      /(RK0020_<\/w:t><\/w:r>)([\s\S]*?)(<w:r[^>]*>[\s\S]*?<w:t[^>]*>)XXXX(<\/w:t>)/g, 
+      `$1$2$3${rkNumber}$4`
+    );
+    docXml = docXml.replace(/RK0020_XXXX/g, `RK0020_${rkNumber}`);
+    
+    // V33: Handle split date - Date:XX/XX/XXXX where parts are in separate <w:t> elements
+    // Find: >XX</w:t>...</w:t>/</w:t>...</w:t>XX</w:t>...</w:t>/</w:t>...</w:t>XXXX</w:t>
+    // Replace in sequence: first >XX< after Date: with day, second >XX< with month, >XXXX< with year
+    // This is done by finding the pattern and replacing piece by piece
+    
+    // Step 1: Replace year XXXX in date context (XXXX preceded by / in nearby context)
+    // Find >XXXX</w:t> that has a / before it (indicating it's part of a date)
+    docXml = docXml.replace(
+      /(>\/\s*<\/w:t>[\s\S]{0,200}?<w:t[^>]*?>)XXXX(<\/w:t>)/g,
+      `$1${year}$2`
+    );
+    
+    // Step 2: Replace month XX (second XX after Date:, followed by /)
+    // This is tricky - we need to find XX that's followed eventually by / and then XXXX or year
+    docXml = docXml.replace(
+      /(>\/\s*<\/w:t>[\s\S]{0,200}?<w:t[^>]*?>)XX(<\/w:t>[\s\S]{0,200}?>\/)/g,
+      `$1${month}$2`
+    );
+    
+    // Step 3: Replace day XX (first XX after Date:)
+    // Find XX that comes right after Date: context and is followed by /
+    docXml = docXml.replace(
+      /(Date:\s*<\/w:t>[\s\S]{0,200}?<w:t[^>]*?>)XX(<\/w:t>[\s\S]{0,100}?>\/)/gi,
+      `$1${day}$2`
+    );
     
     // Save modified document.xml
     zip.file('word/document.xml', docXml);
