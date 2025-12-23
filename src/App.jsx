@@ -13810,20 +13810,6 @@ function MaterialInPage({ user }) {
     
     setQuickImportProcessing(true);
     
-    // Load project_materials for description, dia1, uom (same as manual search)
-    const { data: pmData } = await supabase
-      .from('project_materials')
-      .select('ident_code, description, dia1, uom');
-    
-    const pmMap = {};
-    if (pmData) {
-      pmData.forEach(i => { 
-        if (!pmMap[i.ident_code?.toLowerCase()]) {
-          pmMap[i.ident_code?.toLowerCase()] = i; 
-        }
-      });
-    }
-    
     const lines = text.trim().split('\n').filter(line => line.trim());
     if (lines.length === 0) {
       alert('No valid rows found');
@@ -13831,19 +13817,52 @@ function MaterialInPage({ user }) {
       return;
     }
     
-    const newItems = [];
-    const errors = [];
-    const warnings = [];
+    // First, extract all ident codes from pasted text
+    const identCodes = [];
+    const lineData = [];
     
     for (const line of lines) {
-      // Parse line - try tab, comma, multiple spaces
       let parts = line.split('\t');
       if (parts.length < 2) parts = line.split(',');
       if (parts.length < 2) parts = line.split(/\s{2,}/);
       if (parts.length < 2) parts = line.trim().split(/\s+/);
       
-      const identCode = parts[0]?.trim();
+      const identCode = parts[0]?.trim()?.toUpperCase();
       const qtyStr = parts[1]?.trim();
+      
+      if (identCode) {
+        identCodes.push(identCode);
+        lineData.push({ identCode, qtyStr, line });
+      }
+    }
+    
+    // Query project_materials for ONLY the specific codes (case-insensitive)
+    const pmMap = {};
+    
+    // Query in batches of 50 to avoid URL length limits
+    for (let i = 0; i < identCodes.length; i += 50) {
+      const batch = identCodes.slice(i, i + 50);
+      const { data: pmData } = await supabase
+        .from('project_materials')
+        .select('ident_code, description, dia1, uom')
+        .in('ident_code', batch);
+      
+      if (pmData) {
+        pmData.forEach(item => {
+          if (!pmMap[item.ident_code?.toUpperCase()]) {
+            pmMap[item.ident_code?.toUpperCase()] = item;
+          }
+        });
+      }
+    }
+    
+    console.log('Quick Import - Found materials:', Object.keys(pmMap).length, 'of', identCodes.length);
+    
+    const newItems = [];
+    const errors = [];
+    const warnings = [];
+    
+    for (const { identCode, qtyStr, line } of lineData) {
       const qty = parseInt(qtyStr);
       
       if (!identCode) {
@@ -13857,7 +13876,7 @@ function MaterialInPage({ user }) {
       }
       
       // Check if ident exists in project_materials
-      const pmItem = pmMap[identCode.toLowerCase()];
+      const pmItem = pmMap[identCode.toUpperCase()];
       const actualIdentCode = pmItem?.ident_code || identCode;
       
       if (!pmItem) {
