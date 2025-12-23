@@ -13810,11 +13810,18 @@ function MaterialInPage({ user }) {
     
     setQuickImportProcessing(true);
     
-    // Load inventory for validation
-    const { data: invData } = await supabase.from('inventory').select('ident_code, description, site_qty, uom, dia1');
-    const inventoryMap = {};
-    if (invData) {
-      invData.forEach(i => { inventoryMap[i.ident_code?.toLowerCase()] = i; });
+    // Load project_materials for description, dia1, uom (same as manual search)
+    const { data: pmData } = await supabase
+      .from('project_materials')
+      .select('ident_code, description, dia1, uom');
+    
+    const pmMap = {};
+    if (pmData) {
+      pmData.forEach(i => { 
+        if (!pmMap[i.ident_code?.toLowerCase()]) {
+          pmMap[i.ident_code?.toLowerCase()] = i; 
+        }
+      });
     }
     
     const lines = text.trim().split('\n').filter(line => line.trim());
@@ -13849,21 +13856,21 @@ function MaterialInPage({ user }) {
         continue;
       }
       
-      // Check if ident exists in inventory
-      const invItem = inventoryMap[identCode.toLowerCase()];
-      const actualIdentCode = invItem?.ident_code || identCode;
+      // Check if ident exists in project_materials
+      const pmItem = pmMap[identCode.toLowerCase()];
+      const actualIdentCode = pmItem?.ident_code || identCode;
       
-      if (!invItem) {
-        warnings.push(`${identCode}: Not in inventory (will be created on load)`);
+      if (!pmItem) {
+        warnings.push(`${identCode}: Not found in project materials`);
       }
       
-      // Add to list
+      // Add to list with description, dia1, uom from project_materials
       newItems.push({
         id: Date.now() + Math.random(),
         ident_code: actualIdentCode,
-        description: invItem?.description || '',
-        dia1: invItem?.dia1 || '',
-        uom: invItem?.uom || '',
+        description: pmItem?.description || '',
+        dia1: pmItem?.dia1 || '',
+        uom: pmItem?.uom || '',
         quantity: qty,
         is_partial: false,
         missing_qty: 0,
