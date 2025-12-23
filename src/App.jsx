@@ -13658,27 +13658,84 @@ function MaterialInPage({ user }) {
       return;
     }
     
+    // Prevent double-click
+    if (quickImportProcessing) return;
+    setQuickImportProcessing(true);
+    
     try {
+      let successCount = 0;
+      let errors = [];
+      
       for (const item of loadedItems) {
         // Update inventory
         if (item.quantity > 0) {
-          // Update collected_ten_wh
-          await supabase.rpc('increment_collected_ten_wh', { 
-            p_ident_code: item.ident_code, 
-            p_qty: item.quantity 
-          });
-          
-          // Update yard or site qty
-          if (destination === 'YARD') {
-            await supabase.rpc('increment_yard_qty', { 
+          try {
+            // Update collected_ten_wh
+            const { error: errTen } = await supabase.rpc('increment_collected_ten_wh', { 
               p_ident_code: item.ident_code, 
               p_qty: item.quantity 
             });
-          } else {
-            await supabase.rpc('increment_site_qty', { 
-              p_ident_code: item.ident_code, 
-              p_qty: item.quantity 
-            });
+            if (errTen) console.log('increment_collected_ten_wh warning:', errTen.message);
+            
+            // Update yard or site qty
+            if (destination === 'YARD') {
+              const { error: errYard } = await supabase.rpc('increment_yard_qty', { 
+                p_ident_code: item.ident_code, 
+                p_qty: item.quantity 
+              });
+              
+              if (errYard) {
+                console.log('increment_yard_qty error, trying direct update:', errYard.message);
+                // Fallback: direct upsert
+                const { data: existing } = await supabase
+                  .from('inventory')
+                  .select('yard_qty')
+                  .eq('ident_code', item.ident_code)
+                  .single();
+                
+                if (existing) {
+                  await supabase
+                    .from('inventory')
+                    .update({ yard_qty: (existing.yard_qty || 0) + item.quantity })
+                    .eq('ident_code', item.ident_code);
+                } else {
+                  await supabase
+                    .from('inventory')
+                    .insert({ ident_code: item.ident_code, yard_qty: item.quantity, site_qty: 0 });
+                }
+              }
+            } else {
+              const { error: errSite } = await supabase.rpc('increment_site_qty', { 
+                p_ident_code: item.ident_code, 
+                p_qty: item.quantity 
+              });
+              
+              if (errSite) {
+                console.log('increment_site_qty error, trying direct update:', errSite.message);
+                // Fallback: direct upsert
+                const { data: existing } = await supabase
+                  .from('inventory')
+                  .select('site_qty')
+                  .eq('ident_code', item.ident_code)
+                  .single();
+                
+                if (existing) {
+                  await supabase
+                    .from('inventory')
+                    .update({ site_qty: (existing.site_qty || 0) + item.quantity })
+                    .eq('ident_code', item.ident_code);
+                } else {
+                  await supabase
+                    .from('inventory')
+                    .insert({ ident_code: item.ident_code, site_qty: item.quantity, yard_qty: 0 });
+                }
+              }
+            }
+            
+            successCount++;
+          } catch (invError) {
+            console.error('Inventory update error for', item.ident_code, invError);
+            errors.push(`${item.ident_code}: ${invError.message}`);
           }
         }
         
@@ -13690,7 +13747,7 @@ function MaterialInPage({ user }) {
           from_location: 'TEN_WH',
           to_location: destination,
           performed_by: user.full_name,
-          note: `MIR ${item.mir_number || item.rk_number}${item.is_partial ? ' (Partial)' : ''}${item.note ? ' - ' + item.note : ''}`
+          note: `MIR ${item.mir_number || '-'}/${item.rk_number || '-'}${item.is_partial ? ' (Partial)' : ''}${item.note ? ' - ' + item.note : ''}`
         });
         
         // If partial, log to partials table
@@ -13710,10 +13767,17 @@ function MaterialInPage({ user }) {
         }
       }
       
-      alert(`Successfully assigned ${loadedItems.length} items to ${destination}`);
+      setQuickImportProcessing(false);
+      
+      if (errors.length > 0) {
+        alert(`Completed with some errors:\n✅ Success: ${successCount}\n❌ Errors: ${errors.length}\n\n${errors.slice(0, 5).join('\n')}`);
+      } else {
+        alert(`✅ Successfully assigned ${loadedItems.length} items to ${destination}`);
+      }
       setLoadedItems([]);
       loadData();
     } catch (error) {
+      setQuickImportProcessing(false);
       alert('Error: ' + error.message);
     }
   };
@@ -13800,6 +13864,12 @@ function MaterialInPage({ user }) {
 
   // V33: Pre-fetch data when user pastes text
   const preFetchImportData = async (text) => {
+    // Prevent multiple calls
+    if (importFetching) {
+      console.log('Already fetching, skipping...');
+      return;
+    }
+    
     if (!text || !text.trim()) {
       setParsedImportData([]);
       return;
@@ -13891,6 +13961,9 @@ function MaterialInPage({ user }) {
 
   // V33: Add pre-fetched data to loadedItems list
   const addParsedDataToList = () => {
+    // Prevent double-click
+    if (quickImportProcessing) return;
+    
     if (!selectedMir) {
       alert('Please select a MIR first');
       return;
@@ -13918,12 +13991,13 @@ function MaterialInPage({ user }) {
     
     const notFound = parsedImportData.filter(p => !p.found).length;
     
-    // Add to list and clear temp data
-    setLoadedItems([...loadedItems, ...newItems]);
+    // Add to list and clear temp data IMMEDIATELY to prevent double-add
+    const itemsToAdd = [...newItems];
+    setParsedImportData([]);  // Clear first!
     setQuickImportText('');
-    setParsedImportData([]);
+    setLoadedItems(prev => [...prev, ...itemsToAdd]);
     
-    let message = `✅ Added ${newItems.length} items to list`;
+    let message = `✅ Added ${itemsToAdd.length} items to list`;
     if (notFound > 0) {
       message += `\n\n⚠️ ${notFound} items not found in project materials (added without description)`;
     }
@@ -14152,7 +14226,7 @@ function MaterialInPage({ user }) {
                     )}
                     
                     {/* Add to List button - only if parsed data ready */}
-                    {parsedImportData.length > 0 && (
+                    {parsedImportData.length > 0 && !quickImportProcessing && (
                       <button
                         onClick={addParsedDataToList}
                         style={{ 
@@ -14477,29 +14551,31 @@ function MaterialInPage({ user }) {
           <div style={{ padding: '20px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '16px', justifyContent: 'center' }}>
             <button
               onClick={() => assignToWarehouse('SITE')}
-              disabled={!canModify}
+              disabled={!canModify || quickImportProcessing}
               style={{ 
                 ...styles.button, 
-                backgroundColor: COLORS.info, 
+                backgroundColor: quickImportProcessing ? '#9ca3af' : COLORS.info, 
                 color: 'white',
                 padding: '12px 32px',
-                fontSize: '16px'
+                fontSize: '16px',
+                cursor: quickImportProcessing ? 'not-allowed' : 'pointer'
               }}
             >
-              🏭 Assign to SITE
+              {quickImportProcessing ? '⏳ Processing...' : '🏭 Assign to SITE'}
             </button>
             <button
               onClick={() => assignToWarehouse('YARD')}
-              disabled={!canModify}
+              disabled={!canModify || quickImportProcessing}
               style={{ 
                 ...styles.button, 
-                backgroundColor: COLORS.secondary, 
+                backgroundColor: quickImportProcessing ? '#9ca3af' : COLORS.secondary, 
                 color: 'white',
                 padding: '12px 32px',
-                fontSize: '16px'
+                fontSize: '16px',
+                cursor: quickImportProcessing ? 'not-allowed' : 'pointer'
               }}
             >
-              🏢 Assign to YARD
+              {quickImportProcessing ? '⏳ Processing...' : '🏢 Assign to YARD'}
             </button>
           </div>
         </div>
