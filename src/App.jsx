@@ -12038,12 +12038,54 @@ function ToBeCollectedPage({ user }) {
   const [isoNumbers, setIsoNumbers] = useState([]);  // V33: ISO autocomplete
   const [activeIsoIndex, setActiveIsoIndex] = useState(null);  // V33: Which row has ISO dropdown open
   const [activeReceiverIndex, setActiveReceiverIndex] = useState(null);  // V33: Which row has Receiver dropdown open
+  
+  // V33: Record OUT Log
+  const [activeTab, setActiveTab] = useState('toCollect');  // 'toCollect' or 'recordOutLog'
+  const [recordOutLog, setRecordOutLog] = useState([]);
+  const [recordOutLogSearch, setRecordOutLogSearch] = useState('');
 
-  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); }, []);
+  useEffect(() => { loadComponents(); loadUsers(); loadInventory(); loadRecordOutLog(); }, []);
 
   const loadInventory = async () => {
     const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom, tag_number');
     if (data) setInventory(data);
+  };
+
+  // V33: Load Record OUT Log from movements
+  const loadRecordOutLog = async () => {
+    const { data } = await supabase
+      .from('movements')
+      .select('*')
+      .eq('movement_type', 'OUT')
+      .eq('from_location', 'SITE')
+      .eq('to_location', 'DELIVERED')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (data) setRecordOutLog(data);
+  };
+
+  // V33: Parse Record OUT note to extract details
+  const parseRecordOutNote = (note) => {
+    if (!note) return {};
+    const result = {};
+    
+    // Extract Received by
+    const receivedMatch = note.match(/Received by:\s*([^|]+)/i);
+    if (receivedMatch) result.received_by = receivedMatch[1].trim();
+    
+    // Extract ISO
+    const isoMatch = note.match(/ISO:\s*([^|]+)/i);
+    if (isoMatch) result.iso_number = isoMatch[1].trim();
+    
+    // Extract HF
+    const hfMatch = note.match(/HF:\s*([^|]+)/i);
+    if (hfMatch) result.hf_number = hfMatch[1].trim();
+    
+    // Extract Date
+    const dateMatch = note.match(/Date:\s*([^|]+)/i);
+    if (dateMatch) result.record_date = dateMatch[1].trim();
+    
+    return result;
   };
 
   // V33: Load ALL ISO numbers for autocomplete
@@ -12458,8 +12500,59 @@ function ToBeCollectedPage({ user }) {
 
   if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}>Loading...</div>;
 
+  // V33: Filter Record OUT Log
+  const filteredRecordOutLog = recordOutLog.filter(entry => {
+    if (!recordOutLogSearch) return true;
+    const search = recordOutLogSearch.toLowerCase();
+    const parsed = parseRecordOutNote(entry.note);
+    return (
+      entry.ident_code?.toLowerCase().includes(search) ||
+      parsed.received_by?.toLowerCase().includes(search) ||
+      parsed.iso_number?.toLowerCase().includes(search) ||
+      parsed.hf_number?.toLowerCase().includes(search) ||
+      entry.performed_by?.toLowerCase().includes(search)
+    );
+  });
+
   return (
     <div>
+      {/* V33: Tab Navigation */}
+      <div style={{ display: 'flex', gap: '0', marginBottom: '20px', borderBottom: '2px solid #e5e7eb' }}>
+        <button
+          onClick={() => setActiveTab('toCollect')}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'toCollect' ? COLORS.success : 'transparent',
+            color: activeTab === 'toCollect' ? 'white' : '#6b7280',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          ✅ To Collect
+        </button>
+        <button
+          onClick={() => { setActiveTab('recordOutLog'); loadRecordOutLog(); }}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'recordOutLog' ? COLORS.orange : 'transparent',
+            color: activeTab === 'recordOutLog' ? 'white' : '#6b7280',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          📤 Record OUT Log ({recordOutLog.length})
+        </button>
+      </div>
+
+      {/* TAB 1: To Collect */}
+      {activeTab === 'toCollect' && (
+        <>
       <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>✅ To Collect</h2>
@@ -12617,6 +12710,101 @@ function ToBeCollectedPage({ user }) {
           </table>
         </div>
       </div>
+        </>
+      )}
+
+      {/* TAB 2: Record OUT Log */}
+      {activeTab === 'recordOutLog' && (
+        <div>
+          <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>📤 Record OUT Log</h2>
+              <p style={{ color: '#6b7280', fontSize: '14px', marginTop: '4px' }}>
+                History of all material recorded OUT from Site inventory
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="🔍 Search ident, ISO, HF, receiver..."
+                value={recordOutLogSearch}
+                onChange={(e) => setRecordOutLogSearch(e.target.value)}
+                style={{ ...styles.input, width: '280px' }}
+              />
+              <button
+                onClick={loadRecordOutLog}
+                style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white' }}
+              >
+                🔄 Refresh
+              </button>
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ backgroundColor: COLORS.orange + '20' }}>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>Date/Time</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>Record Date</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>Ident Code</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>Qty</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>ISO Number</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>HF Number</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>Received By</th>
+                    <th style={{ ...styles.th, backgroundColor: COLORS.orange + '30' }}>Performed By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRecordOutLog.map((entry, idx) => {
+                    const parsed = parseRecordOutNote(entry.note);
+                    return (
+                      <tr key={entry.id || idx} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <td style={{ ...styles.td, fontSize: '11px', color: '#6b7280' }}>
+                          {new Date(entry.created_at).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                        <td style={{ ...styles.td, fontWeight: '500' }}>
+                          {parsed.record_date || '-'}
+                        </td>
+                        <td style={{ ...styles.td, fontFamily: 'monospace', fontWeight: '600' }}>
+                          {entry.ident_code}
+                        </td>
+                        <td style={{ ...styles.td, textAlign: 'center', fontWeight: '600', color: COLORS.danger }}>
+                          {entry.quantity}
+                        </td>
+                        <td style={{ ...styles.td, fontFamily: 'monospace', color: COLORS.primary }}>
+                          {parsed.iso_number || '-'}
+                        </td>
+                        <td style={{ ...styles.td, fontFamily: 'monospace', color: COLORS.purple }}>
+                          {parsed.hf_number || '-'}
+                        </td>
+                        <td style={{ ...styles.td, fontWeight: '500' }}>
+                          {parsed.received_by || '-'}
+                        </td>
+                        <td style={{ ...styles.td, fontSize: '11px', color: '#6b7280' }}>
+                          {entry.performed_by || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredRecordOutLog.length === 0 && (
+                    <tr>
+                      <td colSpan="8" style={{ ...styles.td, textAlign: 'center', color: '#9ca3af', padding: '40px' }}>
+                        {recordOutLogSearch ? 'No matching records found' : 'No Record OUT entries yet'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {filteredRecordOutLog.length > 0 && (
+              <div style={{ padding: '12px 16px', borderTop: '1px solid #e5e7eb', backgroundColor: '#f9fafb', fontSize: '12px', color: '#6b7280' }}>
+                Showing {filteredRecordOutLog.length} of {recordOutLog.length} records
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Collect Modal with Autocomplete */}
       <Modal isOpen={showCollectModal} onClose={() => setShowCollectModal(false)} title="📦 Collect Material">
@@ -13128,9 +13316,14 @@ function MaterialInPage({ user }) {
   const [deliveryDestination, setDeliveryDestination] = useState('site'); // 'site' or 'yard'
   
   // V28.9: State for full Material IN log
-  const [activeTab, setActiveTab] = useState('load'); // 'load' or 'log'
+  const [activeTab, setActiveTab] = useState('load'); // 'load', 'log', or 'quickImport'
   const [materialInLog, setMaterialInLog] = useState([]);
   const [logSearchMir, setLogSearchMir] = useState('');
+  
+  // V33: Quick Import state
+  const [quickImportText, setQuickImportText] = useState('');
+  const [quickImportProcessing, setQuickImportProcessing] = useState(false);
+  const [quickImportInventory, setQuickImportInventory] = useState([]);
   
   // V28.11: MIR Documents state
   const [showDocsModal, setShowDocsModal] = useState(false);
@@ -13597,6 +13790,140 @@ function MaterialInPage({ user }) {
     }
   };
 
+  // V33: Load inventory for Quick Import validation
+  const loadQuickImportInventory = async () => {
+    const { data } = await supabase.from('inventory').select('ident_code, description, site_qty, uom');
+    if (data) setQuickImportInventory(data);
+  };
+
+  // V33: Process Quick Import - add quantities to site_qty
+  const processQuickImport = async (text) => {
+    if (!text || !text.trim()) {
+      alert('Please paste data first');
+      return;
+    }
+    
+    setQuickImportProcessing(true);
+    
+    const lines = text.trim().split('\n').filter(line => line.trim());
+    if (lines.length === 0) {
+      alert('No valid rows found');
+      setQuickImportProcessing(false);
+      return;
+    }
+    
+    const results = { success: 0, errors: [], warnings: [] };
+    
+    for (const line of lines) {
+      // Parse line - try tab, comma, multiple spaces
+      let parts = line.split('\t');
+      if (parts.length < 2) parts = line.split(',');
+      if (parts.length < 2) parts = line.split(/\s{2,}/);
+      if (parts.length < 2) parts = line.trim().split(/\s+/);
+      
+      const identCode = parts[0]?.trim();
+      const qtyStr = parts[1]?.trim();
+      const qty = parseInt(qtyStr);
+      
+      if (!identCode) {
+        results.errors.push(`Empty ident code in line: "${line}"`);
+        continue;
+      }
+      
+      if (isNaN(qty) || qty <= 0) {
+        results.errors.push(`Invalid qty "${qtyStr}" for ${identCode}`);
+        continue;
+      }
+      
+      try {
+        // Check if ident exists in inventory
+        const invItem = quickImportInventory.find(i => i.ident_code?.toLowerCase() === identCode.toLowerCase());
+        const actualIdentCode = invItem?.ident_code || identCode;
+        
+        if (!invItem) {
+          results.warnings.push(`${identCode}: Not in inventory (created new record)`);
+        }
+        
+        // Increment site_qty using RPC function
+        const { error } = await supabase.rpc('increment_site_qty', { 
+          p_ident_code: actualIdentCode, 
+          p_qty: qty 
+        });
+        
+        if (error) {
+          // If RPC fails, try direct upsert
+          const { data: existing } = await supabase
+            .from('inventory')
+            .select('site_qty')
+            .eq('ident_code', actualIdentCode)
+            .single();
+          
+          if (existing) {
+            await supabase
+              .from('inventory')
+              .update({ site_qty: (existing.site_qty || 0) + qty })
+              .eq('ident_code', actualIdentCode);
+          } else {
+            await supabase
+              .from('inventory')
+              .insert({ ident_code: actualIdentCode, site_qty: qty });
+          }
+        }
+        
+        // Log movement
+        await supabase.from('movements').insert({
+          ident_code: actualIdentCode,
+          movement_type: 'IN',
+          quantity: qty,
+          from_location: 'QUICK_IMPORT',
+          to_location: 'SITE',
+          performed_by: user.full_name,
+          note: 'Quick Import - Direct load to Site'
+        });
+        
+        results.success++;
+      } catch (err) {
+        results.errors.push(`${identCode}: ${err.message}`);
+      }
+    }
+    
+    setQuickImportProcessing(false);
+    setQuickImportText('');
+    
+    // Show results
+    let message = `✅ Imported: ${results.success} items`;
+    if (results.warnings.length > 0) {
+      message += `\n\n⚠️ Warnings (${results.warnings.length}):\n${results.warnings.slice(0, 5).join('\n')}`;
+      if (results.warnings.length > 5) message += `\n...and ${results.warnings.length - 5} more`;
+    }
+    if (results.errors.length > 0) {
+      message += `\n\n❌ Errors (${results.errors.length}):\n${results.errors.slice(0, 5).join('\n')}`;
+      if (results.errors.length > 5) message += `\n...and ${results.errors.length - 5} more`;
+    }
+    
+    alert(message);
+    loadData();
+  };
+
+  // V33: Handle file drop for Quick Import
+  const handleQuickImportFile = async (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
+    if (!file) return;
+    
+    if (!file.name.match(/\.(csv|txt|tsv)$/i)) {
+      alert('Please upload a CSV, TSV, or TXT file');
+      return;
+    }
+    
+    try {
+      const text = await file.text();
+      setQuickImportText(text);
+    } catch (err) {
+      alert('Error reading file: ' + err.message);
+    }
+  };
+
   const canModify = canModifyPage(user, 'material_in');
 
   // V28.9: Filter log by MIR search
@@ -13626,6 +13953,21 @@ function MaterialInPage({ user }) {
           📦 Load Material
         </button>
         <button
+          onClick={() => { setActiveTab('quickImport'); loadQuickImportInventory(); }}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: activeTab === 'quickImport' ? COLORS.success : '#E5E7EB',
+            color: activeTab === 'quickImport' ? 'white' : '#374151',
+            border: 'none',
+            borderRadius: '8px 8px 0 0',
+            fontWeight: '600',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          📋 Quick Import
+        </button>
+        <button
           onClick={() => setActiveTab('log')}
           style={{
             padding: '12px 24px',
@@ -13641,6 +13983,200 @@ function MaterialInPage({ user }) {
           📋 Material IN Log ({materialInLog.length})
         </button>
       </div>
+
+      {/* TAB: Quick Import */}
+      {activeTab === 'quickImport' && (
+        <div style={{ ...styles.card }}>
+          <div style={styles.cardHeader}>
+            <h3 style={{ fontWeight: '600' }}>📋 Quick Import - Bulk Load to Site</h3>
+          </div>
+          <div style={{ padding: '20px' }}>
+            <div style={{ 
+              marginBottom: '20px', 
+              padding: '16px', 
+              backgroundColor: '#f0fdf4', 
+              borderRadius: '8px',
+              border: '2px dashed #22c55e'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '24px' }}>📥</span>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#166534' }}>Bulk Import to Site Inventory</h4>
+                  <p style={{ margin: 0, fontSize: '13px', color: '#16a34a' }}>
+                    Paste from Excel or drop a file. Quantities will be <strong>ADDED</strong> to existing site_qty.
+                  </p>
+                </div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'stretch' }}>
+                {/* Paste Area */}
+                <div style={{ flex: 2 }}>
+                  <label style={{ ...styles.label, marginBottom: '8px' }}>Paste data here (IDENT_CODE + QTY)</label>
+                  <textarea
+                    value={quickImportText}
+                    onChange={(e) => setQuickImportText(e.target.value)}
+                    placeholder="Paste from Excel or type manually...&#10;&#10;Format: IDENT_CODE<tab>QTY&#10;&#10;Example:&#10;ABC-001    10&#10;DEF-002    5&#10;GHI-003    20"
+                    style={{
+                      width: '100%',
+                      height: '200px',
+                      padding: '12px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      fontSize: '13px',
+                      fontFamily: 'monospace',
+                      resize: 'vertical'
+                    }}
+                    disabled={!canModify || quickImportProcessing}
+                  />
+                </div>
+                
+                {/* OR divider */}
+                <div style={{ display: 'flex', alignItems: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '500' }}>
+                  OR
+                </div>
+                
+                {/* File Drop Area */}
+                <div
+                  style={{
+                    flex: 1,
+                    border: '2px dashed #d1d5db',
+                    borderRadius: '8px',
+                    padding: '20px',
+                    textAlign: 'center',
+                    cursor: canModify ? 'pointer' : 'not-allowed',
+                    backgroundColor: 'white',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    minHeight: '200px'
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (canModify) {
+                      e.currentTarget.style.borderColor = '#22c55e';
+                      e.currentTarget.style.backgroundColor = '#f0fdf4';
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.backgroundColor = 'white';
+                  }}
+                  onDrop={(e) => {
+                    e.currentTarget.style.borderColor = '#d1d5db';
+                    e.currentTarget.style.backgroundColor = 'white';
+                    if (canModify) handleQuickImportFile(e);
+                  }}
+                  onClick={() => canModify && document.getElementById('quickImportFileInput').click()}
+                >
+                  <input
+                    id="quickImportFileInput"
+                    type="file"
+                    accept=".csv,.txt,.tsv"
+                    style={{ display: 'none' }}
+                    onChange={handleQuickImportFile}
+                    disabled={!canModify}
+                  />
+                  <div style={{ fontSize: '40px', marginBottom: '12px' }}>📁</div>
+                  <div style={{ fontSize: '14px', color: '#374151', fontWeight: '500' }}>Drop CSV/TXT file here</div>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>or click to browse</div>
+                </div>
+              </div>
+              
+              <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                  <strong>Format:</strong> Each row: IDENT_CODE &lt;tab&gt; QTY (separated by TAB, comma, or spaces)
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => setQuickImportText('')}
+                    style={{ ...styles.button, ...styles.buttonSecondary }}
+                    disabled={!quickImportText || quickImportProcessing}
+                  >
+                    🗑️ Clear
+                  </button>
+                  <button
+                    onClick={() => processQuickImport(quickImportText)}
+                    style={{ 
+                      ...styles.button, 
+                      backgroundColor: COLORS.success, 
+                      color: 'white',
+                      opacity: (!quickImportText || quickImportProcessing || !canModify) ? 0.5 : 1
+                    }}
+                    disabled={!quickImportText || quickImportProcessing || !canModify}
+                  >
+                    {quickImportProcessing ? '⏳ Processing...' : '📥 Import to Site'}
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Preview of parsed lines */}
+            {quickImportText && (
+              <div style={{ marginTop: '16px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
+                  📋 Preview ({quickImportText.trim().split('\n').filter(l => l.trim()).length} rows)
+                </h4>
+                <div style={{ 
+                  maxHeight: '200px', 
+                  overflowY: 'auto', 
+                  border: '1px solid #e5e7eb', 
+                  borderRadius: '6px',
+                  fontSize: '12px'
+                }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f9fafb' }}>
+                      <tr>
+                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>#</th>
+                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Ident Code</th>
+                        <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Qty</th>
+                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quickImportText.trim().split('\n').filter(l => l.trim()).slice(0, 50).map((line, idx) => {
+                        let parts = line.split('\t');
+                        if (parts.length < 2) parts = line.split(',');
+                        if (parts.length < 2) parts = line.split(/\s{2,}/);
+                        if (parts.length < 2) parts = line.trim().split(/\s+/);
+                        
+                        const ident = parts[0]?.trim() || '';
+                        const qty = parts[1]?.trim() || '';
+                        const qtyNum = parseInt(qty);
+                        const invItem = quickImportInventory.find(i => i.ident_code?.toLowerCase() === ident.toLowerCase());
+                        
+                        const isValid = ident && !isNaN(qtyNum) && qtyNum > 0;
+                        
+                        return (
+                          <tr key={idx} style={{ backgroundColor: isValid ? 'white' : '#fef2f2' }}>
+                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', color: '#9ca3af' }}>{idx + 1}</td>
+                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace', fontWeight: '500' }}>{ident || '⚠️ Empty'}</td>
+                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', textAlign: 'center', fontWeight: '600' }}>{qtyNum > 0 ? qtyNum : '⚠️'}</td>
+                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', fontSize: '11px' }}>
+                              {!isValid ? (
+                                <span style={{ color: COLORS.danger }}>❌ Invalid</span>
+                              ) : invItem ? (
+                                <span style={{ color: COLORS.success }}>✅ Found (current: {invItem.site_qty || 0})</span>
+                              ) : (
+                                <span style={{ color: COLORS.warning }}>⚠️ New item</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {quickImportText.trim().split('\n').filter(l => l.trim()).length > 50 && (
+                    <div style={{ padding: '8px', textAlign: 'center', color: '#6b7280', backgroundColor: '#f9fafb' }}>
+                      ...and {quickImportText.trim().split('\n').filter(l => l.trim()).length - 50} more rows
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: Load Material */}
       {activeTab === 'load' && (
