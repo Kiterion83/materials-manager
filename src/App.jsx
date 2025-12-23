@@ -13823,7 +13823,7 @@ function MaterialInPage({ user }) {
       if (parts.length < 2) parts = line.split(/\s{2,}/);
       if (parts.length < 2) parts = line.trim().split(/\s+/);
       
-      // Keep original case - don't convert to uppercase
+      // Keep original case
       const identCode = parts[0]?.trim();
       const qtyStr = parts[1]?.trim();
       const qty = parseInt(qtyStr);
@@ -13835,40 +13835,41 @@ function MaterialInPage({ user }) {
     
     console.log('Parsed lines:', lineData.length, 'valid rows');
     
-    // Get unique ident codes (keeping original case)
+    // Get unique ident codes
     const uniqueCodes = [...new Set(lineData.map(d => d.identCode))];
     
-    console.log('Unique codes to search:', uniqueCodes.length, uniqueCodes.slice(0, 5));
+    console.log('Unique codes to search:', uniqueCodes.length);
     
-    // Query project_materials for these specific codes (in batches)
-    // Try both original case and uppercase
+    // Query ONE code at a time to avoid duplicates issue
     const pmMap = {};
-    for (let i = 0; i < uniqueCodes.length; i += 50) {
-      const batch = uniqueCodes.slice(i, i + 50);
-      const batchUpper = batch.map(c => c.toUpperCase());
-      const allCodes = [...new Set([...batch, ...batchUpper])];
-      
-      const { data: pmData, error } = await supabase
+    let foundCount = 0;
+    
+    for (const code of uniqueCodes) {
+      // Try exact match first, then uppercase
+      let { data: pmData } = await supabase
         .from('project_materials')
         .select('ident_code, description, dia1, uom')
-        .in('ident_code', allCodes);
+        .eq('ident_code', code)
+        .limit(1);
       
-      if (error) {
-        console.error('Query error:', error);
+      // If not found, try uppercase
+      if (!pmData || pmData.length === 0) {
+        const { data: pmDataUpper } = await supabase
+          .from('project_materials')
+          .select('ident_code, description, dia1, uom')
+          .eq('ident_code', code.toUpperCase())
+          .limit(1);
+        pmData = pmDataUpper;
       }
       
-      console.log('Batch query returned:', pmData?.length || 0, 'results for', allCodes.slice(0, 3));
-      
-      if (pmData) {
-        pmData.forEach(item => {
-          // Store with uppercase key for matching
-          const key = item.ident_code?.toUpperCase();
-          if (!pmMap[key]) {
-            pmMap[key] = item;
-          }
-        });
+      if (pmData && pmData.length > 0) {
+        const item = pmData[0];
+        pmMap[code.toUpperCase()] = item;
+        foundCount++;
       }
     }
+    
+    console.log('Found:', foundCount, 'of', uniqueCodes.length, 'codes');
     
     // Build parsed data with info (match using uppercase)
     const parsed = lineData.map(({ identCode, qty }) => {
