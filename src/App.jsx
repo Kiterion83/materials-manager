@@ -13324,6 +13324,8 @@ function MaterialInPage({ user }) {
   const [quickImportText, setQuickImportText] = useState('');
   const [quickImportProcessing, setQuickImportProcessing] = useState(false);
   const [quickImportInventory, setQuickImportInventory] = useState([]);
+  const [parsedImportData, setParsedImportData] = useState([]); // Pre-fetched data
+  const [importFetching, setImportFetching] = useState(false);
   
   // V28.11: MIR Documents state
   const [showDocsModal, setShowDocsModal] = useState(false);
@@ -13796,31 +13798,24 @@ function MaterialInPage({ user }) {
     if (data) setQuickImportInventory(data);
   };
 
-  // V33: Process Quick Import - add items to loadedItems list (not direct import)
-  const processQuickImportToList = async (text) => {
+  // V33: Pre-fetch data when user pastes text
+  const preFetchImportData = async (text) => {
     if (!text || !text.trim()) {
-      alert('Please paste data first');
+      setParsedImportData([]);
       return;
     }
     
-    if (!selectedMir) {
-      alert('Please select a MIR first');
-      return;
-    }
-    
-    setQuickImportProcessing(true);
+    setImportFetching(true);
     
     const lines = text.trim().split('\n').filter(line => line.trim());
     if (lines.length === 0) {
-      alert('No valid rows found');
-      setQuickImportProcessing(false);
+      setParsedImportData([]);
+      setImportFetching(false);
       return;
     }
     
-    // First, extract all ident codes from pasted text
-    const identCodes = [];
+    // Parse all lines first
     const lineData = [];
-    
     for (const line of lines) {
       let parts = line.split('\t');
       if (parts.length < 2) parts = line.split(',');
@@ -13829,19 +13824,20 @@ function MaterialInPage({ user }) {
       
       const identCode = parts[0]?.trim()?.toUpperCase();
       const qtyStr = parts[1]?.trim();
+      const qty = parseInt(qtyStr);
       
-      if (identCode) {
-        identCodes.push(identCode);
-        lineData.push({ identCode, qtyStr, line });
+      if (identCode && !isNaN(qty) && qty > 0) {
+        lineData.push({ identCode, qty });
       }
     }
     
-    // Query project_materials for ONLY the specific codes (case-insensitive)
-    const pmMap = {};
+    // Get unique ident codes
+    const uniqueCodes = [...new Set(lineData.map(d => d.identCode))];
     
-    // Query in batches of 50 to avoid URL length limits
-    for (let i = 0; i < identCodes.length; i += 50) {
-      const batch = identCodes.slice(i, i + 50);
+    // Query project_materials for these specific codes (in batches)
+    const pmMap = {};
+    for (let i = 0; i < uniqueCodes.length; i += 50) {
+      const batch = uniqueCodes.slice(i, i + 50);
       const { data: pmData } = await supabase
         .from('project_materials')
         .select('ident_code, description, dia1, uom')
@@ -13856,71 +13852,64 @@ function MaterialInPage({ user }) {
       }
     }
     
-    console.log('Quick Import - Found materials:', Object.keys(pmMap).length, 'of', identCodes.length);
-    
-    const newItems = [];
-    const errors = [];
-    const warnings = [];
-    
-    for (const { identCode, qtyStr, line } of lineData) {
-      const qty = parseInt(qtyStr);
-      
-      if (!identCode) {
-        errors.push(`Empty ident code in line: "${line}"`);
-        continue;
-      }
-      
-      if (isNaN(qty) || qty <= 0) {
-        errors.push(`Invalid qty "${qtyStr}" for ${identCode}`);
-        continue;
-      }
-      
-      // Check if ident exists in project_materials
-      const pmItem = pmMap[identCode.toUpperCase()];
-      const actualIdentCode = pmItem?.ident_code || identCode;
-      
-      if (!pmItem) {
-        warnings.push(`${identCode}: Not found in project materials`);
-      }
-      
-      // Add to list with description, dia1, uom from project_materials
-      newItems.push({
-        id: Date.now() + Math.random(),
-        ident_code: actualIdentCode,
+    // Build parsed data with info
+    const parsed = lineData.map(({ identCode, qty }) => {
+      const pmItem = pmMap[identCode];
+      return {
+        ident_code: pmItem?.ident_code || identCode,
         description: pmItem?.description || '',
         dia1: pmItem?.dia1 || '',
         uom: pmItem?.uom || '',
         quantity: qty,
-        is_partial: false,
-        missing_qty: 0,
-        note: '',
-        mir_id: selectedMir.id,
-        mir_number: selectedMir.mir_number,
-        rk_number: selectedMir.rk_number
-      });
+        found: !!pmItem
+      };
+    });
+    
+    console.log('Pre-fetched:', parsed.length, 'items,', parsed.filter(p => p.found).length, 'found');
+    setParsedImportData(parsed);
+    setImportFetching(false);
+  };
+
+  // V33: Add pre-fetched data to loadedItems list
+  const addParsedDataToList = () => {
+    if (!selectedMir) {
+      alert('Please select a MIR first');
+      return;
     }
     
-    setQuickImportProcessing(false);
-    
-    if (newItems.length > 0) {
-      // Add to existing loadedItems
-      setLoadedItems([...loadedItems, ...newItems]);
-      setQuickImportText('');
-      
-      let message = `✅ Added ${newItems.length} items to list`;
-      if (warnings.length > 0) {
-        message += `\n\n⚠️ Warnings (${warnings.length}):\n${warnings.slice(0, 5).join('\n')}`;
-        if (warnings.length > 5) message += `\n...and ${warnings.length - 5} more`;
-      }
-      if (errors.length > 0) {
-        message += `\n\n❌ Errors (${errors.length}):\n${errors.slice(0, 5).join('\n')}`;
-        if (errors.length > 5) message += `\n...and ${errors.length - 5} more`;
-      }
-      message += `\n\nNow click "Assign to Site" or "Assign to Yard" to complete the load.`;
-      alert(message);
-    } else {
-      alert(`❌ Could not parse any valid rows.\n\nExpected format:\nIDENT_CODE<tab>QTY\nor\nIDENT_CODE,QTY\n\nErrors:\n${errors.slice(0, 5).join('\n')}`);
+    if (parsedImportData.length === 0) {
+      alert('No valid data to add');
+      return;
     }
+    
+    const newItems = parsedImportData.map(item => ({
+      id: Date.now() + Math.random(),
+      ident_code: item.ident_code,
+      description: item.description,
+      dia1: item.dia1,
+      uom: item.uom,
+      quantity: item.quantity,
+      is_partial: false,
+      missing_qty: 0,
+      note: '',
+      mir_id: selectedMir.id,
+      mir_number: selectedMir.mir_number,
+      rk_number: selectedMir.rk_number
+    }));
+    
+    const notFound = parsedImportData.filter(p => !p.found).length;
+    
+    // Add to list and clear temp data
+    setLoadedItems([...loadedItems, ...newItems]);
+    setQuickImportText('');
+    setParsedImportData([]);
+    
+    let message = `✅ Added ${newItems.length} items to list`;
+    if (notFound > 0) {
+      message += `\n\n⚠️ ${notFound} items not found in project materials (added without description)`;
+    }
+    message += `\n\nNow click "Assign to Site" or "Assign to Yard" to complete.`;
+    alert(message);
   };
 
   // V33: Handle file drop for Quick Import
@@ -13937,6 +13926,7 @@ function MaterialInPage({ user }) {
     try {
       const text = await file.text();
       setQuickImportText(text);
+      preFetchImportData(text); // Pre-fetch immediately
     } catch (err) {
       alert('Error reading file: ' + err.message);
     }
@@ -14053,11 +14043,24 @@ function MaterialInPage({ user }) {
                   </div>
                 </div>
                 
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                   <div style={{ flex: 1 }}>
                     <textarea
                       value={quickImportText}
                       onChange={(e) => setQuickImportText(e.target.value)}
+                      onPaste={(e) => {
+                        // Get pasted text and pre-fetch after a small delay
+                        setTimeout(() => {
+                          const text = e.target.value;
+                          if (text) preFetchImportData(text);
+                        }, 100);
+                      }}
+                      onBlur={(e) => {
+                        // Also pre-fetch on blur if there's text
+                        if (e.target.value && parsedImportData.length === 0) {
+                          preFetchImportData(e.target.value);
+                        }
+                      }}
                       placeholder="Paste here from Excel...&#10;Example:&#10;ABC-001    10&#10;DEF-002    5"
                       style={{
                         width: '100%',
@@ -14069,7 +14072,7 @@ function MaterialInPage({ user }) {
                         fontFamily: 'monospace',
                         resize: 'none'
                       }}
-                      disabled={!canModify || quickImportProcessing}
+                      disabled={!canModify || importFetching}
                     />
                   </div>
                   
@@ -14110,34 +14113,113 @@ function MaterialInPage({ user }) {
                       📁 Drop file
                     </div>
                     
-                    <button
-                      onClick={() => processQuickImportToList(quickImportText)}
-                      style={{ 
-                        padding: '8px 12px',
-                        backgroundColor: quickImportText ? COLORS.success : '#d1d5db',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontWeight: '600',
-                        fontSize: '12px',
-                        cursor: quickImportText && canModify ? 'pointer' : 'not-allowed'
-                      }}
-                      disabled={!quickImportText || quickImportProcessing || !canModify}
-                    >
-                      {quickImportProcessing ? '⏳...' : '📥 Add to List'}
-                    </button>
+                    {/* Search button - only if text but no parsed data yet */}
+                    {quickImportText && parsedImportData.length === 0 && !importFetching && (
+                      <button
+                        onClick={() => preFetchImportData(quickImportText)}
+                        style={{ 
+                          padding: '8px 12px',
+                          backgroundColor: COLORS.info,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontWeight: '600',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🔍 Search
+                      </button>
+                    )}
+                    
+                    {/* Add to List button - only if parsed data ready */}
+                    {parsedImportData.length > 0 && (
+                      <button
+                        onClick={addParsedDataToList}
+                        style={{ 
+                          padding: '8px 12px',
+                          backgroundColor: COLORS.success,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontWeight: '600',
+                          fontSize: '12px',
+                          cursor: canModify ? 'pointer' : 'not-allowed'
+                        }}
+                        disabled={!canModify}
+                      >
+                        📥 Add {parsedImportData.length} to List
+                      </button>
+                    )}
                   </div>
                 </div>
                 
-                {quickImportText && (
+                {/* Status messages */}
+                {importFetching && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: COLORS.info }}>
+                    ⏳ Searching for materials...
+                  </div>
+                )}
+                
+                {quickImportText && !importFetching && parsedImportData.length === 0 && (
                   <div style={{ marginTop: '8px', fontSize: '11px', color: '#6b7280' }}>
-                    📊 {quickImportText.trim().split('\n').filter(l => l.trim()).length} rows detected
+                    📊 {quickImportText.trim().split('\n').filter(l => l.trim()).length} rows detected - Click "Search" to find materials
                     <button 
-                      onClick={() => setQuickImportText('')}
+                      onClick={() => { setQuickImportText(''); setParsedImportData([]); }}
                       style={{ marginLeft: '8px', color: COLORS.danger, background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px' }}
                     >
                       ✕ Clear
                     </button>
+                  </div>
+                )}
+                
+                {/* Preview of found materials */}
+                {parsedImportData.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '600', color: '#166534' }}>
+                        ✅ Found {parsedImportData.filter(p => p.found).length} / {parsedImportData.length} materials
+                      </span>
+                      <button 
+                        onClick={() => { setQuickImportText(''); setParsedImportData([]); }}
+                        style={{ color: COLORS.danger, background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px' }}
+                      >
+                        ✕ Clear all
+                      </button>
+                    </div>
+                    <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px', fontSize: '11px' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f9fafb' }}>
+                          <tr>
+                            <th style={{ padding: '6px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Ident Code</th>
+                            <th style={{ padding: '6px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Description</th>
+                            <th style={{ padding: '6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Diam</th>
+                            <th style={{ padding: '6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Qty</th>
+                            <th style={{ padding: '6px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {parsedImportData.slice(0, 30).map((item, idx) => (
+                            <tr key={idx} style={{ backgroundColor: item.found ? 'white' : '#fef2f2' }}>
+                              <td style={{ padding: '4px 6px', borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace', fontWeight: '500' }}>{item.ident_code}</td>
+                              <td style={{ padding: '4px 6px', borderBottom: '1px solid #f3f4f6', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {item.description || <span style={{ color: '#9ca3af' }}>-</span>}
+                              </td>
+                              <td style={{ padding: '4px 6px', borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>{item.dia1 || '-'}</td>
+                              <td style={{ padding: '4px 6px', borderBottom: '1px solid #f3f4f6', textAlign: 'center', fontWeight: '600' }}>{item.quantity}</td>
+                              <td style={{ padding: '4px 6px', borderBottom: '1px solid #f3f4f6', textAlign: 'center' }}>
+                                {item.found ? <span style={{ color: COLORS.success }}>✅</span> : <span style={{ color: COLORS.warning }}>⚠️</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {parsedImportData.length > 30 && (
+                        <div style={{ padding: '6px', textAlign: 'center', color: '#6b7280', backgroundColor: '#f9fafb' }}>
+                          ...and {parsedImportData.length - 30} more
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
