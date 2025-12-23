@@ -12248,6 +12248,104 @@ function ToBeCollectedPage({ user }) {
     return inventory.find(i => i.ident_code?.toLowerCase() === identCode?.toLowerCase());
   };
 
+  // V33: Parse bulk paste text (ident_code + qty from Excel/text)
+  const parseBulkPaste = (text) => {
+    if (!text || !text.trim()) return;
+    
+    const lines = text.trim().split('\n').filter(line => line.trim());
+    if (lines.length === 0) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const newRows = [];
+    const errors = [];
+    
+    lines.forEach((line, idx) => {
+      // Try to split by tab first (Excel), then comma, then multiple spaces
+      let parts = line.split('\t');
+      if (parts.length < 2) {
+        parts = line.split(',');
+      }
+      if (parts.length < 2) {
+        parts = line.split(/\s{2,}/); // Multiple spaces
+      }
+      if (parts.length < 2) {
+        parts = line.trim().split(/\s+/); // Single space (last resort)
+      }
+      
+      const identCode = parts[0]?.trim();
+      const qty = parts[1]?.trim();
+      
+      if (!identCode) {
+        errors.push(`Row ${idx + 1}: Missing ident code`);
+        return;
+      }
+      
+      // Validate qty is a number
+      const qtyNum = parseInt(qty);
+      if (isNaN(qtyNum) || qtyNum <= 0) {
+        errors.push(`Row ${idx + 1}: Invalid quantity "${qty}" for ${identCode}`);
+        return;
+      }
+      
+      // Check if ident_code exists in inventory
+      const invItem = inventory.find(i => i.ident_code?.toLowerCase() === identCode.toLowerCase());
+      if (!invItem) {
+        errors.push(`Row ${idx + 1}: Ident "${identCode}" not found in inventory`);
+        // Still add it, but mark as invalid
+      }
+      
+      newRows.push({
+        date: today,
+        hf_number: '',
+        ident_code: invItem?.ident_code || identCode, // Use exact case from inventory
+        qty: String(qtyNum),
+        received_by: '',
+        iso_number: '',
+        tag_number: invItem?.tag_number || ''
+      });
+    });
+    
+    if (newRows.length > 0) {
+      // Replace existing rows if they're empty, otherwise append
+      if (bulkRows.length === 1 && !bulkRows[0].ident_code && !bulkRows[0].qty) {
+        setBulkRows(newRows);
+      } else {
+        setBulkRows([...bulkRows, ...newRows]);
+      }
+      
+      if (errors.length > 0) {
+        alert(`⚠️ Imported ${newRows.length} rows with ${errors.length} warnings:\n\n${errors.slice(0, 10).join('\n')}${errors.length > 10 ? `\n...and ${errors.length - 10} more` : ''}`);
+      } else {
+        alert(`✅ Successfully imported ${newRows.length} rows`);
+      }
+    } else {
+      alert(`❌ Could not parse any valid rows.\n\nExpected format:\nIDENT_CODE<tab>QTY\nor\nIDENT_CODE,QTY\n\nErrors:\n${errors.slice(0, 5).join('\n')}`);
+    }
+  };
+
+  // V33: Handle file drop for bulk import
+  const handleBulkFileDrop = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const file = e.dataTransfer?.files?.[0] || e.target?.files?.[0];
+    if (!file) return;
+    
+    // Check file type
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.csv') && !fileName.endsWith('.txt') && !fileName.endsWith('.tsv')) {
+      alert('Please upload a CSV, TSV, or TXT file');
+      return;
+    }
+    
+    try {
+      const text = await file.text();
+      parseBulkPaste(text);
+    } catch (err) {
+      alert(`Error reading file: ${err.message}`);
+    }
+  };
+
   const openBulkModal = () => {
     setBulkRows([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '', tag_number: '' }]);
     setShowBulkModal(true);
@@ -12596,6 +12694,130 @@ function ToBeCollectedPage({ user }) {
           </p>
         </div>
 
+        {/* V33: Paste / Import Section */}
+        <div style={{ 
+          marginBottom: '20px', 
+          padding: '16px', 
+          backgroundColor: '#f0fdf4', 
+          borderRadius: '8px',
+          border: '2px dashed #22c55e'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <span style={{ fontSize: '20px' }}>📋</span>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '14px', fontWeight: '600', color: '#166534' }}>Quick Import</h4>
+              <p style={{ margin: 0, fontSize: '12px', color: '#16a34a' }}>Paste from Excel or drop a CSV file</p>
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'stretch' }}>
+            {/* Paste Area */}
+            <div style={{ flex: 1 }}>
+              <textarea
+                placeholder="Paste here from Excel (IDENT_CODE + QTY columns)&#10;&#10;Example:&#10;ABC-001  10&#10;DEF-002  5&#10;GHI-003  20"
+                style={{
+                  width: '100%',
+                  height: '100px',
+                  padding: '10px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontFamily: 'monospace',
+                  resize: 'none'
+                }}
+                onPaste={(e) => {
+                  // Get pasted text and parse it
+                  setTimeout(() => {
+                    const text = e.target.value;
+                    if (text) {
+                      parseBulkPaste(text);
+                      e.target.value = ''; // Clear after processing
+                    }
+                  }, 100);
+                }}
+                onChange={(e) => {
+                  // If user presses Enter after pasting, process it
+                  const text = e.target.value;
+                  if (text && text.includes('\n')) {
+                    // Wait a moment then process
+                  }
+                }}
+              />
+              <button
+                onClick={(e) => {
+                  const textarea = e.target.previousSibling;
+                  if (textarea.value) {
+                    parseBulkPaste(textarea.value);
+                    textarea.value = '';
+                  }
+                }}
+                style={{
+                  marginTop: '8px',
+                  padding: '6px 12px',
+                  backgroundColor: '#22c55e',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  cursor: 'pointer'
+                }}
+              >
+                📥 Import Pasted Data
+              </button>
+            </div>
+            
+            {/* OR divider */}
+            <div style={{ display: 'flex', alignItems: 'center', color: '#9ca3af', fontSize: '12px', fontWeight: '500' }}>
+              OR
+            </div>
+            
+            {/* File Drop Area */}
+            <div
+              style={{
+                flex: 1,
+                border: '2px dashed #d1d5db',
+                borderRadius: '6px',
+                padding: '20px',
+                textAlign: 'center',
+                cursor: 'pointer',
+                backgroundColor: 'white',
+                transition: 'all 0.2s'
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.style.borderColor = '#22c55e';
+                e.currentTarget.style.backgroundColor = '#f0fdf4';
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.style.borderColor = '#d1d5db';
+                e.currentTarget.style.backgroundColor = 'white';
+              }}
+              onDrop={(e) => {
+                e.currentTarget.style.borderColor = '#d1d5db';
+                e.currentTarget.style.backgroundColor = 'white';
+                handleBulkFileDrop(e);
+              }}
+              onClick={() => document.getElementById('bulkFileInput').click()}
+            >
+              <input
+                id="bulkFileInput"
+                type="file"
+                accept=".csv,.txt,.tsv"
+                style={{ display: 'none' }}
+                onChange={handleBulkFileDrop}
+              />
+              <div style={{ fontSize: '28px', marginBottom: '8px' }}>📁</div>
+              <div style={{ fontSize: '13px', color: '#374151', fontWeight: '500' }}>Drop CSV/TXT file here</div>
+              <div style={{ fontSize: '11px', color: '#9ca3af' }}>or click to browse</div>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '10px', fontSize: '11px', color: '#6b7280' }}>
+            <strong>Format:</strong> Each row should have IDENT_CODE and QTY separated by TAB or comma. 
+            Received By must be filled manually after import.
+          </div>
+        </div>
+
         <div style={{ maxHeight: '400px', overflowY: 'auto', overflowX: 'auto', marginBottom: '30px', position: 'relative', paddingBottom: '220px' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '1200px' }}>
             <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f3f4f6', zIndex: 10 }}>
@@ -12830,12 +13052,26 @@ function ToBeCollectedPage({ user }) {
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e5e7eb' }}>
-          <button
-            onClick={addBulkRow}
-            style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '8px 16px' }}
-          >
-            + Add Row
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={addBulkRow}
+              style={{ ...styles.button, backgroundColor: COLORS.info, color: 'white', padding: '8px 16px' }}
+            >
+              + Add Row
+            </button>
+            <button
+              onClick={() => {
+                if (bulkRows.length > 1 || (bulkRows[0]?.ident_code || bulkRows[0]?.qty)) {
+                  if (window.confirm('Clear all rows?')) {
+                    setBulkRows([{ date: new Date().toISOString().split('T')[0], hf_number: '', ident_code: '', qty: '', received_by: '', iso_number: '', tag_number: '' }]);
+                  }
+                }
+              }}
+              style={{ ...styles.button, backgroundColor: '#f59e0b', color: 'white', padding: '8px 16px' }}
+            >
+              🗑️ Clear All
+            </button>
+          </div>
           
           <div style={{ display: 'flex', gap: '12px' }}>
             <button 
