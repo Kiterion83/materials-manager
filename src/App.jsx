@@ -13796,14 +13796,26 @@ function MaterialInPage({ user }) {
     if (data) setQuickImportInventory(data);
   };
 
-  // V33: Process Quick Import - add quantities to site_qty
-  const processQuickImport = async (text) => {
+  // V33: Process Quick Import - add items to loadedItems list (not direct import)
+  const processQuickImportToList = async (text) => {
     if (!text || !text.trim()) {
       alert('Please paste data first');
       return;
     }
     
+    if (!selectedMir) {
+      alert('Please select a MIR first');
+      return;
+    }
+    
     setQuickImportProcessing(true);
+    
+    // Load inventory for validation
+    const { data: invData } = await supabase.from('inventory').select('ident_code, description, site_qty, uom, dia1');
+    const inventoryMap = {};
+    if (invData) {
+      invData.forEach(i => { inventoryMap[i.ident_code?.toLowerCase()] = i; });
+    }
     
     const lines = text.trim().split('\n').filter(line => line.trim());
     if (lines.length === 0) {
@@ -13812,7 +13824,9 @@ function MaterialInPage({ user }) {
       return;
     }
     
-    const results = { success: 0, errors: [], warnings: [] };
+    const newItems = [];
+    const errors = [];
+    const warnings = [];
     
     for (const line of lines) {
       // Parse line - try tab, comma, multiple spaces
@@ -13826,83 +13840,61 @@ function MaterialInPage({ user }) {
       const qty = parseInt(qtyStr);
       
       if (!identCode) {
-        results.errors.push(`Empty ident code in line: "${line}"`);
+        errors.push(`Empty ident code in line: "${line}"`);
         continue;
       }
       
       if (isNaN(qty) || qty <= 0) {
-        results.errors.push(`Invalid qty "${qtyStr}" for ${identCode}`);
+        errors.push(`Invalid qty "${qtyStr}" for ${identCode}`);
         continue;
       }
       
-      try {
-        // Check if ident exists in inventory
-        const invItem = quickImportInventory.find(i => i.ident_code?.toLowerCase() === identCode.toLowerCase());
-        const actualIdentCode = invItem?.ident_code || identCode;
-        
-        if (!invItem) {
-          results.warnings.push(`${identCode}: Not in inventory (created new record)`);
-        }
-        
-        // Increment site_qty using RPC function
-        const { error } = await supabase.rpc('increment_site_qty', { 
-          p_ident_code: actualIdentCode, 
-          p_qty: qty 
-        });
-        
-        if (error) {
-          // If RPC fails, try direct upsert
-          const { data: existing } = await supabase
-            .from('inventory')
-            .select('site_qty')
-            .eq('ident_code', actualIdentCode)
-            .single();
-          
-          if (existing) {
-            await supabase
-              .from('inventory')
-              .update({ site_qty: (existing.site_qty || 0) + qty })
-              .eq('ident_code', actualIdentCode);
-          } else {
-            await supabase
-              .from('inventory')
-              .insert({ ident_code: actualIdentCode, site_qty: qty });
-          }
-        }
-        
-        // Log movement
-        await supabase.from('movements').insert({
-          ident_code: actualIdentCode,
-          movement_type: 'IN',
-          quantity: qty,
-          from_location: 'QUICK_IMPORT',
-          to_location: 'SITE',
-          performed_by: user.full_name,
-          note: 'Quick Import - Direct load to Site'
-        });
-        
-        results.success++;
-      } catch (err) {
-        results.errors.push(`${identCode}: ${err.message}`);
+      // Check if ident exists in inventory
+      const invItem = inventoryMap[identCode.toLowerCase()];
+      const actualIdentCode = invItem?.ident_code || identCode;
+      
+      if (!invItem) {
+        warnings.push(`${identCode}: Not in inventory (will be created on load)`);
       }
+      
+      // Add to list
+      newItems.push({
+        id: Date.now() + Math.random(),
+        ident_code: actualIdentCode,
+        description: invItem?.description || '',
+        dia1: invItem?.dia1 || '',
+        uom: invItem?.uom || '',
+        quantity: qty,
+        is_partial: false,
+        missing_qty: 0,
+        note: '',
+        mir_id: selectedMir.id,
+        mir_number: selectedMir.mir_number,
+        rk_number: selectedMir.rk_number
+      });
     }
     
     setQuickImportProcessing(false);
-    setQuickImportText('');
     
-    // Show results
-    let message = `✅ Imported: ${results.success} items`;
-    if (results.warnings.length > 0) {
-      message += `\n\n⚠️ Warnings (${results.warnings.length}):\n${results.warnings.slice(0, 5).join('\n')}`;
-      if (results.warnings.length > 5) message += `\n...and ${results.warnings.length - 5} more`;
+    if (newItems.length > 0) {
+      // Add to existing loadedItems
+      setLoadedItems([...loadedItems, ...newItems]);
+      setQuickImportText('');
+      
+      let message = `✅ Added ${newItems.length} items to list`;
+      if (warnings.length > 0) {
+        message += `\n\n⚠️ Warnings (${warnings.length}):\n${warnings.slice(0, 5).join('\n')}`;
+        if (warnings.length > 5) message += `\n...and ${warnings.length - 5} more`;
+      }
+      if (errors.length > 0) {
+        message += `\n\n❌ Errors (${errors.length}):\n${errors.slice(0, 5).join('\n')}`;
+        if (errors.length > 5) message += `\n...and ${errors.length - 5} more`;
+      }
+      message += `\n\nNow click "Assign to Site" or "Assign to Yard" to complete the load.`;
+      alert(message);
+    } else {
+      alert(`❌ Could not parse any valid rows.\n\nExpected format:\nIDENT_CODE<tab>QTY\nor\nIDENT_CODE,QTY\n\nErrors:\n${errors.slice(0, 5).join('\n')}`);
     }
-    if (results.errors.length > 0) {
-      message += `\n\n❌ Errors (${results.errors.length}):\n${results.errors.slice(0, 5).join('\n')}`;
-      if (results.errors.length > 5) message += `\n...and ${results.errors.length - 5} more`;
-    }
-    
-    alert(message);
-    loadData();
   };
 
   // V33: Handle file drop for Quick Import
@@ -13953,21 +13945,6 @@ function MaterialInPage({ user }) {
           📦 Load Material
         </button>
         <button
-          onClick={() => { setActiveTab('quickImport'); loadQuickImportInventory(); }}
-          style={{
-            padding: '12px 24px',
-            backgroundColor: activeTab === 'quickImport' ? COLORS.success : '#E5E7EB',
-            color: activeTab === 'quickImport' ? 'white' : '#374151',
-            border: 'none',
-            borderRadius: '8px 8px 0 0',
-            fontWeight: '600',
-            cursor: 'pointer',
-            fontSize: '14px'
-          }}
-        >
-          📋 Quick Import
-        </button>
-        <button
           onClick={() => setActiveTab('log')}
           style={{
             padding: '12px 24px',
@@ -13983,200 +13960,6 @@ function MaterialInPage({ user }) {
           📋 Material IN Log ({materialInLog.length})
         </button>
       </div>
-
-      {/* TAB: Quick Import */}
-      {activeTab === 'quickImport' && (
-        <div style={{ ...styles.card }}>
-          <div style={styles.cardHeader}>
-            <h3 style={{ fontWeight: '600' }}>📋 Quick Import - Bulk Load to Site</h3>
-          </div>
-          <div style={{ padding: '20px' }}>
-            <div style={{ 
-              marginBottom: '20px', 
-              padding: '16px', 
-              backgroundColor: '#f0fdf4', 
-              borderRadius: '8px',
-              border: '2px dashed #22c55e'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <span style={{ fontSize: '24px' }}>📥</span>
-                <div>
-                  <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '600', color: '#166534' }}>Bulk Import to Site Inventory</h4>
-                  <p style={{ margin: 0, fontSize: '13px', color: '#16a34a' }}>
-                    Paste from Excel or drop a file. Quantities will be <strong>ADDED</strong> to existing site_qty.
-                  </p>
-                </div>
-              </div>
-              
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'stretch' }}>
-                {/* Paste Area */}
-                <div style={{ flex: 2 }}>
-                  <label style={{ ...styles.label, marginBottom: '8px' }}>Paste data here (IDENT_CODE + QTY)</label>
-                  <textarea
-                    value={quickImportText}
-                    onChange={(e) => setQuickImportText(e.target.value)}
-                    placeholder="Paste from Excel or type manually...&#10;&#10;Format: IDENT_CODE<tab>QTY&#10;&#10;Example:&#10;ABC-001    10&#10;DEF-002    5&#10;GHI-003    20"
-                    style={{
-                      width: '100%',
-                      height: '200px',
-                      padding: '12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      fontFamily: 'monospace',
-                      resize: 'vertical'
-                    }}
-                    disabled={!canModify || quickImportProcessing}
-                  />
-                </div>
-                
-                {/* OR divider */}
-                <div style={{ display: 'flex', alignItems: 'center', color: '#9ca3af', fontSize: '14px', fontWeight: '500' }}>
-                  OR
-                </div>
-                
-                {/* File Drop Area */}
-                <div
-                  style={{
-                    flex: 1,
-                    border: '2px dashed #d1d5db',
-                    borderRadius: '8px',
-                    padding: '20px',
-                    textAlign: 'center',
-                    cursor: canModify ? 'pointer' : 'not-allowed',
-                    backgroundColor: 'white',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    minHeight: '200px'
-                  }}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (canModify) {
-                      e.currentTarget.style.borderColor = '#22c55e';
-                      e.currentTarget.style.backgroundColor = '#f0fdf4';
-                    }
-                  }}
-                  onDragLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }}
-                  onDrop={(e) => {
-                    e.currentTarget.style.borderColor = '#d1d5db';
-                    e.currentTarget.style.backgroundColor = 'white';
-                    if (canModify) handleQuickImportFile(e);
-                  }}
-                  onClick={() => canModify && document.getElementById('quickImportFileInput').click()}
-                >
-                  <input
-                    id="quickImportFileInput"
-                    type="file"
-                    accept=".csv,.txt,.tsv"
-                    style={{ display: 'none' }}
-                    onChange={handleQuickImportFile}
-                    disabled={!canModify}
-                  />
-                  <div style={{ fontSize: '40px', marginBottom: '12px' }}>📁</div>
-                  <div style={{ fontSize: '14px', color: '#374151', fontWeight: '500' }}>Drop CSV/TXT file here</div>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>or click to browse</div>
-                </div>
-              </div>
-              
-              <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                  <strong>Format:</strong> Each row: IDENT_CODE &lt;tab&gt; QTY (separated by TAB, comma, or spaces)
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => setQuickImportText('')}
-                    style={{ ...styles.button, ...styles.buttonSecondary }}
-                    disabled={!quickImportText || quickImportProcessing}
-                  >
-                    🗑️ Clear
-                  </button>
-                  <button
-                    onClick={() => processQuickImport(quickImportText)}
-                    style={{ 
-                      ...styles.button, 
-                      backgroundColor: COLORS.success, 
-                      color: 'white',
-                      opacity: (!quickImportText || quickImportProcessing || !canModify) ? 0.5 : 1
-                    }}
-                    disabled={!quickImportText || quickImportProcessing || !canModify}
-                  >
-                    {quickImportProcessing ? '⏳ Processing...' : '📥 Import to Site'}
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            {/* Preview of parsed lines */}
-            {quickImportText && (
-              <div style={{ marginTop: '16px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px' }}>
-                  📋 Preview ({quickImportText.trim().split('\n').filter(l => l.trim()).length} rows)
-                </h4>
-                <div style={{ 
-                  maxHeight: '200px', 
-                  overflowY: 'auto', 
-                  border: '1px solid #e5e7eb', 
-                  borderRadius: '6px',
-                  fontSize: '12px'
-                }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ position: 'sticky', top: 0, backgroundColor: '#f9fafb' }}>
-                      <tr>
-                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>#</th>
-                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Ident Code</th>
-                        <th style={{ padding: '8px', textAlign: 'center', borderBottom: '1px solid #e5e7eb' }}>Qty</th>
-                        <th style={{ padding: '8px', textAlign: 'left', borderBottom: '1px solid #e5e7eb' }}>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {quickImportText.trim().split('\n').filter(l => l.trim()).slice(0, 50).map((line, idx) => {
-                        let parts = line.split('\t');
-                        if (parts.length < 2) parts = line.split(',');
-                        if (parts.length < 2) parts = line.split(/\s{2,}/);
-                        if (parts.length < 2) parts = line.trim().split(/\s+/);
-                        
-                        const ident = parts[0]?.trim() || '';
-                        const qty = parts[1]?.trim() || '';
-                        const qtyNum = parseInt(qty);
-                        const invItem = quickImportInventory.find(i => i.ident_code?.toLowerCase() === ident.toLowerCase());
-                        
-                        const isValid = ident && !isNaN(qtyNum) && qtyNum > 0;
-                        
-                        return (
-                          <tr key={idx} style={{ backgroundColor: isValid ? 'white' : '#fef2f2' }}>
-                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', color: '#9ca3af' }}>{idx + 1}</td>
-                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', fontFamily: 'monospace', fontWeight: '500' }}>{ident || '⚠️ Empty'}</td>
-                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', textAlign: 'center', fontWeight: '600' }}>{qtyNum > 0 ? qtyNum : '⚠️'}</td>
-                            <td style={{ padding: '6px 8px', borderBottom: '1px solid #f3f4f6', fontSize: '11px' }}>
-                              {!isValid ? (
-                                <span style={{ color: COLORS.danger }}>❌ Invalid</span>
-                              ) : invItem ? (
-                                <span style={{ color: COLORS.success }}>✅ Found (current: {invItem.site_qty || 0})</span>
-                              ) : (
-                                <span style={{ color: COLORS.warning }}>⚠️ New item</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {quickImportText.trim().split('\n').filter(l => l.trim()).length > 50 && (
-                    <div style={{ padding: '8px', textAlign: 'center', color: '#6b7280', backgroundColor: '#f9fafb' }}>
-                      ...and {quickImportText.trim().split('\n').filter(l => l.trim()).length - 50} more rows
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* TAB 1: Load Material */}
       {activeTab === 'load' && (
@@ -14227,6 +14010,116 @@ function MaterialInPage({ user }) {
               <label style={{ ...styles.label, fontSize: '16px', fontWeight: '600', color: COLORS.success }}>
                 Step 2: Add Items
               </label>
+              
+              {/* V33: Quick Import Area */}
+              <div style={{ 
+                marginBottom: '20px', 
+                padding: '12px', 
+                backgroundColor: '#f0fdf4', 
+                borderRadius: '8px',
+                border: '2px dashed #22c55e'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '18px' }}>📋</span>
+                  <div>
+                    <span style={{ fontWeight: '600', color: '#166534', fontSize: '14px' }}>Bulk Import</span>
+                    <span style={{ color: '#16a34a', fontSize: '12px', marginLeft: '8px' }}>Paste from Excel (IDENT_CODE + QTY)</span>
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                  <div style={{ flex: 1 }}>
+                    <textarea
+                      value={quickImportText}
+                      onChange={(e) => setQuickImportText(e.target.value)}
+                      placeholder="Paste here from Excel...&#10;Example:&#10;ABC-001    10&#10;DEF-002    5"
+                      style={{
+                        width: '100%',
+                        height: '80px',
+                        padding: '10px',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        fontFamily: 'monospace',
+                        resize: 'none'
+                      }}
+                      disabled={!canModify || quickImportProcessing}
+                    />
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <div
+                      style={{
+                        width: '100px',
+                        height: '40px',
+                        border: '2px dashed #d1d5db',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: canModify ? 'pointer' : 'not-allowed',
+                        backgroundColor: 'white',
+                        fontSize: '11px',
+                        color: '#6b7280'
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (canModify) e.currentTarget.style.borderColor = '#22c55e';
+                      }}
+                      onDragLeave={(e) => { e.currentTarget.style.borderColor = '#d1d5db'; }}
+                      onDrop={(e) => {
+                        e.currentTarget.style.borderColor = '#d1d5db';
+                        if (canModify) handleQuickImportFile(e);
+                      }}
+                      onClick={() => canModify && document.getElementById('quickImportFileInput').click()}
+                    >
+                      <input
+                        id="quickImportFileInput"
+                        type="file"
+                        accept=".csv,.txt,.tsv"
+                        style={{ display: 'none' }}
+                        onChange={handleQuickImportFile}
+                        disabled={!canModify}
+                      />
+                      📁 Drop file
+                    </div>
+                    
+                    <button
+                      onClick={() => processQuickImportToList(quickImportText)}
+                      style={{ 
+                        padding: '8px 12px',
+                        backgroundColor: quickImportText ? COLORS.success : '#d1d5db',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontWeight: '600',
+                        fontSize: '12px',
+                        cursor: quickImportText && canModify ? 'pointer' : 'not-allowed'
+                      }}
+                      disabled={!quickImportText || quickImportProcessing || !canModify}
+                    >
+                      {quickImportProcessing ? '⏳...' : '📥 Add to List'}
+                    </button>
+                  </div>
+                </div>
+                
+                {quickImportText && (
+                  <div style={{ marginTop: '8px', fontSize: '11px', color: '#6b7280' }}>
+                    📊 {quickImportText.trim().split('\n').filter(l => l.trim()).length} rows detected
+                    <button 
+                      onClick={() => setQuickImportText('')}
+                      style={{ marginLeft: '8px', color: COLORS.danger, background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px' }}
+                    >
+                      ✕ Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              {/* Manual entry form */}
+              <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '12px', fontStyle: 'italic' }}>
+                Or add items manually:
+              </div>
               
               <div style={{ display: 'grid', gridTemplateColumns: '2fr 2fr 1fr', gap: '16px', marginBottom: '16px' }}>
                 {/* Ident Code with search */}
